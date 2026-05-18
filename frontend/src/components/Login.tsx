@@ -1,15 +1,23 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { auth } from '../api';
+import { useNavigate } from 'react-router-dom';
+import { auth, setup } from '../api';
 
 export function Login() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setup.status().then(s => {
+      if (s.needs_setup || !s.has_container) navigate('/setup', { replace: true });
+    }).catch(() => {});
+  }, [navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

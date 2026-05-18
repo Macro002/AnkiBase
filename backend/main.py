@@ -1388,6 +1388,17 @@ async def sync_anki(client: AnkiConnectClient = Depends(get_anki_client), _: str
                 status_code=503,
                 detail="AnkiWeb sync not configured. Please configure AnkiWeb login first."
             )
+        # Detect AnkiConnect's "Sync status N not one of [0, 1]" errors.
+        # Status 2=FULL_SYNC (choose), 3=FULL_DOWNLOAD (server wins), 4=FULL_UPLOAD (local wins)
+        import re
+        m = re.search(r"Sync status (\d+) not one of", error_msg)
+        if m:
+            status = int(m.group(1))
+            recommended = {2: "choose", 3: "download", 4: "upload"}.get(status, "choose")
+            raise HTTPException(
+                status_code=409,
+                detail=f"Full sync required:{recommended}"
+            )
         raise HTTPException(status_code=500, detail=error_msg)
 
 

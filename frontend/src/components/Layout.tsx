@@ -18,6 +18,7 @@ export function Layout() {
   const [showAnkiWebModal, setShowAnkiWebModal] = useState(false);
   const [showAccountSwitcher, setShowAccountSwitcher] = useState(false);
   const [showSyncConflict, setShowSyncConflict] = useState(false);
+  const [syncConflictRecommendation, setSyncConflictRecommendation] = useState<'choose' | 'download' | 'upload'>('choose');
 
   const navItems = [
     { to: '/', icon: Layers, label: t('nav.decks') },
@@ -44,8 +45,10 @@ export function Layout() {
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : t('sync.syncFailed');
 
-      // Check if it's a sync conflict error
+      // Check if it's a sync conflict error (e.g. "Full sync required:download")
       if (errorMsg.includes('Full sync required')) {
+        const rec = errorMsg.split(':')[1] as 'choose' | 'download' | 'upload' | undefined;
+        setSyncConflictRecommendation(rec ?? 'choose');
         setShowSyncConflict(true);
         setSyncStatus('idle');
       } else {
@@ -281,6 +284,7 @@ export function Layout() {
       {/* Sync Conflict Modal */}
       <SyncConflictModal
         isOpen={showSyncConflict}
+        recommendation={syncConflictRecommendation}
         onClose={() => setShowSyncConflict(false)}
         onResolved={handleConflictResolved}
       />

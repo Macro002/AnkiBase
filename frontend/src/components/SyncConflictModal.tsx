@@ -5,11 +5,12 @@ import { sync } from '../api';
 
 interface SyncConflictModalProps {
   isOpen: boolean;
+  recommendation?: 'choose' | 'download' | 'upload';
   onClose: () => void;
   onResolved: () => void;
 }
 
-export function SyncConflictModal({ isOpen, onClose, onResolved }: SyncConflictModalProps) {
+export function SyncConflictModal({ isOpen, recommendation = 'choose', onClose, onResolved }: SyncConflictModalProps) {
   const { t } = useTranslation();
   const [resolving, setResolving] = useState(false);
   const [error, setError] = useState('');
@@ -67,6 +68,15 @@ export function SyncConflictModal({ isOpen, onClose, onResolved }: SyncConflictM
           <p className="text-(--text-secondary)">
             {t('syncConflict.description')}
           </p>
+
+          {recommendation !== 'choose' && (
+            <div className="p-3 bg-(--accent)/10 border border-(--accent)/30 rounded-lg text-sm">
+              <span className="font-medium">AnkiWeb recommends: </span>
+              {recommendation === 'download'
+                ? 'Download from AnkiWeb (server has the latest data)'
+                : 'Upload to AnkiWeb (local collection is the source)'}
+            </div>
+          )}
 
           <div className="space-y-3">
             {/* Upload option */}

@@ -364,6 +364,12 @@ export function Setup() {
   const [step, setStep] = useState<Step>(1);
   const navigate = useNavigate();
 
+  useEffect(() => {
+    setup.status().then(s => {
+      if (s.has_admin && !s.has_container) setStep(2);
+    }).catch(() => {});
+  }, []);
+
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
       <div className="w-full max-w-md">

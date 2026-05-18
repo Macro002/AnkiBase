@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     app_secret_key: str = "change-me-in-production"
     app_password: str = "admin"
     cors_origins: str = "http://localhost:5173"
+    app_port: int = 8000
+    ankiweb_encryption_key: str = ""
 
     class Config:
         env_file = ".env"

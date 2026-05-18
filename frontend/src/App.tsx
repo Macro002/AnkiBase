@@ -26,7 +26,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     const check = async () => {
       try {
         const status = await setup.status();
-        if (status.needs_setup) {
+        if (status.needs_setup || !status.has_container) {
           setNeedsSetup(true);
           return;
         }

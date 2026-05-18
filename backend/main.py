@@ -50,7 +50,7 @@ async def startup_event():
 
         accounts = get_all_accounts()
         if len(accounts) == 0:
-            # Check if the default container exists
+            # Check if the default container exists (upgrading from pre-multi-account version)
             result = subprocess.run(
                 ["docker", "inspect", "headless-anki"],
                 capture_output=True,
@@ -72,12 +72,15 @@ async def startup_event():
                     if account:
                         set_active_account(account["id"])
                     print("✓ Default container migrated successfully")
+                    accounts = get_all_accounts()
                 except Exception as e:
                     print(f"✗ Failed to migrate default container: {e}")
 
-        # Migration: Create root user with existing password
-        settings = get_settings()
-        migrate_to_user_system(settings.app_password)
+        # Migration: Create root user only when upgrading (containers already exist)
+        # Fresh installs use the setup wizard to create their first user
+        if len(accounts) > 0:
+            settings = get_settings()
+            migrate_to_user_system(settings.app_password)
 
         creds = AnkiWebCredentials()
         if creds.has_credentials():

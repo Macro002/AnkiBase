@@ -60,10 +60,17 @@ def init_global_db():
                 container_name TEXT UNIQUE NOT NULL,
                 container_port INTEGER UNIQUE NOT NULL,
                 volume_name TEXT UNIQUE NOT NULL,
+                ankiweb_email TEXT,
                 is_active INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+
+        # Add ankiweb_email column to existing databases that predate it
+        try:
+            cursor.execute("ALTER TABLE anki_accounts ADD COLUMN ankiweb_email TEXT")
+        except Exception:
+            pass
 
         # Users table
         cursor.execute("""

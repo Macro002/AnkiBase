@@ -7,12 +7,27 @@ YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-info()    { echo -e "${CYAN}[ankibase]${NC} $1"; }
-success() { echo -e "${GREEN}[✓]${NC} $1"; }
-warn()    { echo -e "${YELLOW}[!]${NC} $1"; }
-error()   { echo -e "${RED}[✗]${NC} $1"; exit 1; }
+VERBOSE=0
+for arg in "$@"; do
+  [ "$arg" = "-v" ] || [ "$arg" = "--verbose" ] && VERBOSE=1
+done
 
-# ── Root check ──────────────────────────────────────────────────────────────
+step()    { echo -e "${CYAN}  →${NC} $1"; }
+success() { echo -e "${GREEN}  ✓${NC} $1"; }
+warn()    { echo -e "${YELLOW}  !${NC} $1"; }
+error()   { echo -e "${RED}  ✗${NC} $1"; exit 1; }
+verbose() { [ "$VERBOSE" -eq 1 ] && echo -e "    ${NC}$1" || true; }
+
+# Redirect noisy commands based on verbosity
+if [ "$VERBOSE" -eq 1 ]; then
+    Q=""
+else
+    Q=">/dev/null 2>&1"
+    exec 3>/dev/null  # fd 3 = /dev/null in quiet mode
+fi
+run() { [ "$VERBOSE" -eq 1 ] && eval "$*" || eval "$* >/dev/null 2>&1"; }
+
+# ── Root check ───────────────────────────────────────────────────────────────
 [ "$EUID" -ne 0 ] && error "Please run as root (sudo ./install.sh)"
 
 INSTALL_DIR="/opt/ankibase"
@@ -22,37 +37,38 @@ echo ""
 echo "  ╔══════════════════════════════╗"
 echo "  ║     AnkiBase Installer       ║"
 echo "  ╚══════════════════════════════╝"
+[ "$VERBOSE" -eq 1 ] && echo "  (verbose mode)" || true
 echo ""
 
-# ── System packages ──────────────────────────────────────────────────────────
-info "Updating package list..."
-apt-get update -q
+# ── System packages ───────────────────────────────────────────────────────────
+step "Updating packages..."
+run apt-get update -q
 
-info "Installing system dependencies..."
-apt-get install -y -q \
+run apt-get install -y -q \
     python3 python3-venv python3-pip \
     curl wget git rsync ca-certificates \
     gnupg lsb-release iproute2
+success "System dependencies ready"
 
-# ── Node.js (for frontend build) ─────────────────────────────────────────────
-if ! command -v node &>/dev/null || [ "$(node -e 'process.exit(parseInt(process.version.slice(1)) < 18 ? 1 : 0)' 2>/dev/null; echo $?)" = "1" ]; then
-    info "Installing Node.js 20..."
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - >/dev/null 2>&1
-    apt-get install -y -q nodejs
+# ── Node.js ───────────────────────────────────────────────────────────────────
+if ! command -v node &>/dev/null || node -e 'process.exit(parseInt(process.version.slice(1)) < 18 ? 1 : 0)' 2>/dev/null; then
+    step "Installing Node.js 20..."
+    run curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+    run apt-get install -y -q nodejs
     success "Node.js $(node --version) installed"
 else
-    success "Node.js $(node --version) already installed"
+    verbose "Node.js $(node --version) already present"
 fi
 
-# ── Docker ───────────────────────────────────────────────────────────────────
+# ── Docker ────────────────────────────────────────────────────────────────────
 if ! command -v docker &>/dev/null; then
-    info "Installing Docker..."
-    curl -fsSL https://get.docker.com | sh >/dev/null 2>&1
-    systemctl enable docker >/dev/null 2>&1
+    step "Installing Docker..."
+    run curl -fsSL https://get.docker.com | sh
+    run systemctl enable docker
     systemctl start docker
     success "Docker installed"
 else
-    success "Docker $(docker --version | cut -d' ' -f3 | tr -d ',') already installed"
+    verbose "Docker already present"
 fi
 
 # ── Find available port ───────────────────────────────────────────────────────
@@ -64,18 +80,18 @@ find_port() {
     echo "$port"
 }
 APP_PORT=$(find_port)
-info "Using port $APP_PORT for AnkiBase"
+verbose "Using port $APP_PORT"
 
 # ── Build frontend ────────────────────────────────────────────────────────────
-info "Building frontend..."
+step "Building frontend..."
 cd "$SCRIPT_DIR/frontend"
-npm install --silent
-npm run build --silent
+run npm install
+run npm run build
 success "Frontend built"
 cd "$SCRIPT_DIR"
 
 # ── Deploy files ──────────────────────────────────────────────────────────────
-info "Installing to $INSTALL_DIR..."
+step "Installing files..."
 mkdir -p "$INSTALL_DIR/backend"
 
 rsync -a \
@@ -86,19 +102,16 @@ rsync -a \
 
 rsync -a "$SCRIPT_DIR/frontend/dist/" "$INSTALL_DIR/backend/static/"
 
-success "Files copied"
-
 # ── Python virtualenv ─────────────────────────────────────────────────────────
-info "Setting up Python environment..."
+step "Setting up Python environment..."
 if [ ! -d "$INSTALL_DIR/backend/venv" ]; then
     python3 -m venv "$INSTALL_DIR/backend/venv"
 fi
-"$INSTALL_DIR/backend/venv/bin/pip" install -q -r "$INSTALL_DIR/backend/requirements.txt"
-success "Python dependencies installed"
+run "$INSTALL_DIR/backend/venv/bin/pip" install -q -r "$INSTALL_DIR/backend/requirements.txt"
+success "Backend ready"
 
 # ── Generate .env ─────────────────────────────────────────────────────────────
 if [ ! -f "$INSTALL_DIR/backend/.env" ]; then
-    info "Generating configuration..."
     SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
     ENCRYPTION_KEY=$("$INSTALL_DIR/backend/venv/bin/python3" -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
 
@@ -109,9 +122,8 @@ APP_PORT=${APP_PORT}
 CORS_ORIGINS=http://localhost:${APP_PORT}
 ANKICONNECT_URL=http://localhost:8765
 EOF
-    success "Configuration generated"
+    verbose "Config generated (.env)"
 else
-    # Update port in existing .env if different
     if ! grep -q "APP_PORT=${APP_PORT}" "$INSTALL_DIR/backend/.env" 2>/dev/null; then
         sed -i "s/^APP_PORT=.*/APP_PORT=${APP_PORT}/" "$INSTALL_DIR/backend/.env" 2>/dev/null || \
             echo "APP_PORT=${APP_PORT}" >> "$INSTALL_DIR/backend/.env"
@@ -120,7 +132,7 @@ else
 fi
 
 # ── Systemd service ───────────────────────────────────────────────────────────
-info "Creating systemd service..."
+step "Configuring service..."
 cat > /etc/systemd/system/ankibase.service <<EOF
 [Unit]
 Description=AnkiBase Backend
@@ -139,8 +151,8 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
-systemctl daemon-reload
-systemctl enable ankibase >/dev/null 2>&1
+run systemctl daemon-reload
+run systemctl enable ankibase
 
 # Kill any stale process on the port before starting
 STALE_PID=$(ss -tlnp 2>/dev/null | grep ":${APP_PORT} " | grep -oP 'pid=\K[0-9]+' | head -1)
@@ -150,31 +162,30 @@ systemctl restart ankibase
 sleep 2
 
 if systemctl is-active --quiet ankibase; then
-    success "AnkiBase service started"
+    success "AnkiBase started"
 else
-    warn "Service may have failed. Check: journalctl -u ankibase -n 30"
+    warn "Service may have failed — check: journalctl -u ankibase -n 30"
 fi
 
-# ── Get server IP ─────────────────────────────────────────────────────────────
+# ── Summary ───────────────────────────────────────────────────────────────────
 SERVER_IP=$(hostname -I | awk '{print $1}')
-
 echo ""
 echo "  ──────────────────────────────────"
 success "AnkiBase is running!"
-echo "  Access: http://${SERVER_IP}:${APP_PORT}"
+echo "  http://${SERVER_IP}:${APP_PORT}"
 echo "  ──────────────────────────────────"
 echo ""
 
-# ── Nginx (optional) ──────────────────────────────────────────────────────────
+# ── Nginx (optional) ─────────────────────────────────────────────────────────
 echo -n "  Set up nginx reverse proxy? [y/N] "
 read -r SETUP_NGINX
 echo ""
 
 if [[ "$SETUP_NGINX" =~ ^[Yy]$ ]]; then
-    info "Installing nginx..."
-    apt-get install -y -q nginx
+    step "Installing nginx..."
+    run apt-get install -y -q nginx
 
-    echo -n "  Domain name (leave empty to use IP only): "
+    echo -n "  Domain name (leave empty to skip): "
     read -r DOMAIN
     echo ""
 
@@ -205,13 +216,16 @@ EOF
 
     ln -sf /etc/nginx/sites-available/ankibase /etc/nginx/sites-enabled/ankibase
     rm -f /etc/nginx/sites-enabled/default
-    nginx -t && systemctl restart nginx
+    if [ "$VERBOSE" -eq 1 ]; then
+        nginx -t && systemctl restart nginx
+    else
+        nginx -t >/dev/null 2>&1 && systemctl restart nginx >/dev/null 2>&1
+    fi
     success "nginx configured"
 
-    # Update CORS
     sed -i "s|^CORS_ORIGINS=.*|CORS_ORIGINS=http://localhost:${APP_PORT},http://${NGINX_SERVER}|" \
         "$INSTALL_DIR/backend/.env"
-    systemctl restart ankibase
+    run systemctl restart ankibase
 
     if [ -n "$DOMAIN" ]; then
         echo -n "  Set up SSL with Certbot? [y/N] "
@@ -219,32 +233,31 @@ EOF
         echo ""
 
         if [[ "$SETUP_SSL" =~ ^[Yy]$ ]]; then
-            info "Installing Certbot..."
-            apt-get install -y -q certbot python3-certbot-nginx
+            step "Installing Certbot..."
+            run apt-get install -y -q certbot python3-certbot-nginx
             certbot --nginx -d "$DOMAIN"
 
-            # Update CORS for HTTPS
             sed -i "s|^CORS_ORIGINS=.*|CORS_ORIGINS=http://localhost:${APP_PORT},https://${DOMAIN}|" \
                 "$INSTALL_DIR/backend/.env"
-            systemctl restart ankibase
+            run systemctl restart ankibase
             success "SSL configured"
         fi
     fi
 
     echo ""
     echo "  ──────────────────────────────────"
-    success "Done! Access AnkiBase at:"
+    success "Done!"
     if [ -n "$DOMAIN" ]; then
-        echo "  → http://${DOMAIN} (or https:// if SSL was set up)"
+        echo "  http://${DOMAIN}  (or https:// if SSL)"
     else
-        echo "  → http://${SERVER_IP}"
+        echo "  http://${SERVER_IP}"
     fi
     echo "  ──────────────────────────────────"
 else
-    echo "  Skipping nginx. You can run this script again to set it up."
+    echo "  Skipping nginx."
 fi
 
 echo ""
-info "To view logs: journalctl -u ankibase -f"
-info "To restart:   systemctl restart ankibase"
+echo "  Logs:    journalctl -u ankibase -f"
+echo "  Restart: systemctl restart ankibase"
 echo ""

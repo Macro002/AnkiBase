@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Key, Globe } from 'lucide-react';
+import { Key, Globe, Palette } from 'lucide-react';
 import { auth, type User } from '../api';
 import { useNavigate } from 'react-router-dom';
 import { UserManagement } from '../components/UserManagement';
 import { useTranslation } from 'react-i18next';
+import { ACCENT_PRESETS, getAccentColor, saveAccentColor } from '../hooks/useAccentColor';
 
 export function Settings() {
   const navigate = useNavigate();
@@ -16,6 +17,7 @@ export function Settings() {
   const [success, setSuccess] = useState('');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [languageSuccess, setLanguageSuccess] = useState('');
+  const [accentColor, setAccentColor] = useState(() => getAccentColor().accent);
 
   useEffect(() => {
     loadCurrentUser();
@@ -85,6 +87,52 @@ export function Settings() {
   return (
     <div className={currentUser?.is_admin ? "max-w-7xl mx-auto" : "max-w-2xl mx-auto"}>
       <div className="space-y-6">
+        {/* Accent Color */}
+        <div className="card">
+          <div className="flex items-center gap-2 mb-4">
+            <Palette className="w-5 h-5 text-(--accent)" />
+            <h2 className="text-xl font-semibold">Accent Color</h2>
+          </div>
+
+          <div className="space-y-4">
+            {/* Presets */}
+            <div className="flex flex-wrap gap-3">
+              {ACCENT_PRESETS.map(p => (
+                <button
+                  key={p.name}
+                  onClick={() => { saveAccentColor(p.accent, p.hover); setAccentColor(p.accent); }}
+                  className="flex flex-col items-center gap-1.5 group"
+                  title={p.name}
+                >
+                  <div
+                    className="w-8 h-8 rounded-full ring-2 ring-offset-2 ring-offset-(--bg-primary) transition-all"
+                    style={{
+                      background: p.accent,
+                      outline: accentColor === p.accent ? `3px solid ${p.accent}` : '3px solid transparent',
+                      outlineOffset: '3px',
+                    }}
+                  />
+                  <span className="text-xs text-(--text-secondary) group-hover:text-(--text-primary) transition-colors">{p.name}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Custom picker */}
+            <div className="flex items-center gap-3">
+              <label className="text-sm text-(--text-secondary) shrink-0">Custom</label>
+              <div className="relative">
+                <input
+                  type="color"
+                  value={accentColor}
+                  onChange={e => { saveAccentColor(e.target.value); setAccentColor(e.target.value); }}
+                  className="w-10 h-10 rounded-lg cursor-pointer border-2 border-(--bg-tertiary) bg-transparent p-0.5"
+                />
+              </div>
+              <span className="text-sm font-mono text-(--text-secondary)">{accentColor}</span>
+            </div>
+          </div>
+        </div>
+
         {/* Language Selection */}
         <div className="card">
           <div className="flex items-center gap-2 mb-4">

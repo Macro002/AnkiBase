@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { auth, setup } from './api';
+import { loadAccentColor } from './hooks/useAccentColor';
+
+loadAccentColor();
 import { Login } from './components/Login';
 import { Layout } from './components/Layout';
 import { Decks } from './components/Decks';

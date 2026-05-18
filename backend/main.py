@@ -1469,7 +1469,7 @@ async def update_check(_: dict = Depends(require_admin)):
     except Exception:
         latest = "unknown"
 
-    has_update = latest != "unknown" and local != "unknown" and latest != local
+    has_update = latest != "unknown" and latest != local
     return {"current": local, "latest": latest, "has_update": has_update}
 
 

@@ -1,0 +1,28 @@
+# Personal / deployment
+todo.txt
+deploy.sh
+nginx-*.conf
+.claude/
+backups/
+
+# Environment & secrets
+.env
+.credentials/
+.api_keys.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venv/
+*.db
+
+# Node / frontend build
+node_modules/
+dist/
+.vite/
+
+# Misc
+.DS_Store
+*.log

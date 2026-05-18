@@ -1,0 +1,406 @@
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { BookOpen, Clock, Plus, Pencil, Trash2, ChevronRight, FolderOpen, X } from 'lucide-react';
+import { decks, type DeckStats } from '../api';
+import { Heatmap } from './Heatmap';
+
+interface DeckInfo {
+  name: string;
+  id: number;
+  stats?: DeckStats;
+  hasSubdecks: boolean;
+  isSubdeck: boolean;
+  parentName: string | null;
+  displayName: string;
+}
+
+export function Decks() {
+  const { t } = useTranslation();
+  const [deckList, setDeckList] = useState<DeckInfo[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [currentPath, setCurrentPath] = useState<string[]>([]);
+  const [renameModal, setRenameModal] = useState<{ deck: DeckInfo; newName: string } | null>(null);
+  const [deleteModal, setDeleteModal] = useState<DeckInfo | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    loadDecks();
+  }, []);
+
+  // Reload decks when sync completes
+  useEffect(() => {
+    const handleSyncComplete = () => {
+      loadDecks();
+    };
+
+    window.addEventListener('anki-sync-complete', handleSyncComplete);
+    return () => window.removeEventListener('anki-sync-complete', handleSyncComplete);
+  }, []);
+
+  const loadDecks = async () => {
+    try {
+      const data = await decks.list();
+      const list: DeckInfo[] = Object.entries(data.decks).map(([name, id]) => {
+        const parts = name.split('::');
+        const isSubdeck = parts.length > 1;
+        const parentName = isSubdeck ? parts.slice(0, -1).join('::') : null;
+        const displayName = parts[parts.length - 1];
+
+        // Check if this deck has subdecks
+        const hasSubdecks = Object.keys(data.decks).some(
+          (n) => n !== name && n.startsWith(name + '::')
+        );
+
+        return {
+          name,
+          id,
+          stats: data.stats[id],
+          hasSubdecks,
+          isSubdeck,
+          parentName,
+          displayName,
+        };
+      });
+
+      // Sort by name, but put Default at top
+      list.sort((a, b) => {
+        if (a.name === 'Default') return -1;
+        if (b.name === 'Default') return 1;
+        return a.name.localeCompare(b.name);
+      });
+
+      setDeckList(list);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load decks');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleStudy = (deckName: string) => {
+    navigate(`/study?deck=${encodeURIComponent(deckName)}`);
+  };
+
+  const handleViewDeck = (deckName: string) => {
+    setCurrentPath(deckName.split('::'));
+  };
+
+  const handleBreadcrumb = (index: number) => {
+    if (index < 0) {
+      setCurrentPath([]);
+    } else {
+      setCurrentPath(currentPath.slice(0, index + 1));
+    }
+  };
+
+  const handleRename = async () => {
+    if (!renameModal || !renameModal.newName.trim()) return;
+
+    setActionLoading(true);
+    try {
+      // For subdecks, preserve the parent path
+      const parts = renameModal.deck.name.split('::');
+      parts[parts.length - 1] = renameModal.newName.trim();
+      const newFullName = parts.join('::');
+
+      await decks.rename(renameModal.deck.name, newFullName);
+      setRenameModal(null);
+      await loadDecks();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to rename deck');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteModal) return;
+
+    setActionLoading(true);
+    try {
+      await decks.delete(deleteModal.name);
+      setDeleteModal(null);
+      await loadDecks();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete deck');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Filter decks based on current path
+  const currentPrefix = currentPath.length > 0 ? currentPath.join('::') : null;
+  const visibleDecks = deckList.filter((deck) => {
+    if (currentPrefix === null) {
+      // Show only top-level decks
+      return !deck.isSubdeck;
+    } else {
+      // Show direct children of current path
+      if (!deck.name.startsWith(currentPrefix + '::')) return false;
+      const remainder = deck.name.slice(currentPrefix.length + 2);
+      return !remainder.includes('::'); // Only direct children
+    }
+  });
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        {/* Heatmap skeleton */}
+        <div className="card">
+          <div className="skeleton h-8 w-32 mb-4"></div>
+          <div className="skeleton h-32 w-full"></div>
+        </div>
+
+        {/* Current path skeleton */}
+        <div className="flex items-center gap-2">
+          <div className="skeleton h-8 w-20"></div>
+        </div>
+
+        {/* Decks grid skeleton */}
+        <div>
+          <div className="skeleton h-7 w-24 mb-4"></div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="card border border-(--bg-tertiary)">
+                <div className="skeleton h-6 w-32 mb-3"></div>
+                <div className="flex gap-4 mb-3">
+                  <div className="skeleton h-4 w-16"></div>
+                  <div className="skeleton h-4 w-16"></div>
+                </div>
+                <div className="flex justify-between items-center">
+                  <div className="skeleton h-8 w-20"></div>
+                  <div className="flex gap-1">
+                    <div className="skeleton h-8 w-8 rounded"></div>
+                    <div className="skeleton h-8 w-8 rounded"></div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="card text-center">
+        <p className="text-(--error)">{error}</p>
+        <button onClick={() => { setError(''); loadDecks(); }} className="btn btn-primary mt-4">
+          {t('common.retry', 'Retry')}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Heatmap */}
+      <Heatmap />
+
+      {/* Breadcrumb navigation */}
+      {currentPath.length > 0 && (
+        <div className="flex items-center gap-2 text-sm">
+          <button
+            onClick={() => handleBreadcrumb(-1)}
+            className="text-(--accent) hover-underline"
+          >
+            {t('decks.title')}
+          </button>
+          {currentPath.map((part, index) => (
+            <span key={index} className="flex items-center gap-2">
+              <ChevronRight className="w-4 h-4 text-(--text-secondary)" />
+              <button
+                onClick={() => handleBreadcrumb(index)}
+                className={index === currentPath.length - 1
+                  ? 'text-white'
+                  : 'text-(--accent) hover-underline'
+                }
+              >
+                {part}
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      <h2 className="text-xl font-bold">
+        {currentPath.length > 0 ? currentPath[currentPath.length - 1] : t('decks.title')}
+      </h2>
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {visibleDecks.map((deck) => (
+          <div
+            key={deck.id}
+            className="card border border-(--bg-tertiary) hover-border-accent transition-all cursor-pointer flex flex-col relative group"
+          >
+            {/* Edit/Delete buttons - always visible */}
+            <div className="absolute top-3 right-3 flex items-center gap-1">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setRenameModal({ deck, newName: deck.displayName });
+                }}
+                className="icon-btn"
+                title={t('decks.rename')}
+              >
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDeleteModal(deck);
+                }}
+                className="icon-btn icon-btn-danger"
+                title={t('decks.delete')}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Deck name with tooltip */}
+            <h3
+              className="font-semibold text-lg mb-3 truncate pr-8 group-hover-accent transition-colors"
+              title={deck.name}
+            >
+              {deck.displayName}
+            </h3>
+
+            {/* Stats row with tooltips */}
+            <div className="flex gap-4 mb-4 text-sm">
+              <div className="flex items-center gap-1" title={t('decks.newCards')}>
+                <Plus className="w-4 h-4 text-blue-400" />
+                <span className="text-blue-400">{deck.stats?.new_count ?? 0}</span>
+              </div>
+              <div className="flex items-center gap-1" title={t('decks.learning')}>
+                <Clock className="w-4 h-4 text-orange-400" />
+                <span className="text-orange-400">{deck.stats?.learn_count ?? 0}</span>
+              </div>
+              <div className="flex items-center gap-1" title={t('decks.review')}>
+                <BookOpen className="w-4 h-4 text-green-400" />
+                <span className="text-green-400">{deck.stats?.review_count ?? 0}</span>
+              </div>
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex gap-2 mt-auto">
+              {deck.hasSubdecks ? (
+                <>
+                  <button
+                    onClick={() => handleViewDeck(deck.name)}
+                    className="btn btn-secondary flex-1 flex items-center justify-center gap-2"
+                  >
+                    <FolderOpen className="w-4 h-4" />
+                    {t('common.view', 'View')}
+                  </button>
+                  <button
+                    onClick={() => handleStudy(deck.name)}
+                    className="btn btn-primary"
+                    title={t('decks.studyNow')}
+                  >
+                    {t('nav.study')}
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => handleStudy(deck.name)}
+                  className="btn btn-primary flex-1"
+                >
+                  {t('nav.study')}
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {visibleDecks.length === 0 && (
+        <div className="card text-center text-(--text-secondary)">
+          {currentPath.length > 0
+            ? t('decks.noSubdecks', 'No subdecks found in this deck.')
+            : t('decks.noDecks')}
+        </div>
+      )}
+
+      {/* Rename Modal */}
+      {renameModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="card max-w-md w-full mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">{t('decks.renameDeck')}</h3>
+              <button onClick={() => setRenameModal(null)} className="icon-btn">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <input
+              type="text"
+              value={renameModal.newName}
+              onChange={(e) => setRenameModal({ ...renameModal, newName: e.target.value })}
+              className="input w-full mb-4"
+              placeholder={t('decks.newName')}
+              autoFocus
+              onKeyDown={(e) => e.key === 'Enter' && handleRename()}
+            />
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setRenameModal(null)}
+                className="btn btn-secondary"
+                disabled={actionLoading}
+              >
+                {t('decks.cancel')}
+              </button>
+              <button
+                onClick={handleRename}
+                className="btn btn-primary"
+                disabled={actionLoading || !renameModal.newName.trim()}
+              >
+                {actionLoading ? t('decks.renaming') : t('decks.rename')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="card max-w-md w-full mx-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-lg font-semibold">{t('decks.deleteDeck')}</h3>
+              <button onClick={() => setDeleteModal(null)} className="icon-btn">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-(--text-secondary) mb-4">
+              {t('decks.deleteConfirm')} "<span className="text-white">{deleteModal.displayName}</span>"?
+              {deleteModal.hasSubdecks && (
+                <span className="block mt-2 text-red-400">
+                  {t('decks.deleteSubdecksWarning', 'Warning: This will also delete all subdecks and their cards!')}
+                </span>
+              )}
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setDeleteModal(null)}
+                className="btn btn-secondary"
+                disabled={actionLoading}
+              >
+                {t('decks.cancel')}
+              </button>
+              <button
+                onClick={handleDelete}
+                className="btn btn-error"
+                disabled={actionLoading}
+              >
+                {actionLoading ? t('decks.deleting') : t('decks.delete')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,326 @@
+@import "tailwindcss";
+
+:root {
+  --bg-primary: #1a1a2e;
+  --bg-secondary: #16213e;
+  --bg-tertiary: #0f3460;
+  --text-primary: #eee;
+  --text-secondary: #aaa;
+  --accent: #e94560;
+  --accent-hover: #ff6b6b;
+  --success: #4ade80;
+  --warning: #fbbf24;
+  --error: #f87171;
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: system-ui, -apple-system, sans-serif;
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* Buttons - using plain CSS hover (not Tailwind's hover: which uses media query) */
+.btn {
+  @apply px-4 py-2 rounded-lg font-medium cursor-pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: white;
+}
+
+.btn-primary:hover {
+  background: var(--accent-hover);
+}
+
+.btn-secondary {
+  background: var(--bg-tertiary);
+  color: white;
+  border: 1px solid var(--bg-tertiary);
+}
+
+.btn-secondary:hover {
+  background: color-mix(in srgb, var(--accent) 25%, var(--bg-tertiary));
+  border-color: var(--accent);
+}
+
+.btn-success {
+  background: #16a34a;
+  color: white;
+}
+
+.btn-success:hover {
+  background: #22c55e;
+}
+
+.btn-warning {
+  background: #ca8a04;
+  color: white;
+}
+
+.btn-warning:hover {
+  background: #eab308;
+}
+
+.btn-error {
+  background: #dc2626;
+  color: white;
+}
+
+.btn-error:hover {
+  background: #ef4444;
+}
+
+/* Cards */
+.card {
+  @apply bg-(--bg-secondary) rounded-xl p-6 shadow-lg;
+}
+
+.card-hover {
+  border: 1px solid var(--bg-tertiary);
+  transition: border-color 0.15s ease;
+}
+
+.card-hover:hover {
+  border-color: var(--accent);
+}
+
+/* Icon buttons */
+.icon-btn {
+  @apply p-1.5 rounded;
+  background: var(--bg-tertiary);
+  transition: all 0.15s ease;
+}
+
+.icon-btn:hover {
+  background: var(--accent);
+  transform: scale(1.1);
+}
+
+.icon-btn-danger:hover {
+  background: #dc2626;
+}
+
+/* Custom checkbox styling */
+input[type="checkbox"] {
+  @apply w-4 h-4 rounded cursor-pointer;
+  appearance: none;
+  background: var(--bg-tertiary);
+  border: 2px solid var(--bg-tertiary);
+  transition: all 0.15s ease;
+  position: relative;
+}
+
+input[type="checkbox"]:hover {
+  border-color: var(--accent);
+}
+
+input[type="checkbox"]:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+input[type="checkbox"]:checked::after {
+  content: '✓';
+  position: absolute;
+  color: white;
+  font-size: 12px;
+  font-weight: bold;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/* Field buttons */
+.field-btn {
+  @apply px-3 py-1.5 rounded text-sm font-medium;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  transition: all 0.15s ease;
+}
+
+.field-btn:hover {
+  background: var(--accent);
+  color: white;
+  transform: translateY(-1px);
+}
+
+/* Skeleton loading animation */
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--bg-tertiary) 0%,
+    rgba(255, 255, 255, 0.05) 50%,
+    var(--bg-tertiary) 100%
+  );
+  background-size: 1000px 100%;
+  animation: shimmer 2s infinite linear;
+  border-radius: 4px;
+}
+
+.field-btn.active {
+  background: var(--accent);
+  color: white;
+}
+
+/* Input */
+.input {
+  @apply rounded-lg px-4 py-2 text-white placeholder-gray-400 focus:outline-none;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--bg-tertiary);
+  transition: border-color 0.15s ease;
+}
+
+.input:focus {
+  border-color: var(--accent);
+}
+
+/* Hide browser's default password reveal button */
+.password-input::-ms-reveal,
+.password-input::-ms-clear {
+  display: none;
+}
+
+.password-input::-webkit-credentials-auto-fill-button,
+.password-input::-webkit-contacts-auto-fill-button {
+  visibility: hidden;
+  pointer-events: none;
+  position: absolute;
+  right: 0;
+}
+
+/* Markdown content styling */
+.prose {
+  color: var(--text-primary);
+}
+
+.prose strong {
+  color: var(--accent);
+  font-weight: bold;
+}
+
+.prose p {
+  margin-bottom: 1rem;
+}
+
+.prose h1, .prose h2, .prose h3 {
+  font-weight: bold;
+  margin-bottom: 0.5rem;
+  margin-top: 1rem;
+}
+
+/* Anki card content */
+.anki-content img {
+  @apply max-w-full h-auto mx-auto;
+}
+
+.anki-content {
+  font-size: 1.125rem;
+  line-height: 1.75;
+}
+
+/* Override Anki card blue highlights to use accent color */
+.anki-content b,
+.anki-content strong,
+.anki-content .highlight,
+.anki-content [style*="color: blue"],
+.anki-content [style*="color:blue"],
+.anki-content [style*="color: #0000ff"],
+.anki-content [style*="color:#0000ff"] {
+  color: var(--accent) !important;
+}
+
+/* Utility hover classes without media query */
+.hover-accent:hover {
+  color: var(--accent) !important;
+}
+
+.hover-white:hover {
+  color: white !important;
+}
+
+.hover-underline:hover {
+  text-decoration: underline;
+}
+
+.hover-border-accent:hover {
+  border-color: var(--accent) !important;
+}
+
+.hover-bg-accent:hover {
+  background: var(--accent) !important;
+}
+
+.hover-bg-tertiary:hover {
+  background: var(--bg-tertiary) !important;
+}
+
+.hover-bg-primary:hover {
+  background: var(--bg-primary) !important;
+}
+
+/* Group hover utilities */
+.group:hover .group-hover-accent {
+  color: var(--accent);
+}
+
+/* Button color hover utilities */
+.hover-bg-blue:hover {
+  background: #3b82f6 !important;
+}
+
+.hover-bg-red:hover {
+  background: #ef4444 !important;
+}
+
+.hover-text-primary:hover {
+  color: var(--text-primary) !important;
+}
+
+.hover-border-secondary:hover {
+  border-color: var(--text-secondary) !important;
+}
+
+.hover-opacity-80:hover {
+  opacity: 0.8;
+}
+
+/* Fade out animation for answer feedback */
+@keyframes fade-out {
+  0% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  20% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  80% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+}
+
+.animate-fade-out {
+  animation: fade-out 500ms ease-in-out forwards;
+}

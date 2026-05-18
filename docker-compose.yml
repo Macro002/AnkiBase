@@ -1,0 +1,23 @@
+services:
+  anki:
+    image: thisisnttheway/headless-anki:latest
+    container_name: headless-anki
+    restart: unless-stopped
+    environment:
+      - ANKICONNECT_WILDCARD_ORIGIN=1
+      - QT_QPA_PLATFORM=vnc
+    volumes:
+      - anki-data:/data
+      - ./anki-export:/export
+    ports:
+      - "127.0.0.1:8765:8765"  # AnkiConnect - only accessible locally
+      - "0.0.0.0:5900:5900"    # VNC - exposed for Guacamole access
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8765"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  anki-data:

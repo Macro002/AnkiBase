@@ -17,6 +17,78 @@ from database import (
 )
 
 
+ANKICONNECT_PATCH = '''
+    @util.api()
+    def fullUpload(self):
+        mw = self.window()
+        auth = mw.pm.sync_auth()
+        if not auth:
+            raise Exception('fullUpload: auth not configured')
+        mw.col.full_upload_or_download(auth=auth, server_usn=None, upload=True)
+        mw.onSync()
+
+    @util.api()
+    def fullDownload(self):
+        mw = self.window()
+        auth = mw.pm.sync_auth()
+        if not auth:
+            raise Exception('fullDownload: auth not configured')
+        mw.col.full_upload_or_download(auth=auth, server_usn=None, upload=False)
+        mw.onSync()
+
+'''
+
+ANKICONNECT_PLUGIN_PATH = "/app/anki-connect/plugin/__init__.py"
+ANKICONNECT_MARKER = "    @util.api()\n    def apiReflect"
+
+
+def patch_ankiconnect(container_name: str) -> bool:
+    """Patch AnkiConnect plugin in a running container to add fullUpload/fullDownload actions."""
+    import tempfile
+
+    tmp_orig = tempfile.mktemp(suffix=".py")
+    tmp_patched = tempfile.mktemp(suffix=".py")
+
+    try:
+        # Copy plugin out of container
+        r = subprocess.run(
+            ["docker", "cp", f"{container_name}:{ANKICONNECT_PLUGIN_PATH}", tmp_orig],
+            capture_output=True, text=True
+        )
+        if r.returncode != 0:
+            return False
+
+        with open(tmp_orig) as f:
+            content = f.read()
+
+        if "def fullDownload" in content:
+            return True  # Already patched
+
+        if ANKICONNECT_MARKER not in content:
+            return False
+
+        content = content.replace(ANKICONNECT_MARKER, ANKICONNECT_PATCH + ANKICONNECT_MARKER, 1)
+
+        with open(tmp_patched, "w") as f:
+            f.write(content)
+
+        # Copy patched file back
+        r = subprocess.run(
+            ["docker", "cp", tmp_patched, f"{container_name}:{ANKICONNECT_PLUGIN_PATH}"],
+            capture_output=True, text=True
+        )
+        return r.returncode == 0
+
+    except Exception:
+        return False
+    finally:
+        for p in [tmp_orig, tmp_patched]:
+            try:
+                os.unlink(p)
+            except Exception:
+                pass
+
+
 class AnkiContainerManager:
     def __init__(self):
         self.base_image = "thisisnttheway/headless-anki:latest"
@@ -75,6 +147,11 @@ class AnkiContainerManager:
         # If this is the first account, make it active
         if account_id == 1:
             set_active_account(account_db_id)
+
+        # Patch AnkiConnect to add fullUpload/fullDownload (wait briefly for startup)
+        import time
+        time.sleep(5)
+        patch_ankiconnect(container_name)
 
         return get_account(account_db_id)
 

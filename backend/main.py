@@ -288,6 +288,14 @@ async def setup_container_stream(name: str, request: Request):
                 yield event({"type": "done", "message": "Container created (AnkiConnect may still be starting)", "progress": 100})
                 return
 
+            # Patch AnkiConnect to add fullUpload/fullDownload
+            import subprocess as _sp
+            yield event({"type": "log", "message": "Applying AnkiConnect patches...", "progress": 95})
+            from anki_container_manager import patch_ankiconnect
+            patch_ankiconnect(container_name)
+            _sp.run(["docker", "restart", container_name], capture_output=True)
+            await asyncio.sleep(8)
+
             yield event({"type": "done", "message": "AnkiConnect is ready!", "progress": 100})
 
         except Exception as e:

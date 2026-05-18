@@ -388,10 +388,10 @@ export function Heatmap({ className = '' }: HeatmapProps) {
         {colorScheme === 'accent' ? (
           <>
             <div className="rounded-sm" style={{ width: `${squareSize}px`, height: `${squareSize}px`, backgroundColor: 'var(--bg-tertiary)' }}></div>
-            <div className="rounded-sm" style={{ width: `${squareSize}px`, height: `${squareSize}px`, backgroundColor: 'rgba(233, 69, 96, 0.25)' }}></div>
-            <div className="rounded-sm" style={{ width: `${squareSize}px`, height: `${squareSize}px`, backgroundColor: 'rgba(233, 69, 96, 0.45)' }}></div>
-            <div className="rounded-sm" style={{ width: `${squareSize}px`, height: `${squareSize}px`, backgroundColor: 'rgba(233, 69, 96, 0.65)' }}></div>
-            <div className="rounded-sm" style={{ width: `${squareSize}px`, height: `${squareSize}px`, backgroundColor: 'rgba(233, 69, 96, 0.85)' }}></div>
+            <div className="rounded-sm" style={{ width: `${squareSize}px`, height: `${squareSize}px`, backgroundColor: 'rgba(var(--accent-rgb), 0.25)' }}></div>
+            <div className="rounded-sm" style={{ width: `${squareSize}px`, height: `${squareSize}px`, backgroundColor: 'rgba(var(--accent-rgb), 0.45)' }}></div>
+            <div className="rounded-sm" style={{ width: `${squareSize}px`, height: `${squareSize}px`, backgroundColor: 'rgba(var(--accent-rgb), 0.65)' }}></div>
+            <div className="rounded-sm" style={{ width: `${squareSize}px`, height: `${squareSize}px`, backgroundColor: 'rgba(var(--accent-rgb), 0.85)' }}></div>
             <div className="rounded-sm" style={{ width: `${squareSize}px`, height: `${squareSize}px`, backgroundColor: 'var(--accent)' }}></div>
           </>
         ) : (

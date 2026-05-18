@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, Loader2, ChevronRight, ServerCog, User, Wifi } from 'lucide-react';
-import { setup } from '../api';
+import { setup, ankiweb } from '../api';
 
 type Step = 1 | 2 | 3;
 
@@ -279,20 +279,10 @@ function StepAnkiWeb({ onDone }: { onDone: () => void }) {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('/api/ankiweb-login', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setSuccess(true);
-      } else {
-        setError(data.message || 'Login failed');
-      }
-    } catch {
-      setError('Connection error');
+      await ankiweb.login(email, password);
+      setSuccess(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Login failed');
     } finally {
       setLoading(false);
     }

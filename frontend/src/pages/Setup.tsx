@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, Loader2, ChevronRight, ServerCog, User, Wifi } from 'lucide-react';
 import { setup, ankiweb } from '../api';
+import { Logo } from '../components/Logo';
 
 type Step = 1 | 2 | 3;
 
@@ -364,7 +365,7 @@ export function Setup() {
     <div className="min-h-screen flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <img src="/logo.svg" alt="AnkiBase" className="w-14 h-14 mx-auto mb-3" />
+          <Logo className="w-14 h-14 mx-auto mb-3" />
           <h1 className="text-2xl font-bold text-(--accent)">AnkiBase</h1>
           <p className="text-(--text-secondary) text-sm mt-1">First-time setup</p>
         </div>

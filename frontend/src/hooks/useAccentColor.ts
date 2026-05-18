@@ -12,8 +12,11 @@ function lighten(hex: string, amount = 30): string {
 
 export function applyAccentColor(accent: string, hover?: string) {
   const h = hover ?? lighten(accent);
+  const n = parseInt(accent.slice(1), 16);
+  const rgb = `${n >> 16}, ${(n >> 8) & 0xff}, ${n & 0xff}`;
   document.documentElement.style.setProperty('--accent', accent);
   document.documentElement.style.setProperty('--accent-hover', h);
+  document.documentElement.style.setProperty('--accent-rgb', rgb);
 }
 
 export function loadAccentColor() {

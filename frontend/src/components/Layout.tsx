@@ -4,6 +4,7 @@ import { auth, sync, update } from '../api';
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AnkiWebLoginModal } from './AnkiWebLoginModal';
+import { Logo } from './Logo';
 import { AccountSwitcherModal } from './AccountSwitcherModal';
 import { SyncConflictModal } from './SyncConflictModal';
 import { UpdateModal } from './UpdateModal';
@@ -95,7 +96,7 @@ export function Layout() {
       <header className="bg-(--bg-secondary)">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 h-14 flex items-center justify-between w-full gap-2">
           <Link to="/" className="flex items-center gap-2 hover-opacity-80 transition-opacity shrink-0">
-            <img src="/logo.svg" alt="AnkiBase" className="w-7 h-7" />
+            <Logo className="w-7 h-7" />
             <h1 className="text-lg sm:text-xl font-bold text-(--accent) hidden sm:block">AnkiBase</h1>
           </Link>
 

@@ -3,6 +3,7 @@ import { Eye, EyeOff } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { auth, setup } from '../api';
+import { Logo } from './Logo';
 
 export function Login() {
   const { t } = useTranslation();
@@ -39,7 +40,7 @@ export function Login() {
     <div className="min-h-screen flex items-center justify-center p-4">
       <div className="card w-full max-w-md">
         <div className="flex items-center justify-center mb-6">
-          <img src="/logo.svg" alt="AnkiBase" className="w-16 h-16" />
+          <Logo className="w-16 h-16" />
         </div>
         <h1 className="text-2xl font-bold text-center mb-6">AnkiBase</h1>
 

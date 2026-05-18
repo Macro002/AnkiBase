@@ -108,10 +108,10 @@ export function Heatmap({ className = '' }: HeatmapProps) {
     if (count === 0) return { backgroundColor: 'var(--bg-tertiary)' };
 
     if (colorScheme === 'accent') {
-      if (count < 10) return { backgroundColor: 'rgba(233, 69, 96, 0.25)' };
-      if (count < 25) return { backgroundColor: 'rgba(233, 69, 96, 0.45)' };
-      if (count < 50) return { backgroundColor: 'rgba(233, 69, 96, 0.65)' };
-      if (count < 100) return { backgroundColor: 'rgba(233, 69, 96, 0.85)' };
+      if (count < 10) return { backgroundColor: 'rgba(var(--accent-rgb), 0.25)' };
+      if (count < 25) return { backgroundColor: 'rgba(var(--accent-rgb), 0.45)' };
+      if (count < 50) return { backgroundColor: 'rgba(var(--accent-rgb), 0.65)' };
+      if (count < 100) return { backgroundColor: 'rgba(var(--accent-rgb), 0.85)' };
       return { backgroundColor: 'var(--accent)' };
     } else {
       if (count < 10) return { backgroundColor: '#14532d' };

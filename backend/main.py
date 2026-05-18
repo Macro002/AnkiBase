@@ -1442,6 +1442,145 @@ async def full_download_anki(client: AnkiConnectClient = Depends(get_anki_client
         raise HTTPException(status_code=500, detail=error_msg)
 
 
+# ── Update endpoints ──────────────────────────────────────────────────────────
+
+VERSION_FILE = os.path.join(os.path.dirname(__file__), ".version")
+GITHUB_REPO = "Macro002/AnkiBase"
+
+
+def _read_local_version() -> str:
+    try:
+        return open(VERSION_FILE).read().strip()
+    except Exception:
+        return "unknown"
+
+
+@app.get("/api/update/check")
+async def update_check(_: dict = Depends(require_admin)):
+    import httpx
+    local = _read_local_version()
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.get(
+                f"https://api.github.com/repos/{GITHUB_REPO}/commits/main",
+                headers={"Accept": "application/vnd.github.sha"},
+            )
+            latest = r.text.strip() if r.status_code == 200 else "unknown"
+    except Exception:
+        latest = "unknown"
+
+    has_update = latest != "unknown" and local != "unknown" and latest != local
+    return {"current": local, "latest": latest, "has_update": has_update}
+
+
+@app.get("/api/update/apply")
+async def update_apply(request: Request, _: dict = Depends(require_admin)):
+    import asyncio, tempfile, shutil
+
+    async def generate():
+        def event(data: dict) -> str:
+            return f"data: {json.dumps(data)}\n\n"
+
+        tmp = tempfile.mkdtemp(prefix="ankibase_update_")
+        try:
+            yield event({"type": "step", "message": "Fetching latest code from GitHub...", "progress": 5})
+            proc = await asyncio.create_subprocess_exec(
+                "git", "clone", "--depth", "1",
+                f"https://github.com/{GITHUB_REPO}.git", tmp,
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+            )
+            async for line in proc.stdout:
+                msg = line.decode().strip()
+                if msg:
+                    yield event({"type": "log", "message": msg, "progress": 15})
+            await proc.wait()
+            if proc.returncode != 0:
+                yield event({"type": "error", "message": "Failed to clone repository"})
+                return
+
+            yield event({"type": "step", "message": "Building frontend...", "progress": 25})
+            fe_dir = os.path.join(tmp, "frontend")
+            proc = await asyncio.create_subprocess_exec(
+                "npm", "install",
+                cwd=fe_dir,
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+            )
+            await proc.wait()
+            proc = await asyncio.create_subprocess_exec(
+                "npm", "run", "build",
+                cwd=fe_dir,
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+            )
+            async for line in proc.stdout:
+                msg = line.decode().strip()
+                if msg:
+                    yield event({"type": "log", "message": msg, "progress": 55})
+            await proc.wait()
+            if proc.returncode != 0:
+                yield event({"type": "error", "message": "Frontend build failed"})
+                return
+
+            yield event({"type": "step", "message": "Installing files...", "progress": 65})
+            install_dir = os.path.dirname(__file__)
+            static_dir = os.path.join(install_dir, "static")
+
+            proc = await asyncio.create_subprocess_exec(
+                "rsync", "-a",
+                "--exclude=__pycache__", "--exclude=*.pyc",
+                "--exclude=venv", "--exclude=.env", "--exclude=*.db",
+                "--exclude=.credentials", "--exclude=.api_keys.json",
+                os.path.join(tmp, "backend") + "/", install_dir + "/",
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+            )
+            await proc.wait()
+
+            proc = await asyncio.create_subprocess_exec(
+                "rsync", "-a",
+                os.path.join(tmp, "frontend", "dist") + "/", static_dir + "/",
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+            )
+            await proc.wait()
+
+            yield event({"type": "step", "message": "Installing Python dependencies...", "progress": 75})
+            venv_pip = os.path.join(install_dir, "venv", "bin", "pip")
+            proc = await asyncio.create_subprocess_exec(
+                venv_pip, "install", "-q", "-r", os.path.join(install_dir, "requirements.txt"),
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+            )
+            await proc.wait()
+
+            # Write new version hash
+            new_sha_path = os.path.join(tmp, ".git", "refs", "heads", "main")
+            try:
+                import subprocess as _sp
+                sha = _sp.check_output(["git", "-C", tmp, "rev-parse", "HEAD"]).decode().strip()
+                with open(VERSION_FILE, "w") as f:
+                    f.write(sha)
+            except Exception:
+                pass
+
+            yield event({"type": "step", "message": "Restarting service...", "progress": 90})
+            # Detach restart so the response finishes first
+            await asyncio.create_subprocess_exec(
+                "bash", "-c", "sleep 3 && systemctl restart ankibase",
+                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+                start_new_session=True,
+            )
+
+            yield event({"type": "done", "message": "Update applied! Reloading...", "progress": 100})
+
+        except Exception as e:
+            yield event({"type": "error", "message": str(e)})
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 # Account management endpoints
 container_manager = AnkiContainerManager()
 

@@ -8,8 +8,10 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 
 VERBOSE=0
+UPDATE=0
 for arg in "$@"; do
   [ "$arg" = "-v" ] || [ "$arg" = "--verbose" ] && VERBOSE=1
+  [ "$arg" = "--update" ] && UPDATE=1
 done
 
 step()    { echo -e "${CYAN}  →${NC} $1"; }
@@ -33,9 +35,23 @@ run() { [ "$VERBOSE" -eq 1 ] && eval "$*" || eval "$* >/dev/null 2>&1"; }
 INSTALL_DIR="/opt/ankibase"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+# ── Update mode: pull latest code into a temp dir then continue ───────────────
+if [ "$UPDATE" -eq 1 ]; then
+    step "Downloading latest AnkiBase..."
+    TMP_DIR=$(mktemp -d)
+    trap "rm -rf $TMP_DIR" EXIT
+    run git clone --depth 1 https://github.com/Macro002/AnkiBase.git "$TMP_DIR"
+    SCRIPT_DIR="$TMP_DIR"
+    success "Latest code fetched"
+fi
+
 echo ""
 echo "  ╔══════════════════════════════╗"
+if [ "$UPDATE" -eq 1 ]; then
+echo "  ║     AnkiBase Updater         ║"
+else
 echo "  ║     AnkiBase Installer       ║"
+fi
 echo "  ╚══════════════════════════════╝"
 [ "$VERBOSE" -eq 1 ] && echo "  (verbose mode)" || true
 echo ""
@@ -166,6 +182,9 @@ if systemctl is-active --quiet ankibase; then
 else
     warn "Service may have failed — check: journalctl -u ankibase -n 30"
 fi
+
+# Write version (git commit SHA) for in-app update checks
+git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null > "$INSTALL_DIR/backend/.version" || true
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 SERVER_IP=$(hostname -I | awk '{print $1}')

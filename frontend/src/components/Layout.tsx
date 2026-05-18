@@ -1,11 +1,12 @@
 import { NavLink, Outlet, useNavigate, Link } from 'react-router-dom';
 import { BookOpen, Search, Sparkles, RefreshCw, LogOut, Layers, Check, X, Upload, BarChart3, Library, Menu, LogIn, Server, Settings } from 'lucide-react';
-import { auth, sync } from '../api';
+import { auth, sync, update } from '../api';
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AnkiWebLoginModal } from './AnkiWebLoginModal';
 import { AccountSwitcherModal } from './AccountSwitcherModal';
 import { SyncConflictModal } from './SyncConflictModal';
+import { UpdateModal } from './UpdateModal';
 
 type SyncStatus = 'idle' | 'syncing' | 'success' | 'error';
 
@@ -19,6 +20,8 @@ export function Layout() {
   const [showAccountSwitcher, setShowAccountSwitcher] = useState(false);
   const [showSyncConflict, setShowSyncConflict] = useState(false);
   const [syncConflictRecommendation, setSyncConflictRecommendation] = useState<'choose' | 'download' | 'upload'>('choose');
+  const [hasUpdate, setHasUpdate] = useState(false);
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
 
   const navItems = [
     { to: '/', icon: Layers, label: t('nav.decks') },
@@ -66,6 +69,11 @@ export function Layout() {
   };
 
   // Auto-hide sync status after 3 seconds
+  // Check for updates once on mount (admin only — silently ignore errors)
+  useEffect(() => {
+    update.check().then(r => { if (r.has_update) setHasUpdate(true); }).catch(() => {});
+  }, []);
+
   useEffect(() => {
     if (syncStatus === 'success' || syncStatus === 'error') {
       const timer = setTimeout(() => {
@@ -108,6 +116,17 @@ export function Layout() {
                 {syncStatus === 'error' && <X className="w-4 h-4" />}
                 <span className="hidden sm:inline">{syncStatus === 'syncing' ? t('sync.syncing') : syncMessage}</span>
               </div>
+            )}
+
+            {hasUpdate && (
+              <button
+                onClick={() => setShowUpdateModal(true)}
+                className="btn flex items-center gap-2 px-2 sm:px-4 bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30"
+                title="Update available"
+              >
+                <RefreshCw className="w-4 h-4" />
+                <span className="hidden sm:inline">Update</span>
+              </button>
             )}
 
             <button
@@ -287,6 +306,11 @@ export function Layout() {
         recommendation={syncConflictRecommendation}
         onClose={() => setShowSyncConflict(false)}
         onResolved={handleConflictResolved}
+      />
+
+      <UpdateModal
+        isOpen={showUpdateModal}
+        onClose={() => setShowUpdateModal(false)}
       />
     </div>
   );

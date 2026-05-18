@@ -277,6 +277,12 @@ export const stories = {
     fetchAPI<{ success: boolean }>(`/stories/${id}`, { method: 'DELETE' }),
 };
 
+// Update
+export const update = {
+  check: () => fetchAPI<{ current: string; latest: string; has_update: boolean }>('/update/check'),
+  applyUrl: () => `${API_BASE}/update/apply`,
+};
+
 // Sync
 export const sync = {
   trigger: () => fetchAPI<{ success: boolean; message: string }>('/sync', { method: 'POST' }),

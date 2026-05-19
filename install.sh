@@ -125,6 +125,8 @@ if [ ! -d "$INSTALL_DIR/backend/venv" ]; then
     python3 -m venv "$INSTALL_DIR/backend/venv"
 fi
 run "$INSTALL_DIR/backend/venv/bin/pip" install -q -r "$INSTALL_DIR/backend/requirements.txt"
+# Install browser dependencies for invisible_playwright (Firefox needs GTK, ALSA, etc.)
+run "$INSTALL_DIR/backend/venv/bin/python3" -m playwright install-deps firefox
 success "Backend ready"
 
 # ── Generate .env ─────────────────────────────────────────────────────────────

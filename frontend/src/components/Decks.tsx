@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { BookOpen, Clock, Plus, Pencil, Trash2, ChevronRight, FolderOpen, X } from 'lucide-react';
-import { decks, type DeckStats } from '../api';
+import { BookOpen, Clock, Plus, Pencil, Trash2, ChevronRight, FolderOpen, X, ExternalLink } from 'lucide-react';
+import { decks, quizlet, type DeckStats, type QuizletDeck } from '../api';
 import { Heatmap } from './Heatmap';
 
 interface DeckInfo {
@@ -18,6 +18,7 @@ interface DeckInfo {
 export function Decks() {
   const { t } = useTranslation();
   const [deckList, setDeckList] = useState<DeckInfo[]>([]);
+  const [quizletDecks, setQuizletDecks] = useState<QuizletDeck[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [currentPath, setCurrentPath] = useState<string[]>([]);
@@ -28,6 +29,7 @@ export function Decks() {
 
   useEffect(() => {
     loadDecks();
+    quizlet.listDecks().then(r => setQuizletDecks(r.decks)).catch(() => {});
   }, []);
 
   // Reload decks when sync completes
@@ -228,7 +230,7 @@ export function Decks() {
       )}
 
       <h2 className="text-xl font-bold">
-        {currentPath.length > 0 ? currentPath[currentPath.length - 1] : t('decks.title')}
+        {currentPath.length > 0 ? currentPath[currentPath.length - 1] : 'My Anki Decks'}
       </h2>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -322,6 +324,73 @@ export function Decks() {
           {currentPath.length > 0
             ? t('decks.noSubdecks', 'No subdecks found in this deck.')
             : t('decks.noDecks')}
+        </div>
+      )}
+
+      {/* Quizlet Decks section */}
+      {currentPath.length === 0 && (
+        <div className="space-y-3">
+          <h2 className="text-xl font-bold">My Quizlet Decks</h2>
+          {quizletDecks.length === 0 ? (
+            <div className="card text-center text-(--text-secondary) py-6 text-sm">
+              No Quizlet decks yet —{' '}
+              <button className="hover-accent" onClick={() => navigate('/import')}>
+                import one
+              </button>
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {quizletDecks.map(deck => (
+                <div
+                  key={deck.id}
+                  className="card border border-(--bg-tertiary) hover-border-accent transition-all cursor-pointer flex flex-col relative group"
+                  onClick={() => navigate(`/quizlet/${deck.id}/study`)}
+                >
+                  <div className="absolute top-3 right-3 flex items-center gap-1">
+                    {deck.url && (
+                      <a
+                        href={deck.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={e => e.stopPropagation()}
+                        className="icon-btn"
+                        title="Open on Quizlet"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    )}
+                    <button
+                      className="icon-btn icon-btn-danger"
+                      title="Delete"
+                      onClick={async e => {
+                        e.stopPropagation();
+                        if (!confirm(`Delete "${deck.title}"?`)) return;
+                        await quizlet.deleteDeck(deck.id);
+                        setQuizletDecks(d => d.filter(x => x.id !== deck.id));
+                      }}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2 mb-3 pr-16">
+                    <div className="w-6 h-6 rounded flex items-center justify-center shrink-0" style={{ background: '#4257b2' }}>
+                      <span className="text-white font-bold text-xs">Q</span>
+                    </div>
+                    <h3 className="font-semibold text-lg truncate group-hover-accent transition-colors">
+                      {deck.title}
+                    </h3>
+                  </div>
+
+                  <p className="text-sm text-(--text-secondary) mb-4">{deck.card_count} cards</p>
+
+                  <button className="btn btn-primary mt-auto" onClick={e => { e.stopPropagation(); navigate(`/quizlet/${deck.id}/study`); }}>
+                    Study
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

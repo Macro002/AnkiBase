@@ -1853,21 +1853,23 @@ def _scrape_quizlet_sync(url: str) -> dict:
     import time
     from invisible_playwright import InvisiblePlaywright
     from invisible_playwright import download as ip_download
+    from xvfbwrapper import Xvfb
     ip_download.ensure_binary()
 
-    with InvisiblePlaywright(headless=True) as browser:
-        page = browser.new_page()
-        page.goto(url, timeout=45000)
-        time.sleep(5)
+    with Xvfb():
+        with InvisiblePlaywright(headless=False) as browser:
+            page = browser.new_page()
+            page.goto(url, timeout=45000)
+            time.sleep(5)
 
-        title = page.evaluate('''() => {
-            const h1 = document.querySelector("h1");
-            return h1 ? h1.textContent.trim() : document.title.replace(" | Quizlet", "").trim();
-        }''')
+            title = page.evaluate('''() => {
+                const h1 = document.querySelector("h1");
+                return h1 ? h1.textContent.trim() : document.title.replace(" | Quizlet", "").trim();
+            }''')
 
-        texts = page.evaluate('''() =>
-            Array.from(document.querySelectorAll(".TermText")).map(e => e.textContent.trim())
-        ''')
+            texts = page.evaluate('''() =>
+                Array.from(document.querySelectorAll(".TermText")).map(e => e.textContent.trim())
+            ''')
 
     if not texts:
         raise Exception("No flashcard terms found. The deck may be private or the URL is invalid.")

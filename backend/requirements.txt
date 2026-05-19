@@ -13,3 +13,4 @@ zstandard==0.25.0
 requests==2.32.3
 bcrypt==4.2.1
 invisible-playwright @ git+https://github.com/feder-cr/invisible_playwright.git
+xvfbwrapper==0.2.23

@@ -63,7 +63,8 @@ run apt-get update -q
 run apt-get install -y -q \
     python3 python3-venv python3-pip \
     curl wget git rsync ca-certificates \
-    gnupg lsb-release iproute2 xvfb
+    gnupg lsb-release iproute2 xvfb \
+    libgtk-3-0 libdbus-glib-1-2 libxt6
 success "System dependencies ready"
 
 # ── Node.js ───────────────────────────────────────────────────────────────────

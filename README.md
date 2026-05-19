@@ -11,17 +11,15 @@
 
 ---
 
-<div align="center">
-  <img src="docs/desktop.png" alt="AnkiBase desktop view" width="680">
-</div>
+<img src="docs/desktop.png" alt="AnkiBase desktop view" width="100%">
 
 ---
+
+## Features
 
 <table>
 <tr>
 <td valign="top">
-
-## Features
 
 - **Study** — review cards with ease ratings, undo, and progress tracking
 - **Decks** — browse your full deck hierarchy with new/learning/review counts
@@ -37,8 +35,8 @@
 - **In-app updates** — pull the latest version without touching the server
 
 </td>
-<td valign="top" align="center" width="260">
-  <img src="docs/mobile.png" alt="AnkiBase mobile view" width="220">
+<td align="center" valign="top" width="300">
+<img src="docs/mobile.png" alt="AnkiBase mobile view" width="280">
 </td>
 </tr>
 </table>
@@ -76,7 +74,7 @@ curl -fsSL https://raw.githubusercontent.com/Macro002/AnkiBase/main/install.sh |
 
 AI provider API keys (OpenAI, Anthropic, Gemini) can be added directly in the app under **Settings → API Keys** — no server access needed.
 
-Alternatively, you can set them in `/opt/ankibase/backend/.env` on the server:
+Alternatively, set them in `/opt/ankibase/backend/.env` on the server:
 
 ```env
 GEMINI_API_KEY=your_key_here

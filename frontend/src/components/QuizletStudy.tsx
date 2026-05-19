@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, Star, Volume2, ChevronLeft, ChevronRight,
+  ArrowLeft, Star, ChevronLeft, ChevronRight,
   Play, Undo2, Shuffle, Settings, Maximize2, X, Check,
   TrendingUp, Lightbulb, CreditCard, BookOpen, ClipboardList,
   Grid3X3, Zap, Gamepad2,
@@ -294,7 +294,7 @@ export function QuizletStudy() {
 
   // Shared card face renderer
   const renderFace = (isBack: boolean) => {
-    const text = isBack ? current?.back : (hintShown ? current?.back : current?.front);
+    const text = isBack ? current?.back : current?.front;
     const hasImage = !!current?.image;
 
     return (
@@ -303,19 +303,18 @@ export function QuizletStudy() {
         <div className="flex items-center justify-between px-5 pt-4 shrink-0">
           {!isBack ? (
             <button
-              className={`flex items-center gap-1.5 text-xs transition-colors ${hintShown ? 'text-(--accent)' : 'text-(--text-secondary) hover-accent'}`}
+              className={`flex items-start gap-1.5 text-xs transition-colors max-w-xs text-left ${hintShown ? 'text-(--accent)' : 'text-(--text-secondary) hover-accent'}`}
               onClick={e => { e.stopPropagation(); setHintShown(h => !h); setFlipped(false); }}
             >
-              <Lightbulb className="w-3.5 h-3.5" />
-              {hintShown ? 'Hide hint' : 'Get a hint'}
+              <Lightbulb className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+              {hintShown
+                ? <span className="line-clamp-2 leading-snug">{current?.back}</span>
+                : 'Get a hint'}
             </button>
           ) : (
             <span className="text-xs text-(--text-secondary) uppercase tracking-wide">Definition</span>
           )}
           <div className="flex items-center gap-2">
-            <button className="text-(--text-secondary) hover-accent transition-colors p-1" onClick={e => e.stopPropagation()} title="Audio (coming soon)">
-              <Volume2 className="w-4 h-4" />
-            </button>
             <button className="p-1 transition-colors" onClick={e => current && toggleFavorite(current.id, e)} title="Favorite">
               <Star className={`w-4 h-4 transition-colors ${isFaved ? 'fill-yellow-400 text-yellow-400' : 'text-(--text-secondary) hover:text-yellow-400'}`} />
             </button>
@@ -327,18 +326,12 @@ export function QuizletStudy() {
           {hasImage ? (
             <div className="flex items-center gap-6 w-full">
               <div className="flex-1 flex flex-col items-start justify-center">
-                {hintShown && !isBack && (
-                  <p className="text-xs text-(--text-secondary) italic mb-2">Hint</p>
-                )}
                 <p className="text-2xl font-medium leading-snug">{text}</p>
               </div>
               <img src={current!.image!} alt="" className="w-40 h-32 object-cover rounded-lg shrink-0" />
             </div>
           ) : (
             <div className="w-full flex flex-col items-center justify-center text-center">
-              {hintShown && !isBack && (
-                <p className="text-xs text-(--text-secondary) italic mb-2">Hint</p>
-              )}
               <p className="text-2xl font-medium leading-snug">{text}</p>
             </div>
           )}
@@ -347,7 +340,7 @@ export function QuizletStudy() {
         {/* Bottom label */}
         <div className="pb-4 text-center shrink-0">
           <span className="text-xs text-(--text-secondary)">
-            {isBack ? 'Click to flip back' : hintShown ? '' : 'Click to flip'}
+            {isBack ? 'Click to flip back' : 'Click to flip'}
           </span>
         </div>
       </div>
@@ -364,31 +357,33 @@ export function QuizletStudy() {
         <h1 className="text-2xl font-bold">{title}</h1>
         <div className="flex items-center gap-5 mt-1 text-sm text-(--text-secondary)">
           <span className="flex items-center gap-1.5"><TrendingUp className="w-3.5 h-3.5 text-green-400" />{studiedToday} studied today</span>
-          <span className="flex items-center gap-1.5"><Star className="w-3.5 h-3.5 text-yellow-400" />{favorites.size} favorited</span>
+          <span className="flex items-center gap-1.5"><Star className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400" />{favorites.size} favorited</span>
         </div>
       </div>
 
       <ModeGrid />
 
       {/* Card with 3D flip + slide-in */}
-      <div
-        key={index}
-        className={slideDir === 'right' ? 'card-slide-right' : 'card-slide-left'}
-        style={{ perspective: '1200px' }}
-        onClick={() => { if (!hintShown) setFlipped(f => !f); }}
-      >
+      <div style={{ perspective: '800px' }} onClick={() => { if (!hintShown) setFlipped(f => !f); }}>
         <div
-          className="relative rounded-xl bg-(--bg-secondary) cursor-pointer"
-          style={{
-            transformStyle: 'preserve-3d',
-            WebkitTransformStyle: 'preserve-3d',
-            transition: 'transform 0.38s cubic-bezier(0.4, 0, 0.2, 1)',
-            transform: flipped ? 'rotateX(180deg)' : 'rotateX(0deg)',
-            minHeight: '22rem',
-          }}
+          key={index}
+          className={slideDir === 'right' ? 'card-slide-right' : 'card-slide-left'}
         >
-          {renderFace(false)}
-          {renderFace(true)}
+          <div style={{ perspective: '1200px' }}>
+            <div
+              className="relative rounded-xl bg-(--bg-secondary) cursor-pointer"
+              style={{
+                transformStyle: 'preserve-3d',
+                WebkitTransformStyle: 'preserve-3d',
+                transition: 'transform 0.38s cubic-bezier(0.4, 0, 0.2, 1)',
+                transform: flipped ? 'rotateX(180deg)' : 'rotateX(0deg)',
+                minHeight: '22rem',
+              }}
+            >
+              {renderFace(false)}
+              {renderFace(true)}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -457,26 +452,26 @@ export function QuizletStudy() {
       <style>{`
         @keyframes cardSlideForward {
           from {
-            opacity: 0.6;
-            transform: rotateX(-14deg) rotateY(-12deg) translateY(-28px) scale(0.95);
+            opacity: 0.4;
+            transform: rotateX(-30deg) rotateY(-25deg) translateY(-80px) translateX(30px) scale(0.82);
           }
           to {
             opacity: 1;
-            transform: rotateX(0deg) rotateY(0deg) translateY(0px) scale(1);
+            transform: rotateX(0deg) rotateY(0deg) translateY(0) translateX(0) scale(1);
           }
         }
         @keyframes cardSlideBack {
           from {
-            opacity: 0.6;
-            transform: rotateX(-14deg) rotateY(12deg) translateY(-28px) scale(0.95);
+            opacity: 0.4;
+            transform: rotateX(-30deg) rotateY(25deg) translateY(-80px) translateX(-30px) scale(0.82);
           }
           to {
             opacity: 1;
-            transform: rotateX(0deg) rotateY(0deg) translateY(0px) scale(1);
+            transform: rotateX(0deg) rotateY(0deg) translateY(0) translateX(0) scale(1);
           }
         }
-        .card-slide-right { animation: cardSlideForward 0.32s cubic-bezier(0.33, 1, 0.68, 1) forwards; }
-        .card-slide-left  { animation: cardSlideBack    0.32s cubic-bezier(0.33, 1, 0.68, 1) forwards; }
+        .card-slide-right { animation: cardSlideForward 0.52s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+        .card-slide-left  { animation: cardSlideBack    0.52s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
       `}</style>
     </div>
   );

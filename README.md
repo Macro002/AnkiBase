@@ -70,20 +70,6 @@ On first visit a setup wizard walks you through creating your admin account and 
 curl -fsSL https://raw.githubusercontent.com/Macro002/AnkiBase/main/install.sh | sudo bash -s -- --update
 ```
 
-## Configuration
-
-AI provider API keys (OpenAI, Anthropic, Gemini) can be added directly in the app under **Settings → API Keys** — no server access needed.
-
-Alternatively, set them in `/opt/ankibase/backend/.env` on the server:
-
-```env
-GEMINI_API_KEY=your_key_here
-OPENAI_API_KEY=your_key_here
-ANTHROPIC_API_KEY=your_key_here
-```
-
-Restart after editing: `systemctl restart ankibase`
-
 ## Stack
 
 | Layer | Tech |

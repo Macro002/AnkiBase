@@ -9,12 +9,15 @@ interface HeatmapProps {
   className?: string;
 }
 
+type Source = 'all' | 'anki' | 'quizlet';
+
 export function Heatmap({ className = '' }: HeatmapProps) {
   const { t } = useTranslation();
   const [data, setData] = useState<ReviewHistory | null>(null);
   const [loading, setLoading] = useState(true);
   const [year, setYear] = useState(new Date().getFullYear());
   const [hoveredDay, setHoveredDay] = useState<{ date: string; count: number } | null>(null);
+  const [source, setSource] = useState<Source>('all');
   const [colorScheme, setColorScheme] = useState<ColorScheme>(() => {
     if (typeof window !== 'undefined') {
       return (localStorage.getItem('heatmap-color') as ColorScheme) || 'accent';
@@ -25,8 +28,9 @@ export function Heatmap({ className = '' }: HeatmapProps) {
 
   useEffect(() => {
     const loadData = async () => {
+      setLoading(true);
       try {
-        const result = await stats.getReviewHistory();
+        const result = await stats.getReviewHistory(undefined, source);
         setData(result);
       } catch (err) {
         console.error('Failed to load review history:', err);
@@ -35,7 +39,7 @@ export function Heatmap({ className = '' }: HeatmapProps) {
       }
     };
     loadData();
-  }, []);
+  }, [source]);
 
   useEffect(() => {
     localStorage.setItem('heatmap-color', colorScheme);
@@ -272,7 +276,18 @@ export function Heatmap({ className = '' }: HeatmapProps) {
     <div className={`card ${className}`}>
       {/* Header with year navigation */}
       <div className="flex items-center justify-between mb-4">
-        <h3 className="font-semibold">{t('heatmap.activityHeatmap')}</h3>
+        <div className="flex items-center gap-2">
+          <h3 className="font-semibold">{t('heatmap.activityHeatmap')}</h3>
+          <select
+            className="input text-sm py-1 px-2"
+            value={source}
+            onChange={e => setSource(e.target.value as Source)}
+          >
+            <option value="all">All</option>
+            <option value="anki">Anki</option>
+            <option value="quizlet">Quizlet</option>
+          </select>
+        </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => setYear(y => y - 1)}

@@ -101,6 +101,39 @@ def init_global_db():
             )
         """)
 
+        # Quizlet decks table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS quizlet_decks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                url TEXT,
+                card_count INTEGER DEFAULT 0,
+                created_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
+
+        # Quizlet cards table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS quizlet_cards (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                deck_id INTEGER NOT NULL REFERENCES quizlet_decks(id) ON DELETE CASCADE,
+                front TEXT NOT NULL,
+                back TEXT NOT NULL,
+                position INTEGER DEFAULT 0
+            )
+        """)
+
+        # Quizlet reviews table (for heatmap)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS quizlet_reviews (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                card_id INTEGER NOT NULL,
+                deck_id INTEGER NOT NULL,
+                ease INTEGER NOT NULL,
+                reviewed_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
+
         conn.commit()
 
 def init_account_db(container_name: str):
@@ -804,6 +837,71 @@ def migrate_to_user_system(existing_password: str) -> bool:
     except Exception as e:
         print(f"✗ Failed to migrate to user system: {e}")
         return False
+
+
+# ============================================================================
+# Quizlet
+# ============================================================================
+
+def create_quizlet_deck(title: str, url: str, cards: list[dict]) -> int:
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO quizlet_decks (title, url, card_count) VALUES (?, ?, ?)",
+            (title, url, len(cards))
+        )
+        deck_id = cursor.lastrowid
+        for i, card in enumerate(cards):
+            cursor.execute(
+                "INSERT INTO quizlet_cards (deck_id, front, back, position) VALUES (?, ?, ?, ?)",
+                (deck_id, card["front"], card["back"], i)
+            )
+        conn.commit()
+        return deck_id
+
+def get_quizlet_decks() -> list[dict]:
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, title, url, card_count, created_at FROM quizlet_decks ORDER BY created_at DESC")
+        return [dict(zip([d[0] for d in cursor.description], row)) for row in cursor.fetchall()]
+
+def get_quizlet_deck(deck_id: int) -> Optional[dict]:
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, title, url, card_count, created_at FROM quizlet_decks WHERE id = ?", (deck_id,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        deck = dict(zip([d[0] for d in cursor.description], row))
+        cursor.execute("SELECT id, front, back, position FROM quizlet_cards WHERE deck_id = ? ORDER BY position", (deck_id,))
+        deck["cards"] = [dict(zip([d[0] for d in cursor.description], r)) for r in cursor.fetchall()]
+        return deck
+
+def delete_quizlet_deck(deck_id: int) -> bool:
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM quizlet_decks WHERE id = ?", (deck_id,))
+        conn.commit()
+        return cursor.rowcount > 0
+
+def record_quizlet_review(card_id: int, deck_id: int, ease: int):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO quizlet_reviews (card_id, deck_id, ease) VALUES (?, ?, ?)",
+            (card_id, deck_id, ease)
+        )
+        conn.commit()
+
+def get_quizlet_daily_counts() -> dict[str, int]:
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT date(reviewed_at) as day, COUNT(*) as cnt
+            FROM quizlet_reviews
+            GROUP BY day
+        """)
+        return {row[0]: row[1] for row in cursor.fetchall()}
 
 
 # Initialize database on import

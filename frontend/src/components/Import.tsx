@@ -42,8 +42,8 @@ function QuizletImport() {
     setImporting(true);
     setResult(null);
     try {
-      const res = await quizlet.import(deckName.trim(), preview.cards);
-      setResult({ success: true, message: res.message });
+      await quizlet.saveDecks(deckName.trim(), url.trim(), preview.cards);
+      setResult({ success: true, message: `Saved "${deckName}" (${preview.cards.length} cards) to Quizlet Decks` });
       setPreview(null);
       setUrl('');
     } catch (e) {
@@ -145,7 +145,7 @@ function QuizletImport() {
             disabled={importing || !deckName.trim()}
           >
             {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-            {importing ? 'Importing...' : `Import ${preview.cards.length} cards to Anki`}
+            {importing ? 'Saving...' : `Save ${preview.cards.length} cards to Quizlet Decks`}
           </button>
         </div>
       )}

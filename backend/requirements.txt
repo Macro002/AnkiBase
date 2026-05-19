@@ -12,4 +12,4 @@ cryptography==44.0.0
 zstandard==0.25.0
 requests==2.32.3
 bcrypt==4.2.1
-invisible-playwright>=0.1.2
+invisible-playwright @ git+https://github.com/feder-cr/invisible_playwright.git

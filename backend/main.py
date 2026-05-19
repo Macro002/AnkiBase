@@ -16,7 +16,9 @@ from story_generator import StoryGenerator, PROVIDERS, NoValidKeysError
 from database import (
     save_story, get_story, get_all_stories, delete_story, update_story_name,
     get_active_account, get_all_accounts, get_account, set_ankiweb_email,
-    migrate_to_user_system
+    migrate_to_user_system,
+    create_quizlet_deck, get_quizlet_decks, get_quizlet_deck, delete_quizlet_deck,
+    record_quizlet_review, get_quizlet_daily_counts,
 )
 from ankiweb_credentials import AnkiWebCredentials
 from anki_config import AnkiConfigurator
@@ -1831,19 +1833,20 @@ async def delete_ankiweb_credentials(_: str = Depends(require_auth)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# Quizlet import endpoints
+# Quizlet endpoints
 class QuizletScrapeRequest(BaseModel):
     url: str
 
 
-class QuizletCard(BaseModel):
-    front: str
-    back: str
+class QuizletSaveRequest(BaseModel):
+    title: str
+    url: str
+    cards: list[dict]  # [{front, back}]
 
 
-class QuizletImportRequest(BaseModel):
-    deck_name: str
-    cards: list[QuizletCard]
+class QuizletReviewRequest(BaseModel):
+    card_id: int
+    ease: int  # 1=Again, 2=Got it
 
 
 def _scrape_quizlet_sync(url: str) -> dict:
@@ -1874,14 +1877,11 @@ def _scrape_quizlet_sync(url: str) -> dict:
 
 
 @app.post("/api/quizlet/scrape")
-async def quizlet_scrape(
-    request: QuizletScrapeRequest,
-    _: str = Depends(require_auth),
-):
+async def quizlet_scrape(request: QuizletScrapeRequest, _: str = Depends(require_auth)):
     import asyncio, re
     url = request.url.strip()
     if not re.match(r"https?://(www\.)?quizlet\.com/\d+/", url):
-        raise HTTPException(status_code=400, detail="Invalid Quizlet URL. Expected format: https://quizlet.com/<id>/...")
+        raise HTTPException(status_code=400, detail="Invalid Quizlet URL. Expected: https://quizlet.com/<id>/...")
     try:
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(None, _scrape_quizlet_sync, url)
@@ -1890,33 +1890,40 @@ async def quizlet_scrape(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/quizlet/import")
-async def quizlet_import(
-    request: QuizletImportRequest,
-    client: AnkiConnectClient = Depends(get_anki_client),
-    _: str = Depends(require_auth),
-):
+@app.post("/api/quizlet/decks")
+async def quizlet_save_deck(request: QuizletSaveRequest, _: str = Depends(require_auth)):
     try:
-        await client.create_deck(request.deck_name)
-        notes = [
-            {
-                "deckName": request.deck_name,
-                "modelName": "Basic",
-                "fields": {"Front": card.front, "Back": card.back},
-                "options": {"allowDuplicate": True},
-                "tags": ["quizlet-import"],
-            }
-            for card in request.cards
-        ]
-        results = await client.add_notes(notes)
-        imported = sum(1 for r in results if r is not None)
-        failed = len(results) - imported
-        return {
-            "success": True,
-            "message": f"Imported {imported} cards into '{request.deck_name}'" + (f" ({failed} duplicates skipped)" if failed else ""),
-            "imported": imported,
-            "failed": failed,
-        }
+        deck_id = create_quizlet_deck(request.title, request.url, request.cards)
+        return {"success": True, "deck_id": deck_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/quizlet/decks")
+async def quizlet_list_decks(_: str = Depends(require_auth)):
+    return {"decks": get_quizlet_decks()}
+
+
+@app.get("/api/quizlet/decks/{deck_id}")
+async def quizlet_get_deck(deck_id: int, _: str = Depends(require_auth)):
+    deck = get_quizlet_deck(deck_id)
+    if not deck:
+        raise HTTPException(status_code=404, detail="Deck not found")
+    return deck
+
+
+@app.delete("/api/quizlet/decks/{deck_id}")
+async def quizlet_delete_deck(deck_id: int, _: str = Depends(require_auth)):
+    if not delete_quizlet_deck(deck_id):
+        raise HTTPException(status_code=404, detail="Deck not found")
+    return {"success": True}
+
+
+@app.post("/api/quizlet/decks/{deck_id}/review")
+async def quizlet_record_review(deck_id: int, request: QuizletReviewRequest, _: str = Depends(require_auth)):
+    try:
+        record_quizlet_review(request.card_id, deck_id, request.ease)
+        return {"success": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -2034,6 +2041,7 @@ async def get_stats_html(
 @app.get("/api/stats/reviews")
 async def get_review_history(
     deck: str = "",  # Empty string means all decks
+    source: str = "all",  # all | anki | quizlet
     client: AnkiConnectClient = Depends(get_anki_client),
     _: str = Depends(require_auth),
 ):
@@ -2041,74 +2049,62 @@ async def get_review_history(
         from collections import defaultdict
         from datetime import datetime
 
-        # Get deck names to query
-        deck_names = await client.get_deck_names()
-        if deck and deck != "All Decks":
-            # Filter to specific deck
-            decks_to_query = [deck] if deck in deck_names else []
-        else:
-            # All decks
-            decks_to_query = deck_names
-
-        # Collect all reviews from selected decks
-        all_reviews = []
-        for deck_name in decks_to_query:
-            try:
-                reviews = await client.get_card_reviews(deck_name, 0)
-                if reviews:
-                    all_reviews.extend(reviews)
-            except Exception:
-                continue  # Skip decks that fail
-
-        # Process reviews into comprehensive stats
-        # Review format: [reviewTime, cardID, usn, buttonPressed, newInterval, previousInterval, newFactor, reviewDuration, reviewType]
         daily_counts: dict[str, int] = defaultdict(int)
         daily_time: dict[str, float] = defaultdict(float)
         hourly_counts: dict[int, int] = defaultdict(int)
-        button_counts: dict[int, int] = defaultdict(int)  # 1=Again, 2=Hard, 3=Good, 4=Easy
+        button_counts: dict[int, int] = defaultdict(int)
         interval_ranges: dict[str, int] = defaultdict(int)
-
         today_reviews = 0
         today_time_ms = 0
         today = datetime.now().strftime("%Y-%m-%d")
+        api_today_count = 0
 
-        for review in all_reviews:
-            timestamp_ms, card_id, usn, button_pressed, new_interval, prev_interval, new_factor, review_duration, review_type = review
-
-            # Date and time
-            dt = datetime.fromtimestamp(timestamp_ms / 1000)
-            date_str = dt.strftime("%Y-%m-%d")
-            hour = dt.hour
-
-            # Daily counts
-            daily_counts[date_str] += 1
-            daily_time[date_str] += review_duration / 1000.0  # Convert to seconds
-
-            # Hourly breakdown
-            hourly_counts[hour] += 1
-
-            # Answer buttons
-            button_counts[button_pressed] += 1
-
-            # Interval ranges (in days)
-            if new_interval < 1:
-                interval_ranges["< 1 day"] += 1
-            elif new_interval < 7:
-                interval_ranges["1-6 days"] += 1
-            elif new_interval < 30:
-                interval_ranges["1-4 weeks"] += 1
-            elif new_interval < 180:
-                interval_ranges["1-6 months"] += 1
+        if source in ("all", "anki"):
+            deck_names = await client.get_deck_names()
+            if deck and deck != "All Decks":
+                decks_to_query = [deck] if deck in deck_names else []
             else:
-                interval_ranges["6+ months"] += 1
+                decks_to_query = deck_names
 
-            # Today stats
-            if date_str == today:
-                today_reviews += 1
-                today_time_ms += review_duration
+            all_reviews = []
+            for deck_name in decks_to_query:
+                try:
+                    reviews = await client.get_card_reviews(deck_name, 0)
+                    if reviews:
+                        all_reviews.extend(reviews)
+                except Exception:
+                    continue
 
-        # Also get today's count from API (as backup)
-        api_today_count = await client.get_num_cards_reviewed_today()
+            for review in all_reviews:
+                timestamp_ms, card_id, usn, button_pressed, new_interval, prev_interval, new_factor, review_duration, review_type = review
+                dt = datetime.fromtimestamp(timestamp_ms / 1000)
+                date_str = dt.strftime("%Y-%m-%d")
+                daily_counts[date_str] += 1
+                daily_time[date_str] += review_duration / 1000.0
+                hourly_counts[dt.hour] += 1
+                button_counts[button_pressed] += 1
+                if new_interval < 1:
+                    interval_ranges["< 1 day"] += 1
+                elif new_interval < 7:
+                    interval_ranges["1-6 days"] += 1
+                elif new_interval < 30:
+                    interval_ranges["1-4 weeks"] += 1
+                elif new_interval < 180:
+                    interval_ranges["1-6 months"] += 1
+                else:
+                    interval_ranges["6+ months"] += 1
+                if date_str == today:
+                    today_reviews += 1
+                    today_time_ms += review_duration
+
+            api_today_count = await client.get_num_cards_reviewed_today()
+
+        if source in ("all", "quizlet"):
+            quizlet_counts = get_quizlet_daily_counts()
+            for date_str, count in quizlet_counts.items():
+                daily_counts[date_str] += count
+                if date_str == today:
+                    today_reviews += count
 
         return {
             "daily_counts": dict(daily_counts),

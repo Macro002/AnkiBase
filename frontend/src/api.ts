@@ -423,8 +423,13 @@ export interface ReviewHistory {
 }
 
 export const stats = {
-  getReviewHistory: (deck?: string) =>
-    fetchAPI<ReviewHistory>(`/stats/reviews${deck ? `?deck=${encodeURIComponent(deck)}` : ''}`),
+  getReviewHistory: (deck?: string, source?: string) => {
+    const params = new URLSearchParams();
+    if (deck) params.set('deck', deck);
+    if (source) params.set('source', source);
+    const qs = params.toString();
+    return fetchAPI<ReviewHistory>(`/stats/reviews${qs ? `?${qs}` : ''}`);
+  },
   getHtml: () => fetchAPI<{ html: string }>('/stats/html'),
 };
 
@@ -507,15 +512,41 @@ export const users = {
     }),
 };
 
+export interface QuizletDeck {
+  id: number;
+  title: string;
+  url: string;
+  card_count: number;
+  created_at: string;
+}
+
+export interface QuizletCard {
+  id: number;
+  front: string;
+  back: string;
+  position: number;
+}
+
 export const quizlet = {
   scrape: (url: string) =>
     fetchAPI<{ title: string; cards: { front: string; back: string }[] }>('/quizlet/scrape', {
       method: 'POST',
       body: JSON.stringify({ url }),
     }),
-  import: (deck_name: string, cards: { front: string; back: string }[]) =>
-    fetchAPI<{ success: boolean; message: string; imported: number; failed: number }>('/quizlet/import', {
+  saveDecks: (title: string, url: string, cards: { front: string; back: string }[]) =>
+    fetchAPI<{ success: boolean; deck_id: number }>('/quizlet/decks', {
       method: 'POST',
-      body: JSON.stringify({ deck_name, cards }),
+      body: JSON.stringify({ title, url, cards }),
+    }),
+  listDecks: () =>
+    fetchAPI<{ decks: QuizletDeck[] }>('/quizlet/decks'),
+  getDeck: (id: number) =>
+    fetchAPI<QuizletDeck & { cards: QuizletCard[] }>(`/quizlet/decks/${id}`),
+  deleteDeck: (id: number) =>
+    fetchAPI<{ success: boolean }>(`/quizlet/decks/${id}`, { method: 'DELETE' }),
+  review: (deckId: number, cardId: number, ease: number) =>
+    fetchAPI<{ success: boolean }>(`/quizlet/decks/${deckId}/review`, {
+      method: 'POST',
+      body: JSON.stringify({ card_id: cardId, ease }),
     }),
 };

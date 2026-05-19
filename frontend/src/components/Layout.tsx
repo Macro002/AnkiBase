@@ -27,6 +27,7 @@ export function Layout() {
   const navItems = [
     { to: '/', icon: Layers, label: t('nav.decks') },
     { to: '/study', icon: BookOpen, label: t('nav.study') },
+    { to: '/quizlet', icon: () => <span className="font-bold text-sm leading-none" style={{ color: 'inherit' }}>Q</span>, label: 'Quizlet' },
     { to: '/search', icon: Search, label: t('nav.search') },
     { to: '/stats', icon: BarChart3, label: t('nav.stats') },
     { to: '/import', icon: Upload, label: t('nav.import') },

@@ -14,6 +14,8 @@ import { Stats } from './components/Stats';
 import { Story } from './components/Story';
 import { Reading } from './components/Reading';
 import { Import } from './components/Import';
+import { QuizletDecks } from './components/QuizletDecks';
+import { QuizletStudy } from './components/QuizletStudy';
 import { Settings } from './pages/Settings';
 import { Setup } from './pages/Setup';
 import { NotFound } from './components/NotFound';
@@ -77,6 +79,8 @@ function App() {
           <Route path="search" element={<Search />} />
           <Route path="stats" element={<Stats />} />
           <Route path="import" element={<Import />} />
+          <Route path="quizlet" element={<QuizletDecks />} />
+          <Route path="quizlet/:id/study" element={<QuizletStudy />} />
           <Route path="story" element={<Story />} />
           <Route path="reading" element={<Reading />} />
           <Route path="settings" element={<Settings />} />

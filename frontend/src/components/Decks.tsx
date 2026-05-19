@@ -24,6 +24,8 @@ export function Decks() {
   const [currentPath, setCurrentPath] = useState<string[]>([]);
   const [renameModal, setRenameModal] = useState<{ deck: DeckInfo; newName: string } | null>(null);
   const [deleteModal, setDeleteModal] = useState<DeckInfo | null>(null);
+  const [quizletRenameModal, setQuizletRenameModal] = useState<{ deck: QuizletDeck; newName: string } | null>(null);
+  const [quizletDeleteModal, setQuizletDeleteModal] = useState<QuizletDeck | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const navigate = useNavigate();
 
@@ -126,6 +128,34 @@ export function Decks() {
       await decks.delete(deleteModal.name);
       setDeleteModal(null);
       await loadDecks();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete deck');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleQuizletRename = async () => {
+    if (!quizletRenameModal || !quizletRenameModal.newName.trim()) return;
+    setActionLoading(true);
+    try {
+      await quizlet.renameDeck(quizletRenameModal.deck.id, quizletRenameModal.newName.trim());
+      setQuizletDecks(d => d.map(x => x.id === quizletRenameModal.deck.id ? { ...x, title: quizletRenameModal.newName.trim() } : x));
+      setQuizletRenameModal(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to rename deck');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleQuizletDelete = async () => {
+    if (!quizletDeleteModal) return;
+    setActionLoading(true);
+    try {
+      await quizlet.deleteDeck(quizletDeleteModal.id);
+      setQuizletDecks(d => d.filter(x => x.id !== quizletDeleteModal.id));
+      setQuizletDeleteModal(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete deck');
     } finally {
@@ -360,13 +390,21 @@ export function Decks() {
                       </a>
                     )}
                     <button
+                      className="icon-btn"
+                      title="Rename"
+                      onClick={e => {
+                        e.stopPropagation();
+                        setQuizletRenameModal({ deck, newName: deck.title });
+                      }}
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                    <button
                       className="icon-btn icon-btn-danger"
                       title="Delete"
-                      onClick={async e => {
+                      onClick={e => {
                         e.stopPropagation();
-                        if (!confirm(`Delete "${deck.title}"?`)) return;
-                        await quizlet.deleteDeck(deck.id);
-                        setQuizletDecks(d => d.filter(x => x.id !== deck.id));
+                        setQuizletDeleteModal(deck);
                       }}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -391,6 +429,62 @@ export function Decks() {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Quizlet Rename Modal */}
+      {quizletRenameModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="card max-w-md w-full mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">Rename Quizlet Deck</h3>
+              <button onClick={() => setQuizletRenameModal(null)} className="icon-btn">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <input
+              type="text"
+              value={quizletRenameModal.newName}
+              onChange={(e) => setQuizletRenameModal({ ...quizletRenameModal, newName: e.target.value })}
+              className="input w-full mb-4"
+              placeholder="Deck name"
+              autoFocus
+              onKeyDown={(e) => e.key === 'Enter' && handleQuizletRename()}
+            />
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setQuizletRenameModal(null)} className="btn btn-secondary" disabled={actionLoading}>
+                {t('decks.cancel')}
+              </button>
+              <button onClick={handleQuizletRename} className="btn btn-primary" disabled={actionLoading || !quizletRenameModal.newName.trim()}>
+                {actionLoading ? t('decks.renaming') : t('decks.rename')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quizlet Delete Modal */}
+      {quizletDeleteModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="card max-w-md w-full mx-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-lg font-semibold">Delete Quizlet Deck</h3>
+              <button onClick={() => setQuizletDeleteModal(null)} className="icon-btn">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-(--text-secondary) mb-4">
+              Delete "<span className="text-white">{quizletDeleteModal.title}</span>"? This will remove all {quizletDeleteModal.card_count} cards.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setQuizletDeleteModal(null)} className="btn btn-secondary" disabled={actionLoading}>
+                {t('decks.cancel')}
+              </button>
+              <button onClick={handleQuizletDelete} className="btn btn-error" disabled={actionLoading}>
+                {actionLoading ? t('decks.deleting') : t('decks.delete')}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

@@ -524,16 +524,17 @@ export interface QuizletCard {
   id: number;
   front: string;
   back: string;
+  image?: string | null;
   position: number;
 }
 
 export const quizlet = {
   scrape: (url: string) =>
-    fetchAPI<{ title: string; cards: { front: string; back: string }[] }>('/quizlet/scrape', {
+    fetchAPI<{ title: string; cards: { front: string; back: string; image?: string | null }[] }>('/quizlet/scrape', {
       method: 'POST',
       body: JSON.stringify({ url }),
     }),
-  saveDecks: (title: string, url: string, cards: { front: string; back: string }[]) =>
+  saveDecks: (title: string, url: string, cards: { front: string; back: string; image?: string | null }[]) =>
     fetchAPI<{ success: boolean; deck_id: number }>('/quizlet/decks', {
       method: 'POST',
       body: JSON.stringify({ title, url, cards }),
@@ -544,6 +545,11 @@ export const quizlet = {
     fetchAPI<QuizletDeck & { cards: QuizletCard[] }>(`/quizlet/decks/${id}`),
   deleteDeck: (id: number) =>
     fetchAPI<{ success: boolean }>(`/quizlet/decks/${id}`, { method: 'DELETE' }),
+  renameDeck: (id: number, title: string) =>
+    fetchAPI<{ success: boolean }>(`/quizlet/decks/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title }),
+    }),
   review: (deckId: number, cardId: number, ease: number) =>
     fetchAPI<{ success: boolean }>(`/quizlet/decks/${deckId}/review`, {
       method: 'POST',

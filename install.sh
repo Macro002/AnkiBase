@@ -14,6 +14,12 @@ for arg in "$@"; do
   [ "$arg" = "--update" ] && UPDATE=1
 done
 
+# Auto-enable update mode when piped from curl (no local source files present)
+SCRIPT_DIR_CHECK="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || echo /tmp)"
+if [ ! -d "$SCRIPT_DIR_CHECK/frontend" ] || [ ! -d "$SCRIPT_DIR_CHECK/backend" ]; then
+  UPDATE=1
+fi
+
 step()    { echo -e "${CYAN}  →${NC} $1"; }
 success() { echo -e "${GREEN}  ✓${NC} $1"; }
 warn()    { echo -e "${YELLOW}  !${NC} $1"; }

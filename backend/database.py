@@ -119,9 +119,16 @@ def init_global_db():
                 deck_id INTEGER NOT NULL REFERENCES quizlet_decks(id) ON DELETE CASCADE,
                 front TEXT NOT NULL,
                 back TEXT NOT NULL,
+                image TEXT,
                 position INTEGER DEFAULT 0
             )
         """)
+
+        # Migration: add image column to existing quizlet_cards tables
+        try:
+            cursor.execute("ALTER TABLE quizlet_cards ADD COLUMN image TEXT")
+        except Exception:
+            pass
 
         # Quizlet reviews table (for heatmap)
         cursor.execute("""
@@ -853,8 +860,8 @@ def create_quizlet_deck(title: str, url: str, cards: list[dict]) -> int:
         deck_id = cursor.lastrowid
         for i, card in enumerate(cards):
             cursor.execute(
-                "INSERT INTO quizlet_cards (deck_id, front, back, position) VALUES (?, ?, ?, ?)",
-                (deck_id, card["front"], card["back"], i)
+                "INSERT INTO quizlet_cards (deck_id, front, back, image, position) VALUES (?, ?, ?, ?, ?)",
+                (deck_id, card["front"], card["back"], card.get("image"), i)
             )
         conn.commit()
         return deck_id
@@ -873,9 +880,16 @@ def get_quizlet_deck(deck_id: int) -> Optional[dict]:
         if not row:
             return None
         deck = dict(zip([d[0] for d in cursor.description], row))
-        cursor.execute("SELECT id, front, back, position FROM quizlet_cards WHERE deck_id = ? ORDER BY position", (deck_id,))
+        cursor.execute("SELECT id, front, back, image, position FROM quizlet_cards WHERE deck_id = ? ORDER BY position", (deck_id,))
         deck["cards"] = [dict(zip([d[0] for d in cursor.description], r)) for r in cursor.fetchall()]
         return deck
+
+def rename_quizlet_deck(deck_id: int, title: str) -> bool:
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE quizlet_decks SET title = ? WHERE id = ?", (title, deck_id))
+        conn.commit()
+        return cursor.rowcount > 0
 
 def delete_quizlet_deck(deck_id: int) -> bool:
     with get_db() as conn:

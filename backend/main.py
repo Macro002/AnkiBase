@@ -18,7 +18,7 @@ from database import (
     get_active_account, get_all_accounts, get_account, set_ankiweb_email,
     migrate_to_user_system,
     create_quizlet_deck, get_quizlet_decks, get_quizlet_deck, delete_quizlet_deck,
-    record_quizlet_review, get_quizlet_daily_counts,
+    rename_quizlet_deck, record_quizlet_review, get_quizlet_daily_counts,
 )
 from ankiweb_credentials import AnkiWebCredentials
 from anki_config import AnkiConfigurator
@@ -1871,10 +1871,32 @@ def _scrape_quizlet_sync(url: str) -> dict:
                 Array.from(document.querySelectorAll(".TermText")).map(e => e.textContent.trim())
             ''')
 
+            images = page.evaluate('''() => {
+                const terms = Array.from(document.querySelectorAll(".TermText"));
+                const out = [];
+                for (let i = 0; i < terms.length; i += 2) {
+                    let found = null;
+                    let node = terms[i].parentElement;
+                    for (let lvl = 0; lvl < 5 && node; lvl++) {
+                        const img = node.querySelector("img");
+                        if (img && img.src && !img.src.startsWith("data:")) {
+                            found = img.src;
+                            break;
+                        }
+                        node = node.parentElement;
+                    }
+                    out.push(found);
+                }
+                return out;
+            }''')
+
     if not texts:
         raise Exception("No flashcard terms found. The deck may be private or the URL is invalid.")
 
-    cards = [{"front": texts[i], "back": texts[i + 1]} for i in range(0, len(texts) - 1, 2)]
+    cards = [
+        {"front": texts[i], "back": texts[i + 1], "image": images[i // 2] if images and i // 2 < len(images) else None}
+        for i in range(0, len(texts) - 1, 2)
+    ]
     return {"title": title or "Quizlet Import", "cards": cards}
 
 
@@ -1917,6 +1939,16 @@ async def quizlet_get_deck(deck_id: int, _: str = Depends(require_auth)):
 @app.delete("/api/quizlet/decks/{deck_id}")
 async def quizlet_delete_deck(deck_id: int, _: str = Depends(require_auth)):
     if not delete_quizlet_deck(deck_id):
+        raise HTTPException(status_code=404, detail="Deck not found")
+    return {"success": True}
+
+
+class QuizletRenameRequest(BaseModel):
+    title: str
+
+@app.patch("/api/quizlet/decks/{deck_id}")
+async def quizlet_rename_deck(deck_id: int, request: QuizletRenameRequest, _: str = Depends(require_auth)):
+    if not rename_quizlet_deck(deck_id, request.title.strip()):
         raise HTTPException(status_code=404, detail="Deck not found")
     return {"success": True}
 

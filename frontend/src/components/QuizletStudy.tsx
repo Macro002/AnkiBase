@@ -88,7 +88,7 @@ export function QuizletStudy() {
   if (sessionDone) {
     return (
       <div className="space-y-6 max-w-xl mx-auto">
-        <button onClick={() => navigate('/quizlet')} className="flex items-center gap-2 text-(--text-secondary) hover-accent">
+        <button onClick={() => navigate('/')} className="flex items-center gap-2 text-(--text-secondary) hover-accent">
           <ArrowLeft className="w-4 h-4" /> Back
         </button>
         <div className="card text-center space-y-4 py-12">
@@ -112,7 +112,7 @@ export function QuizletStudy() {
     <div className="space-y-4 max-w-xl mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <button onClick={() => navigate('/quizlet')} className="flex items-center gap-2 text-(--text-secondary) hover-accent">
+        <button onClick={() => navigate('/')} className="flex items-center gap-2 text-(--text-secondary) hover-accent">
           <ArrowLeft className="w-4 h-4" /> {title}
         </button>
         <div className="flex items-center gap-2">
@@ -149,6 +149,13 @@ export function QuizletStudy() {
         <span className="absolute top-3 left-3 text-xs text-(--text-secondary) uppercase tracking-wide">
           {flipped ? 'Definition' : 'Term'}
         </span>
+        {current?.image && !flipped && (
+          <img
+            src={current.image}
+            alt=""
+            className="w-32 h-24 object-cover rounded-lg mb-3"
+          />
+        )}
         <p className="text-xl font-medium px-4">
           {flipped ? current?.back : current?.front}
         </p>

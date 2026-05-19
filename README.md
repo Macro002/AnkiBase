@@ -1,45 +1,77 @@
-# AnkiBase
+<div align="center">
+  <img src="frontend/public/logo.svg" alt="AnkiBase" width="80" height="80">
+  <h1>AnkiBase</h1>
+  <p>Self-hosted web interface for Anki — study, sync, import from Quizlet, and generate AI stories</p>
 
-Self-hosted web interface for Anki with AI-powered vocabulary story generation. Runs your Anki collection in a Docker container and exposes a clean web UI accessible from any browser.
+  [![Stars](https://img.shields.io/github/stars/Macro002/AnkiBase?style=for-the-badge&logo=github&color=e94560&labelColor=1a1a2e)](https://github.com/Macro002/AnkiBase/stargazers)
+  [![Forks](https://img.shields.io/github/forks/Macro002/AnkiBase?style=for-the-badge&logo=github&color=e94560&labelColor=1a1a2e)](https://github.com/Macro002/AnkiBase/network/members)
+  [![License](https://img.shields.io/github/license/Macro002/AnkiBase?style=for-the-badge&color=e94560&labelColor=1a1a2e)](LICENSE)
+  [![Last Commit](https://img.shields.io/github/last-commit/Macro002/AnkiBase?style=for-the-badge&color=e94560&labelColor=1a1a2e)](https://github.com/Macro002/AnkiBase/commits/main)
+</div>
+
+---
+
+<div align="center">
+  <img src="docs/desktop.png" alt="AnkiBase desktop view" width="700">
+  <br><br>
+  <img src="docs/mobile.png" alt="AnkiBase mobile view" width="260">
+</div>
+
+---
 
 ## Features
 
-- **Study** — review cards with ease ratings, undo support
-- **Decks** — browse your full deck collection with stats
-- **AI Stories** — generate vocabulary stories using words from your decks (OpenAI, Anthropic, Gemini)
-- **Reading** — interactive reading mode with word lookup and AI translations
+- **Study** — review cards with ease ratings, undo, and progress tracking
+- **Decks** — browse your full deck hierarchy with new/learning/review counts
+- **Quizlet Import** — paste any Quizlet URL to import decks and study them natively (images supported)
+- **AI Stories** — generate vocabulary stories from your deck words (OpenAI, Anthropic, Gemini)
+- **Reading** — interactive reading mode with word lookup and inline translations
 - **Search** — full-text search across all notes
-- **Stats** — review heatmap and deck statistics
-- **Import** — upload `.apkg` files directly from the browser
-- **AnkiWeb Sync** — sync to/from AnkiWeb (normal, full upload, full download)
+- **Stats** — activity heatmap filterable by Anki or Quizlet reviews
+- **Import** — drag-and-drop `.apkg` file import
+- **AnkiWeb Sync** — sync to/from AnkiWeb with conflict resolution
 - **Multi-user** — admin panel, per-user container access control
-- **Multi-account** — each user gets their own isolated Anki container
+- **Multi-account** — each account gets its own isolated Anki container
+- **In-app updates** — pull the latest version without touching the server
 
 ## Quick Install
 
 Requires a Debian-based server (Debian 12/13, Ubuntu 22.04+) with root access.
 
 ```bash
-git clone https://github.com/Macro002/AnkiBase.git && bash AnkiBase/install.sh
+curl -fsSL https://raw.githubusercontent.com/Macro002/AnkiBase/main/install.sh | sudo bash
 ```
 
 The installer will:
-1. Install Docker, Node.js, and Python if not present
+1. Install Docker, Node.js 20, and Python if not present
 2. Build the frontend
 3. Find an available port (starting at 8000)
-4. Generate a secret key and config
-5. Set up a systemd service
-6. Optionally configure nginx + SSL (certbot)
+4. Generate a secret key and encryption config
+5. Set up a systemd service (`ankibase`)
+6. Optionally configure nginx reverse proxy + SSL via Certbot
 
-On first visit, a setup wizard walks you through creating your admin account and initializing your Anki container.
+On first visit a setup wizard walks you through creating your admin account and initializing your Anki container.
 
-## Manual Install
+## Updating
 
+**In-app:** An update button appears in the header when a new version is available — click it to update automatically.
+
+**Via terminal:**
 ```bash
-git clone https://github.com/Macro002/AnkiBase.git
-cd AnkiBase
-sudo bash install.sh
+curl -fsSL https://raw.githubusercontent.com/Macro002/AnkiBase/main/install.sh | sudo bash -s -- --update
 ```
+
+## Configuration
+
+The installer generates `/opt/ankibase/backend/.env`. Add AI provider keys to unlock story generation:
+
+```env
+GEMINI_API_KEY=your_key_here
+OPENAI_API_KEY=your_key_here
+ANTHROPIC_API_KEY=your_key_here
+```
+
+Restart after editing: `systemctl restart ankibase`
 
 ## Stack
 
@@ -47,42 +79,16 @@ sudo bash install.sh
 |---|---|
 | Backend | FastAPI + Uvicorn |
 | Frontend | React 19, TypeScript, TailwindCSS v4 |
-| Anki runtime | [thisisnttheway/headless-anki](https://github.com/nicholaswilde/headless-anki) (Docker) |
+| Anki runtime | [headless-anki](https://github.com/nicholaswilde/headless-anki) (Docker) |
 | Database | SQLite |
 | AI providers | OpenAI, Anthropic, Google Gemini |
-
-## Configuration
-
-The installer generates `/opt/ankibase/backend/.env`. You can edit it to add API keys for AI story generation:
-
-```env
-# Add at least one to use AI features
-GEMINI_API_KEY=your_key_here
-OPENAI_API_KEY=your_key_here
-ANTHROPIC_API_KEY=your_key_here
-```
-
-Restart the service after editing: `systemctl restart ankibase`
-
-## Updating
-
-```bash
-cd AnkiBase
-git pull
-sudo bash install.sh
-```
 
 ## Useful Commands
 
 ```bash
-# View logs
-journalctl -u ankibase -f
-
-# Restart
-systemctl restart ankibase
-
-# Status
-systemctl status ankibase
+journalctl -u ankibase -f        # live logs
+systemctl restart ankibase        # restart
+systemctl status ankibase         # status
 ```
 
 ## License

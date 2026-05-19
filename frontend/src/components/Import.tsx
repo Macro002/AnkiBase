@@ -14,7 +14,7 @@ interface ImportState {
 function QuizletImport() {
   const [url, setUrl] = useState('');
   const [scraping, setScraping] = useState(false);
-  const [preview, setPreview] = useState<{ title: string; cards: { front: string; back: string }[] } | null>(null);
+  const [preview, setPreview] = useState<{ title: string; cards: { front: string; back: string; image?: string | null }[] } | null>(null);
   const [deckName, setDeckName] = useState('');
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -113,30 +113,35 @@ function QuizletImport() {
             />
           </div>
 
-          <div className="rounded-lg overflow-hidden border border-(--bg-tertiary)">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-(--bg-tertiary) text-(--text-secondary)">
-                  <th className="px-3 py-2 text-left w-1/2">Front</th>
-                  <th className="px-3 py-2 text-left w-1/2">Back</th>
-                </tr>
-              </thead>
-              <tbody>
-                {preview.cards.slice(0, 5).map((card, i) => (
-                  <tr key={i} className="border-t border-(--bg-tertiary)">
-                    <td className="px-3 py-2">{card.front}</td>
-                    <td className="px-3 py-2 text-(--text-secondary)">{card.back}</td>
+          <div className="rounded-lg border border-(--bg-tertiary) overflow-hidden">
+            <div className="max-h-72 overflow-y-auto">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 z-10">
+                  <tr className="bg-(--bg-tertiary) text-(--text-secondary)">
+                    {preview.cards.some(c => c.image) && <th className="px-3 py-2 text-left w-10">Img</th>}
+                    <th className="px-3 py-2 text-left">Front</th>
+                    <th className="px-3 py-2 text-left">Back</th>
                   </tr>
-                ))}
-                {preview.cards.length > 5 && (
-                  <tr className="border-t border-(--bg-tertiary)">
-                    <td colSpan={2} className="px-3 py-2 text-center text-(--text-secondary) text-xs">
-                      +{preview.cards.length - 5} more cards
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {preview.cards.map((card, i) => (
+                    <tr key={i} className="border-t border-(--bg-tertiary)">
+                      {preview.cards.some(c => c.image) && (
+                        <td className="px-3 py-2">
+                          {card.image ? (
+                            <img src={card.image} alt="" className="w-8 h-8 object-cover rounded" />
+                          ) : (
+                            <span className="w-8 h-8 block" />
+                          )}
+                        </td>
+                      )}
+                      <td className="px-3 py-2">{card.front}</td>
+                      <td className="px-3 py-2 text-(--text-secondary)">{card.back}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           <button

@@ -907,6 +907,15 @@ def record_quizlet_review(card_id: int, deck_id: int, ease: int):
         )
         conn.commit()
 
+def get_quizlet_deck_stats(deck_id: int) -> dict:
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT COUNT(*) FROM quizlet_reviews
+            WHERE deck_id = ? AND date(reviewed_at) = date('now')
+        """, (deck_id,))
+        return {"studied_today": cursor.fetchone()[0]}
+
 def get_quizlet_daily_counts() -> dict[str, int]:
     with get_db() as conn:
         cursor = conn.cursor()

@@ -19,6 +19,7 @@ from database import (
     migrate_to_user_system,
     create_quizlet_deck, get_quizlet_decks, get_quizlet_deck, delete_quizlet_deck,
     rename_quizlet_deck, record_quizlet_review, get_quizlet_daily_counts,
+    get_quizlet_deck_stats,
 )
 from ankiweb_credentials import AnkiWebCredentials
 from anki_config import AnkiConfigurator
@@ -1951,6 +1952,11 @@ async def quizlet_rename_deck(deck_id: int, request: QuizletRenameRequest, _: st
     if not rename_quizlet_deck(deck_id, request.title.strip()):
         raise HTTPException(status_code=404, detail="Deck not found")
     return {"success": True}
+
+
+@app.get("/api/quizlet/decks/{deck_id}/stats")
+async def quizlet_get_deck_stats(deck_id: int, _: str = Depends(require_auth)):
+    return get_quizlet_deck_stats(deck_id)
 
 
 @app.post("/api/quizlet/decks/{deck_id}/review")

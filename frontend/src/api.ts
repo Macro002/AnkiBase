@@ -550,6 +550,8 @@ export const quizlet = {
       method: 'PATCH',
       body: JSON.stringify({ title }),
     }),
+  deckStats: (id: number) =>
+    fetchAPI<{ studied_today: number }>(`/quizlet/decks/${id}/stats`),
   review: (deckId: number, cardId: number, ease: number) =>
     fetchAPI<{ success: boolean }>(`/quizlet/decks/${deckId}/review`, {
       method: 'POST',

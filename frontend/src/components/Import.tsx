@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Upload, ExternalLink, Loader2, CheckCircle, AlertCircle, FileArchive, X } from 'lucide-react';
-import { importDeck } from '../api';
+import { Upload, ExternalLink, Loader2, CheckCircle, AlertCircle, FileArchive, X, Link } from 'lucide-react';
+import { importDeck, quizlet } from '../api';
 
 interface ImportState {
   fileName: string;
@@ -9,6 +9,155 @@ interface ImportState {
   startedAt: number;
   stage: 'uploading' | 'processing' | 'finalizing';
   progress: number;
+}
+
+function QuizletImport() {
+  const [url, setUrl] = useState('');
+  const [scraping, setScraping] = useState(false);
+  const [preview, setPreview] = useState<{ title: string; cards: { front: string; back: string }[] } | null>(null);
+  const [deckName, setDeckName] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [error, setError] = useState('');
+
+  const handleScrape = async () => {
+    if (!url.trim()) return;
+    setScraping(true);
+    setError('');
+    setPreview(null);
+    setResult(null);
+    try {
+      const data = await quizlet.scrape(url.trim());
+      setPreview(data);
+      setDeckName(data.title);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to fetch Quizlet deck');
+    } finally {
+      setScraping(false);
+    }
+  };
+
+  const handleImport = async () => {
+    if (!preview || !deckName.trim()) return;
+    setImporting(true);
+    setResult(null);
+    try {
+      const res = await quizlet.import(deckName.trim(), preview.cards);
+      setResult({ success: true, message: res.message });
+      setPreview(null);
+      setUrl('');
+    } catch (e) {
+      setResult({ success: false, message: e instanceof Error ? e.message : 'Import failed' });
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  return (
+    <div className="card space-y-4">
+      <div className="flex items-center gap-3">
+        <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: '#4257b2' }}>
+          <span className="text-white font-bold text-sm">Q</span>
+        </div>
+        <div>
+          <h3 className="font-semibold">Import from Quizlet</h3>
+          <p className="text-sm text-(--text-secondary)">Paste a Quizlet deck link to import cards directly</p>
+        </div>
+      </div>
+
+      <div className="flex gap-2">
+        <input
+          className="input flex-1"
+          placeholder="https://quizlet.com/123456/deck-name/"
+          value={url}
+          onChange={e => setUrl(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && !scraping && handleScrape()}
+          disabled={scraping}
+        />
+        <button
+          className="btn btn-primary flex items-center gap-2 shrink-0"
+          onClick={handleScrape}
+          disabled={scraping || !url.trim()}
+        >
+          {scraping ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link className="w-4 h-4" />}
+          {scraping ? 'Fetching...' : 'Preview'}
+        </button>
+      </div>
+
+      {scraping && (
+        <p className="text-sm text-(--text-secondary) flex items-center gap-2">
+          <Loader2 className="w-3 h-3 animate-spin" />
+          Loading deck — this takes ~10 seconds...
+        </p>
+      )}
+
+      {error && (
+        <div className="flex items-center gap-2 text-sm text-(--error)">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          {error}
+        </div>
+      )}
+
+      {preview && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-(--text-secondary)">{preview.cards.length} cards found</span>
+          </div>
+
+          <div>
+            <label className="block text-sm text-(--text-secondary) mb-1">Deck name</label>
+            <input
+              className="input w-full"
+              value={deckName}
+              onChange={e => setDeckName(e.target.value)}
+            />
+          </div>
+
+          <div className="rounded-lg overflow-hidden border border-(--bg-tertiary)">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-(--bg-tertiary) text-(--text-secondary)">
+                  <th className="px-3 py-2 text-left w-1/2">Front</th>
+                  <th className="px-3 py-2 text-left w-1/2">Back</th>
+                </tr>
+              </thead>
+              <tbody>
+                {preview.cards.slice(0, 5).map((card, i) => (
+                  <tr key={i} className="border-t border-(--bg-tertiary)">
+                    <td className="px-3 py-2">{card.front}</td>
+                    <td className="px-3 py-2 text-(--text-secondary)">{card.back}</td>
+                  </tr>
+                ))}
+                {preview.cards.length > 5 && (
+                  <tr className="border-t border-(--bg-tertiary)">
+                    <td colSpan={2} className="px-3 py-2 text-center text-(--text-secondary) text-xs">
+                      +{preview.cards.length - 5} more cards
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <button
+            className="btn btn-primary w-full flex items-center justify-center gap-2"
+            onClick={handleImport}
+            disabled={importing || !deckName.trim()}
+          >
+            {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+            {importing ? 'Importing...' : `Import ${preview.cards.length} cards to Anki`}
+          </button>
+        </div>
+      )}
+
+      {result && (
+        <div className={`flex items-center gap-2 text-sm p-3 rounded-lg ${result.success ? 'bg-green-400/10 text-green-400' : 'bg-red-400/10 text-red-400'}`}>
+          {result.success ? <CheckCircle className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
+          {result.message}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function Import() {
@@ -127,6 +276,9 @@ export function Import() {
       <p className="text-(--text-secondary)">
         {t('import.description', 'Import Anki deck packages (.apkg files) to add new decks or merge cards into existing ones.')}
       </p>
+
+      {/* Quizlet import */}
+      <QuizletImport />
 
       {/* Restored import notice */}
       {restoredImport && !uploading && (

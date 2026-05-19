@@ -506,3 +506,16 @@ export const users = {
       body: JSON.stringify({ container_ids: containerIds }),
     }),
 };
+
+export const quizlet = {
+  scrape: (url: string) =>
+    fetchAPI<{ title: string; cards: { front: string; back: string }[] }>('/quizlet/scrape', {
+      method: 'POST',
+      body: JSON.stringify({ url }),
+    }),
+  import: (deck_name: string, cards: { front: string; back: string }[]) =>
+    fetchAPI<{ success: boolean; message: string; imported: number; failed: number }>('/quizlet/import', {
+      method: 'POST',
+      body: JSON.stringify({ deck_name, cards }),
+    }),
+};

@@ -1831,6 +1831,96 @@ async def delete_ankiweb_credentials(_: str = Depends(require_auth)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# Quizlet import endpoints
+class QuizletScrapeRequest(BaseModel):
+    url: str
+
+
+class QuizletCard(BaseModel):
+    front: str
+    back: str
+
+
+class QuizletImportRequest(BaseModel):
+    deck_name: str
+    cards: list[QuizletCard]
+
+
+def _scrape_quizlet_sync(url: str) -> dict:
+    import time
+    from invisible_playwright import InvisiblePlaywright
+    from invisible_playwright import download as ip_download
+    ip_download.ensure_binary()
+
+    with InvisiblePlaywright(headless=True) as browser:
+        page = browser.new_page()
+        page.goto(url, timeout=45000)
+        time.sleep(5)
+
+        title = page.evaluate('''() => {
+            const h1 = document.querySelector("h1");
+            return h1 ? h1.textContent.trim() : document.title.replace(" | Quizlet", "").trim();
+        }''')
+
+        texts = page.evaluate('''() =>
+            Array.from(document.querySelectorAll(".TermText")).map(e => e.textContent.trim())
+        ''')
+
+    if not texts:
+        raise Exception("No flashcard terms found. The deck may be private or the URL is invalid.")
+
+    cards = [{"front": texts[i], "back": texts[i + 1]} for i in range(0, len(texts) - 1, 2)]
+    return {"title": title or "Quizlet Import", "cards": cards}
+
+
+@app.post("/api/quizlet/scrape")
+async def quizlet_scrape(
+    request: QuizletScrapeRequest,
+    _: str = Depends(require_auth),
+):
+    import asyncio, re
+    url = request.url.strip()
+    if not re.match(r"https?://(www\.)?quizlet\.com/\d+/", url):
+        raise HTTPException(status_code=400, detail="Invalid Quizlet URL. Expected format: https://quizlet.com/<id>/...")
+    try:
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, _scrape_quizlet_sync, url)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/quizlet/import")
+async def quizlet_import(
+    request: QuizletImportRequest,
+    client: AnkiConnectClient = Depends(get_anki_client),
+    _: str = Depends(require_auth),
+):
+    try:
+        await client.create_deck(request.deck_name)
+        notes = [
+            {
+                "deckName": request.deck_name,
+                "modelName": "Basic",
+                "fields": {"Front": card.front, "Back": card.back},
+                "options": {"allowDuplicate": True},
+                "tags": ["quizlet-import"],
+            }
+            for card in request.cards
+        ]
+        results = await client.add_notes(notes)
+        imported = sum(1 for r in results if r is not None)
+        failed = len(results) - imported
+        return {
+            "success": True,
+            "message": f"Imported {imported} cards into '{request.deck_name}'" + (f" ({failed} duplicates skipped)" if failed else ""),
+            "imported": imported,
+            "failed": failed,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # Models endpoint
 @app.get("/api/models")
 async def get_models(client: AnkiConnectClient = Depends(get_anki_client), _: str = Depends(require_auth)):

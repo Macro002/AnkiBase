@@ -63,6 +63,12 @@ class AnkiConnectClient:
         }
         return await self.request("addNote", note=note)
 
+    async def add_notes(self, notes: list[dict]) -> list[int | None]:
+        return await self.request("addNotes", notes=notes)
+
+    async def create_deck(self, deck_name: str) -> int:
+        return await self.request("createDeck", deck=deck_name)
+
     # Study operations
     async def get_due_cards(self, deck: str, limit: int = 50) -> list[int]:
         """Get cards due for review in a deck, sorted by scheduler order.

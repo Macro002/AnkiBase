@@ -12,12 +12,14 @@
 ---
 
 <div align="center">
-  <img src="docs/desktop.png" alt="AnkiBase desktop view" width="700">
-  <br><br>
-  <img src="docs/mobile.png" alt="AnkiBase mobile view" width="260">
+  <img src="docs/desktop.png" alt="AnkiBase desktop view" width="680">
 </div>
 
 ---
+
+<table>
+<tr>
+<td valign="top">
 
 ## Features
 
@@ -33,6 +35,15 @@
 - **Multi-user** — admin panel, per-user container access control
 - **Multi-account** — each account gets its own isolated Anki container
 - **In-app updates** — pull the latest version without touching the server
+
+</td>
+<td valign="top" align="center" width="260">
+  <img src="docs/mobile.png" alt="AnkiBase mobile view" width="220">
+</td>
+</tr>
+</table>
+
+---
 
 ## Quick Install
 
@@ -63,7 +74,9 @@ curl -fsSL https://raw.githubusercontent.com/Macro002/AnkiBase/main/install.sh |
 
 ## Configuration
 
-The installer generates `/opt/ankibase/backend/.env`. Add AI provider keys to unlock story generation:
+AI provider API keys (OpenAI, Anthropic, Gemini) can be added directly in the app under **Settings → API Keys** — no server access needed.
+
+Alternatively, you can set them in `/opt/ankibase/backend/.env` on the server:
 
 ```env
 GEMINI_API_KEY=your_key_here
@@ -90,7 +103,3 @@ journalctl -u ankibase -f        # live logs
 systemctl restart ankibase        # restart
 systemctl status ankibase         # status
 ```
-
-## License
-
-MIT

@@ -298,7 +298,7 @@ export function QuizletStudy() {
     const hasImage = !!current?.image;
 
     return (
-      <div className="absolute inset-0 rounded-xl flex flex-col" style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', ...(isBack ? { transform: 'rotateY(180deg)' } : {}) }}>
+      <div className="absolute inset-0 rounded-xl flex flex-col" style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', ...(isBack ? { transform: 'rotateX(180deg)' } : {}) }}>
         {/* Top bar */}
         <div className="flex items-center justify-between px-5 pt-4 shrink-0">
           {!isBack ? (
@@ -383,7 +383,7 @@ export function QuizletStudy() {
             transformStyle: 'preserve-3d',
             WebkitTransformStyle: 'preserve-3d',
             transition: 'transform 0.38s cubic-bezier(0.4, 0, 0.2, 1)',
-            transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
+            transform: flipped ? 'rotateX(180deg)' : 'rotateX(0deg)',
             minHeight: '22rem',
           }}
         >
@@ -455,16 +455,28 @@ export function QuizletStudy() {
       </div>
 
       <style>{`
-        @keyframes cardSlideRight {
-          from { opacity: 0; transform: translateX(40px); }
-          to   { opacity: 1; transform: translateX(0); }
+        @keyframes cardSlideForward {
+          from {
+            opacity: 0.6;
+            transform: rotateX(-14deg) rotateY(-12deg) translateY(-28px) scale(0.95);
+          }
+          to {
+            opacity: 1;
+            transform: rotateX(0deg) rotateY(0deg) translateY(0px) scale(1);
+          }
         }
-        @keyframes cardSlideLeft {
-          from { opacity: 0; transform: translateX(-40px); }
-          to   { opacity: 1; transform: translateX(0); }
+        @keyframes cardSlideBack {
+          from {
+            opacity: 0.6;
+            transform: rotateX(-14deg) rotateY(12deg) translateY(-28px) scale(0.95);
+          }
+          to {
+            opacity: 1;
+            transform: rotateX(0deg) rotateY(0deg) translateY(0px) scale(1);
+          }
         }
-        .card-slide-right { animation: cardSlideRight 0.22s ease forwards; }
-        .card-slide-left  { animation: cardSlideLeft  0.22s ease forwards; }
+        .card-slide-right { animation: cardSlideForward 0.32s cubic-bezier(0.33, 1, 0.68, 1) forwards; }
+        .card-slide-left  { animation: cardSlideBack    0.32s cubic-bezier(0.33, 1, 0.68, 1) forwards; }
       `}</style>
     </div>
   );

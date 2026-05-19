@@ -189,7 +189,7 @@ export function Layout() {
                 to={to}
                 end={to === '/'}
                 className={({ isActive }) =>
-                  `relative flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${
+                  `relative group flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${
                     isActive
                       ? 'text-(--accent)'
                       : 'text-(--text-secondary) hover-white'
@@ -200,9 +200,9 @@ export function Layout() {
                   <>
                     <Icon className="w-4 h-4" />
                     <span>{label}</span>
-                    {isActive && (
-                      <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-(--accent)" />
-                    )}
+                    <span className={`absolute bottom-0 left-0 right-0 h-0.5 bg-(--accent) transition-transform duration-200 origin-center ${
+                      isActive ? 'scale-x-100' : 'scale-x-0 group-hover:scale-x-100'
+                    }`} />
                   </>
                 )}
               </NavLink>

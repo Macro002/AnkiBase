@@ -5,7 +5,7 @@
 
   [![Stars](https://img.shields.io/github/stars/Macro002/AnkiBase?style=for-the-badge&logo=github&color=e94560&labelColor=1a1a2e)](https://github.com/Macro002/AnkiBase/stargazers)
   [![Forks](https://img.shields.io/github/forks/Macro002/AnkiBase?style=for-the-badge&logo=github&color=e94560&labelColor=1a1a2e)](https://github.com/Macro002/AnkiBase/network/members)
-  [![License](https://img.shields.io/github/license/Macro002/AnkiBase?style=for-the-badge&color=e94560&labelColor=1a1a2e)](LICENSE)
+  [![License](https://img.shields.io/badge/license-MIT-e94560?style=for-the-badge&labelColor=1a1a2e)](LICENSE)
   [![Last Commit](https://img.shields.io/github/last-commit/Macro002/AnkiBase?style=for-the-badge&color=e94560&labelColor=1a1a2e)](https://github.com/Macro002/AnkiBase/commits/main)
 </div>
 

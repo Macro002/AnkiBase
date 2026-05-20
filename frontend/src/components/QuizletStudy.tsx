@@ -375,7 +375,7 @@ export function QuizletStudy() {
 
   const closeOptions = () => {
     setClosingOptions(true);
-    setTimeout(() => { setShowOptions(false); setClosingOptions(false); }, 260);
+    setTimeout(() => { setShowOptions(false); setClosingOptions(false); }, 210);
   };
 
   // Keyboard shortcuts — ref keeps handler fresh without re-registering the listener
@@ -740,9 +740,10 @@ export function QuizletStudy() {
 
       {/* Options panel */}
       {showOptions && (
-        <div className="fixed inset-0 z-[100] flex justify-end bg-black/50" onClick={closeOptions}>
+        <div className="fixed inset-0 z-[100] flex justify-end items-stretch bg-black/50" onClick={closeOptions}>
           <div
-            className={`${closingOptions ? 'options-panel-closing' : 'options-panel'} bg-(--bg-secondary) border-l border-(--bg-tertiary) w-full max-w-sm h-full overflow-y-auto shadow-2xl flex flex-col divide-y divide-white/8`}
+            className={`${closingOptions ? 'options-panel-closing' : 'options-panel'} bg-(--bg-secondary) border-l border-(--bg-tertiary) w-full max-w-sm self-stretch overflow-y-auto shadow-2xl flex flex-col divide-y divide-white/8`}
+            style={{ minHeight: '100%' }}
             onClick={e => e.stopPropagation()}
           >
             {/* Header */}
@@ -897,8 +898,8 @@ export function QuizletStudy() {
         /* Options panel slide in / out */
         @keyframes panelSlideIn  { from { transform: translateX(100%); } to { transform: translateX(0); } }
         @keyframes panelSlideOut { from { transform: translateX(0); }    to { transform: translateX(100%); } }
-        .options-panel         { animation: panelSlideIn  0.28s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
-        .options-panel-closing { animation: panelSlideOut 0.26s cubic-bezier(0.4,  0, 1,    1) forwards; }
+        .options-panel         { animation: panelSlideIn  0.38s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        .options-panel-closing { animation: panelSlideOut 0.2s  cubic-bezier(0.4,  0, 0.6, 1) forwards; }
 
         /* Override library defaults for dark theme */
         .flashcard-wrapper {

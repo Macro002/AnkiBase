@@ -445,10 +445,10 @@ export function QuizletStudy() {
       </div>
 
       {/* Bottom controls */}
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-1 sm:gap-2">
         {/* Track progress toggle */}
         <button className="flex items-center gap-2 text-sm shrink-0" onClick={toggleTrackProgress}>
-          <span className={trackProgress ? 'text-(--accent)' : 'text-(--text-secondary)'}>Track progress</span>
+          <span className={`hidden sm:inline ${trackProgress ? 'text-(--accent)' : 'text-(--text-secondary)'}`}>Track progress</span>
           <div className={`relative w-9 h-5 rounded-full transition-colors ${trackProgress ? 'bg-(--accent)' : 'bg-(--bg-tertiary)'}`}>
             <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${trackProgress ? 'translate-x-4' : 'translate-x-0.5'}`} />
           </div>
@@ -466,7 +466,7 @@ export function QuizletStudy() {
           >
             {trackProgress ? <X className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
           </button>
-          <span className="text-sm text-(--text-secondary) w-16 text-center tabular-nums">{index + 1} / {queue.length}</span>
+          <span className="text-sm text-(--text-secondary) w-12 sm:w-16 text-center tabular-nums">{index + 1} / {queue.length}</span>
           <button
             className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
               trackProgress ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30 disabled:opacity-30'
@@ -495,8 +495,8 @@ export function QuizletStudy() {
           <button className={`icon-btn ${isShuffled ? 'text-(--accent)' : ''}`} onClick={toggleShuffle} title={isShuffled ? 'Unshuffle' : 'Shuffle'}>
             <Shuffle className="w-4 h-4" />
           </button>
-          <button className="icon-btn" title="Settings (coming soon)"><Settings className="w-4 h-4" /></button>
-          <button className="icon-btn" title="Fullscreen (coming soon)"><Maximize2 className="w-4 h-4" /></button>
+          <button className="icon-btn hidden sm:flex" title="Settings (coming soon)"><Settings className="w-4 h-4" /></button>
+          <button className="icon-btn hidden sm:flex" title="Fullscreen (coming soon)"><Maximize2 className="w-4 h-4" /></button>
         </div>
       </div>
 

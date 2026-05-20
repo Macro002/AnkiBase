@@ -62,12 +62,15 @@ export function UserManagement() {
     }
 
     try {
-      await users.create(
+      const res = await users.create(
         formData.username,
         formData.password,
         formData.is_admin,
         formData.can_add_containers
       );
+      if (!formData.is_admin && selectedContainerIds.length > 0) {
+        await users.setContainers(res.user_id, selectedContainerIds);
+      }
       setSuccess('User created successfully');
       setShowAddModal(false);
       setFormData({
@@ -77,6 +80,7 @@ export function UserManagement() {
         is_admin: false,
         can_add_containers: false,
       });
+      setSelectedContainerIds([]);
       loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create user');
@@ -239,6 +243,7 @@ export function UserManagement() {
               is_admin: false,
               can_add_containers: false,
             });
+            setSelectedContainerIds([]);
             setShowAddModal(true);
           }}
           className="btn btn-primary flex items-center gap-2"
@@ -268,7 +273,7 @@ export function UserManagement() {
           return (
             <div
               key={user.id}
-              className="flex items-center justify-between p-4 rounded-lg bg-(--bg-tertiary) hover-bg-opacity-80 transition-colors"
+              className="flex items-center justify-between p-4 rounded-lg bg-(--bg-primary) transition-colors"
             >
               <div className="flex-1">
                 <div className="flex items-center gap-3">
@@ -313,7 +318,7 @@ export function UserManagement() {
       {/* Add User Modal */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <div className="bg-(--bg-secondary) rounded-lg shadow-xl max-w-md w-full border border-(--bg-tertiary) p-6">
+          <div className="bg-(--bg-secondary) rounded-lg shadow-xl max-w-md w-full border border-(--bg-tertiary) p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-xl font-bold">Add User</h3>
               <button onClick={() => setShowAddModal(false)} className="icon-btn">
@@ -375,6 +380,40 @@ export function UserManagement() {
                   />
                   <span className="text-sm">Can add containers</span>
                 </label>
+              </div>
+
+              {/* Container Access */}
+              <div>
+                <label className="block text-sm font-medium mb-2">Container Access</label>
+                {formData.is_admin ? (
+                  <p className="text-(--text-secondary) text-sm">
+                    Admin users have access to all containers automatically.
+                  </p>
+                ) : (
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {allContainers.map((container) => (
+                      <label
+                        key={container.id}
+                        className="flex items-center gap-3 p-3 rounded bg-(--bg-primary) cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedContainerIds.includes(container.id)}
+                          onChange={() => toggleContainer(container.id)}
+                        />
+                        <div className="flex-1">
+                          <div className="font-medium text-sm">{container.container_name}</div>
+                          <div className="text-xs text-(--text-secondary)">{container.email}</div>
+                        </div>
+                      </label>
+                    ))}
+                    {allContainers.length === 0 && (
+                      <p className="text-(--text-secondary) text-sm text-center py-4">
+                        No containers available
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="flex gap-3 pt-4">
@@ -485,7 +524,7 @@ export function UserManagement() {
                     {allContainers.map((container) => (
                       <label
                         key={container.id}
-                        className="flex items-center gap-3 p-3 rounded bg-(--bg-tertiary) hover-bg-opacity-80 cursor-pointer"
+                        className="flex items-center gap-3 p-3 rounded bg-(--bg-primary) cursor-pointer"
                       >
                         <input
                           type="checkbox"

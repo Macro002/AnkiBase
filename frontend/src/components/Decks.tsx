@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { BookOpen, Clock, Plus, Pencil, Trash2, ChevronRight, FolderOpen, X, ExternalLink, TrendingUp, Star } from 'lucide-react';
+import { BookOpen, Clock, Plus, Pencil, Trash2, ChevronRight, FolderOpen, X, ExternalLink, TrendingUp, Star, Layers } from 'lucide-react';
 import { decks, quizlet, type DeckStats, type QuizletDeck } from '../api';
 import { Heatmap } from './Heatmap';
 
@@ -308,20 +308,20 @@ export function Decks() {
               {deck.displayName}
             </h3>
 
-            {/* Stats row with tooltips */}
-            <div className="flex gap-4 mb-4 text-sm">
-              <div className="flex items-center gap-1" title={t('decks.newCards')}>
-                <Plus className="w-4 h-4 text-blue-400" />
-                <span className="text-blue-400">{deck.stats?.new_count ?? 0}</span>
-              </div>
-              <div className="flex items-center gap-1" title={t('decks.learning')}>
-                <Clock className="w-4 h-4 text-orange-400" />
-                <span className="text-orange-400">{deck.stats?.learn_count ?? 0}</span>
-              </div>
-              <div className="flex items-center gap-1" title={t('decks.review')}>
-                <BookOpen className="w-4 h-4 text-green-400" />
-                <span className="text-green-400">{deck.stats?.review_count ?? 0}</span>
-              </div>
+            {/* Stats row */}
+            <div className="flex items-center gap-3 mb-4 text-sm text-(--text-secondary) flex-wrap">
+              <span className="flex items-center gap-1">
+                <Plus className="w-3.5 h-3.5 text-blue-400" />
+                {deck.stats?.new_count ?? 0} new
+              </span>
+              <span className="flex items-center gap-1">
+                <Clock className="w-3.5 h-3.5 text-orange-400" />
+                {deck.stats?.learn_count ?? 0} learning
+              </span>
+              <span className="flex items-center gap-1">
+                <BookOpen className="w-3.5 h-3.5 text-green-400" />
+                {deck.stats?.review_count ?? 0} review
+              </span>
             </div>
 
             {/* Action buttons */}
@@ -428,7 +428,7 @@ export function Decks() {
                   </div>
 
                   <div className="flex items-center gap-3 text-sm text-(--text-secondary) mb-4 flex-wrap">
-                    <span>{deck.card_count} cards</span>
+                    <span className="flex items-center gap-1"><Layers className="w-3.5 h-3.5" />{deck.card_count} cards</span>
                     {(quizletStats[deck.id] ?? 0) > 0 && (
                       <span className="flex items-center gap-1">
                         <TrendingUp className="w-3.5 h-3.5 text-(--accent)" />

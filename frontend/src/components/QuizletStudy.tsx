@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, Star, ChevronLeft, ChevronRight,
+  ArrowLeft, Star, ChevronLeft, ChevronRight, ChevronDown,
   Play, Undo2, Shuffle, Settings, Maximize2, X, Check,
   TrendingUp, Lightbulb, BookOpen,
 } from 'lucide-react';
@@ -297,14 +297,16 @@ export function QuizletStudy() {
   };
 
   const toggleTrackProgress = () => {
+    if (trackProgress) setSessionDone(false);
     setTrackProgress(t => !t);
-    setKnown(new Set()); setUnknown(new Set()); setHistory([]);
-    setSessionDone(false); setIsAutoplay(false);
-    advance(0);
+    setIsAutoplay(false);
   };
 
   const restart = (subset?: QuizletCard[]) => {
-    const base = subset ?? (isShuffled ? shuffle([...cards]) : [...cards]);
+    const fullBase = studyStarredOnly && favorites.size > 0
+      ? cards.filter(c => favorites.has(c.id))
+      : cards;
+    const base = subset ?? (isShuffled ? shuffle([...fullBase]) : [...fullBase]);
     setQueue(base);
     setKnown(new Set()); setUnknown(new Set()); setHistory([]);
     setSessionDone(false);
@@ -683,98 +685,100 @@ export function QuizletStudy() {
 
       {/* Options panel */}
       {showOptions && (
-        <div className="fixed inset-0 z-50 flex justify-end" onClick={() => setShowOptions(false)}>
+        <div className="fixed inset-0 z-50 flex justify-end bg-black/50 backdrop-blur-sm" onClick={() => setShowOptions(false)}>
           <div
-            className="options-panel relative bg-(--bg-secondary) w-full max-w-sm h-full overflow-y-auto shadow-2xl flex flex-col"
+            className="options-panel bg-(--bg-secondary) border-l border-(--bg-tertiary) w-full max-w-sm h-full overflow-y-auto shadow-2xl flex flex-col"
             onClick={e => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-6 pt-6 pb-2 shrink-0">
-              <h2 className="text-3xl font-bold">Options</h2>
-              <button
-                onClick={() => setShowOptions(false)}
-                className="w-10 h-10 rounded-full bg-(--bg-tertiary) flex items-center justify-center hover:bg-(--accent) transition-colors"
-              >
+            <div className="flex items-center justify-between p-6 border-b border-(--bg-tertiary) shrink-0">
+              <h2 className="text-xl font-bold">Options</h2>
+              <button className="icon-btn" onClick={() => setShowOptions(false)} title="Close">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {/* Track progress */}
-            <div className="px-6 py-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="font-semibold text-base">Track progress</span>
+            <div className="p-6 border-b border-(--bg-tertiary)">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="font-medium text-sm">Track progress</p>
+                  <p className="text-xs text-(--text-secondary) mt-0.5">Know / Still learning sorting. Progress is kept when toggled off.</p>
+                </div>
                 <button onClick={toggleTrackProgress} className="shrink-0">
-                  <div className={`relative w-11 h-6 rounded-full transition-colors ${trackProgress ? 'bg-(--accent)' : 'bg-(--bg-tertiary)'}`}>
-                    <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${trackProgress ? 'translate-x-6' : 'translate-x-1'}`} />
+                  <div className={`relative w-9 h-5 rounded-full transition-colors ${trackProgress ? 'bg-(--accent)' : 'bg-(--bg-tertiary)'}`}>
+                    <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${trackProgress ? 'translate-x-4' : 'translate-x-0.5'}`} />
                   </div>
                 </button>
               </div>
-              <p className="text-sm text-(--text-secondary) leading-relaxed">Sort your flashcards to keep track of what you know and what you're still learning. Turn it off to quickly review without scoring.</p>
             </div>
-            <div className="border-t border-(--bg-tertiary)" />
 
             {/* Study only starred terms */}
-            <div className="px-6 py-4 flex items-center justify-between gap-4">
-              <span className="font-semibold text-base">Study only starred terms</span>
-              <button onClick={() => toggleStudyStarred(favorites)} className="shrink-0">
-                <div className={`relative w-11 h-6 rounded-full transition-colors ${studyStarredOnly ? 'bg-(--accent)' : 'bg-(--bg-tertiary)'}`}>
-                  <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${studyStarredOnly ? 'translate-x-6' : 'translate-x-1'}`} />
+            <div className="p-6 border-b border-(--bg-tertiary)">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className={`font-medium text-sm ${favorites.size === 0 ? 'text-(--text-secondary)' : ''}`}>Study only starred terms</p>
+                  {favorites.size === 0 && <p className="text-xs text-(--text-secondary) mt-0.5">Star some cards first.</p>}
                 </div>
-              </button>
+                <button
+                  onClick={() => favorites.size > 0 && toggleStudyStarred(favorites)}
+                  disabled={favorites.size === 0}
+                  className={favorites.size === 0 ? 'opacity-40 cursor-not-allowed shrink-0' : 'shrink-0'}
+                >
+                  <div className={`relative w-9 h-5 rounded-full transition-colors ${studyStarredOnly ? 'bg-(--accent)' : 'bg-(--bg-tertiary)'}`}>
+                    <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${studyStarredOnly ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                  </div>
+                </button>
+              </div>
             </div>
-            <div className="border-t border-(--bg-tertiary)" />
 
             {/* Front */}
-            <div className="px-6 py-4 flex items-center justify-between gap-4">
-              <span className="font-semibold text-base">Front</span>
+            <div className="p-6 border-b border-(--bg-tertiary) flex items-center justify-between gap-4">
+              <p className="font-medium text-sm">Front</p>
               <select
                 value={frontSide}
                 onChange={e => { setFrontSide(e.target.value as 'term' | 'definition'); flipHook.resetCardState(); }}
-                className="bg-(--bg-tertiary) text-white font-medium rounded-full px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-(--accent) cursor-pointer"
+                className="input text-sm py-1.5 cursor-pointer"
               >
                 <option value="term">Term</option>
                 <option value="definition">Definition</option>
               </select>
             </div>
-            <div className="border-t border-(--bg-tertiary)" />
 
             {/* Keyboard shortcuts */}
-            <div className="px-6 py-4">
+            <div className="border-b border-(--bg-tertiary)">
               <button
-                className="flex items-center justify-between w-full"
+                className="w-full flex items-center justify-between p-6"
                 onClick={() => setShowShortcuts(s => !s)}
               >
-                <span className="font-semibold text-base">Keyboard shortcuts</span>
-                <span className={`flex items-center gap-1 text-sm font-medium transition-colors ${showShortcuts ? 'text-(--accent)' : 'text-(--text-secondary)'}`}>
-                  {showShortcuts ? 'Hide' : 'View'}
-                  <ChevronLeft className={`w-4 h-4 transition-transform ${showShortcuts ? 'rotate-90' : '-rotate-90'}`} />
-                </span>
+                <p className="font-medium text-sm">Keyboard shortcuts</p>
+                <ChevronDown className={`w-4 h-4 text-(--text-secondary) transition-transform ${showShortcuts ? 'rotate-180' : ''}`} />
               </button>
               {showShortcuts && (
-                <div className="mt-4 space-y-2">
-                  {[
-                    ['→', 'Know / Next'],
-                    ['←', 'Still learning / Prev'],
-                    ['Space', 'Flip card'],
-                    ['S', 'Star card'],
-                    ['H', 'Shuffle'],
-                    ['T', 'Answer with term'],
-                    ['D', 'Answer with definition'],
-                  ].map(([key, label]) => (
-                    <div key={key} className="flex items-center justify-between text-sm">
-                      <span className="text-(--text-secondary)">{label}</span>
+                <div className="px-6 pb-6 space-y-3">
+                  {([
+                    ['→',    'Know / Next'],
+                    ['←',    'Still learning / Prev'],
+                    ['Space','Flip card'],
+                    ['S',    'Star card'],
+                    ['H',    'Shuffle'],
+                    ['T',    'Answer with term'],
+                    ['D',    'Answer with definition'],
+                    ['E',    'Edit card (coming soon)'],
+                  ] as [string, string][]).map(([key, label]) => (
+                    <div key={key} className="flex items-center justify-between">
+                      <span className="text-sm text-(--text-secondary)">{label}</span>
                       <kbd className="px-2 py-0.5 rounded bg-(--bg-tertiary) text-white font-mono text-xs">{key}</kbd>
                     </div>
                   ))}
                 </div>
               )}
             </div>
-            <div className="border-t border-(--bg-tertiary)" />
 
             {/* Restart */}
-            <div className="px-6 py-4">
+            <div className="p-6">
               <button
-                className="text-(--accent) font-semibold text-base hover:underline"
+                className="text-sm text-(--accent) font-medium hover-underline"
                 onClick={() => { restart(); setShowOptions(false); }}
               >
                 Restart Flashcards

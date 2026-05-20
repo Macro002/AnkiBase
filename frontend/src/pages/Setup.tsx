@@ -362,7 +362,7 @@ export function Setup() {
   }, []);
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-(--bg-primary)">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <Logo className="w-14 h-14 mx-auto mb-3" />

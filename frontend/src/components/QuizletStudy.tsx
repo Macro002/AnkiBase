@@ -444,18 +444,21 @@ export function QuizletStudy() {
         </div>
       </div>
 
-      {/* Bottom controls */}
-      <div className="flex items-center justify-between gap-1 sm:gap-2">
-        {/* Track progress toggle */}
-        <button className="flex items-center gap-2 text-sm shrink-0" onClick={toggleTrackProgress}>
-          <span className={`hidden sm:inline ${trackProgress ? 'text-(--accent)' : 'text-(--text-secondary)'}`}>Track progress</span>
+      {/* Bottom controls — flex-wrap: mobile=2 rows, desktop=1 row */}
+      <div className="flex flex-wrap items-center justify-between gap-y-2 gap-x-2">
+        {/* Track progress toggle — order-3 on mobile (wraps to row 2), order-1 on desktop */}
+        <button
+          className="order-3 sm:order-1 flex items-center gap-2 text-sm shrink-0 w-full sm:w-auto"
+          onClick={toggleTrackProgress}
+        >
+          <span className={trackProgress ? 'text-(--accent)' : 'text-(--text-secondary)'}>Track progress</span>
           <div className={`relative w-9 h-5 rounded-full transition-colors ${trackProgress ? 'bg-(--accent)' : 'bg-(--bg-tertiary)'}`}>
             <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${trackProgress ? 'translate-x-4' : 'translate-x-0.5'}`} />
           </div>
         </button>
 
-        {/* Nav / mark */}
-        <div className="flex items-center gap-2">
+        {/* Nav / mark — order-1 on mobile (row 1 left), order-2 on desktop */}
+        <div className="order-1 sm:order-2 flex items-center gap-2">
           <button
             className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
               trackProgress ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30 disabled:opacity-30'
@@ -466,7 +469,7 @@ export function QuizletStudy() {
           >
             {trackProgress ? <X className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
           </button>
-          <span className="text-sm text-(--text-secondary) w-12 sm:w-16 text-center tabular-nums">{index + 1} / {queue.length}</span>
+          <span className="text-sm text-(--text-secondary) w-14 text-center tabular-nums">{index + 1} / {queue.length}</span>
           <button
             className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
               trackProgress ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30 disabled:opacity-30'
@@ -479,8 +482,8 @@ export function QuizletStudy() {
           </button>
         </div>
 
-        {/* Right controls */}
-        <div className="flex items-center gap-1 shrink-0">
+        {/* Right controls — order-2 on mobile (row 1 right), order-3 on desktop */}
+        <div className="order-2 sm:order-3 flex items-center gap-1 shrink-0">
           {trackProgress ? (
             <button className={`icon-btn ${history.length === 0 ? 'opacity-30 cursor-not-allowed' : ''}`}
               onClick={undoLast} disabled={history.length === 0} title="Undo">
@@ -495,8 +498,8 @@ export function QuizletStudy() {
           <button className={`icon-btn ${isShuffled ? 'text-(--accent)' : ''}`} onClick={toggleShuffle} title={isShuffled ? 'Unshuffle' : 'Shuffle'}>
             <Shuffle className="w-4 h-4" />
           </button>
-          <button className="icon-btn hidden sm:flex" title="Settings (coming soon)"><Settings className="w-4 h-4" /></button>
-          <button className="icon-btn hidden sm:flex" title="Fullscreen (coming soon)"><Maximize2 className="w-4 h-4" /></button>
+          <button className="icon-btn" title="Settings (coming soon)"><Settings className="w-4 h-4" /></button>
+          <button className="icon-btn" title="Fullscreen (coming soon)"><Maximize2 className="w-4 h-4" /></button>
         </div>
       </div>
 

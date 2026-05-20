@@ -312,7 +312,7 @@ export function QuizletStudy() {
   // Card face content — library handles backface-visibility and flip transform
   const renderFaceContent = (isBack: boolean) => {
     const text = isBack ? current?.back : current?.front;
-    const hasImage = !!current?.image;
+    const hasImage = !isBack && !!current?.image;
     return (
       <div className="flex flex-col h-full">
         {/* Top bar */}

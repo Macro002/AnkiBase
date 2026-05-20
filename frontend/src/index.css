@@ -86,7 +86,7 @@ body {
 
 /* Cards */
 .card {
-  @apply bg-(--bg-secondary) rounded-xl p-6 shadow-lg;
+  @apply bg-(--bg-secondary) rounded-xl p-6;
 }
 
 .card-hover {

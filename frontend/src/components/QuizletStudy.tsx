@@ -3,11 +3,16 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Star, ChevronLeft, ChevronRight,
   Play, Undo2, Shuffle, Settings, Maximize2, X, Check,
-  TrendingUp, Lightbulb, CreditCard, BookOpen, ClipboardList,
-  Grid3X3, Zap, Gamepad2,
+  TrendingUp, Lightbulb, BookOpen,
 } from 'lucide-react';
 import { Flashcard, useFlashcard } from 'react-quizlet-flashcard';
 import 'react-quizlet-flashcard/dist/index.css';
+import FlashcardsIcon from '../assets/icons/brand-flashcards.svg?react';
+import LearnIcon      from '../assets/icons/brand-learn.svg?react';
+import TestIcon       from '../assets/icons/brand-test.svg?react';
+import BlocksIcon     from '../assets/icons/brand-blocks.svg?react';
+import BlastIcon      from '../assets/icons/brand-blast.svg?react';
+import MatchIcon      from '../assets/icons/brand-match.svg?react';
 import { quizlet, type QuizletCard } from '../api';
 
 function shuffle<T>(arr: T[]): T[] {
@@ -39,31 +44,41 @@ function DonutChart({ percent }: { percent: number }) {
 }
 
 const MODES = [
-  { id: 'flashcards', label: 'Flashcards', Icon: CreditCard,    active: true  },
-  { id: 'learn',      label: 'Learn',      Icon: BookOpen,      active: false },
-  { id: 'test',       label: 'Test',       Icon: ClipboardList, active: false },
-  { id: 'blocks',     label: 'Blocks',     Icon: Grid3X3,       active: false },
-  { id: 'blast',      label: 'Blast',      Icon: Zap,           active: false },
-  { id: 'match',      label: 'Match',      Icon: Gamepad2,      active: false },
+  { id: 'flashcards', label: 'Flashcards', Icon: FlashcardsIcon, active: true  },
+  { id: 'learn',      label: 'Learn',      Icon: LearnIcon,      active: false },
+  { id: 'test',       label: 'Test',       Icon: TestIcon,       active: false },
+  { id: 'blocks',     label: 'Blocks',     Icon: BlocksIcon,     active: false },
+  { id: 'blast',      label: 'Blast',      Icon: BlastIcon,      active: false },
+  { id: 'match',      label: 'Match',      Icon: MatchIcon,      active: false },
 ];
 
-function ModeGrid() {
+// desktop: 3-col grid, icon left + label right
+// mobile: rendered separately below progress bar as 2-col grid, icon+label stacked
+function ModeGrid({ mobile = false }: { mobile?: boolean }) {
   return (
-    <div className="grid grid-cols-3 gap-2">
+    <div className={mobile
+      ? 'grid grid-cols-2 gap-2'
+      : 'grid grid-cols-3 gap-2'
+    }>
       {MODES.map(({ id, label, Icon, active }) => (
         <button
           key={id}
           disabled={!active}
           title={active ? undefined : 'Coming soon'}
-          className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+          className={`rounded-lg font-medium transition-colors ${
+            mobile
+              ? 'flex flex-col items-center justify-center gap-1.5 py-4 px-2 text-xs'
+              : 'flex items-center gap-3 px-4 py-3 text-sm'
+          } ${
             active
               ? 'bg-(--accent)/10 text-(--accent)'
               : 'bg-(--bg-secondary) text-(--text-secondary) opacity-40 cursor-not-allowed'
           }`}
         >
-          <div className={`w-7 h-7 rounded flex items-center justify-center shrink-0 ${active ? 'bg-(--accent)/20' : 'bg-(--bg-tertiary)'}`}>
-            <Icon className="w-4 h-4" />
-          </div>
+          <Icon
+            className={mobile ? 'w-8 h-8' : 'w-6 h-6'}
+            style={{ color: 'rgba(var(--accent-rgb), 0.55)' }}
+          />
           {label}
         </button>
       ))}
@@ -372,7 +387,10 @@ export function QuizletStudy() {
         </div>
       </div>
 
-      <ModeGrid />
+      {/* Desktop mode grid — above card */}
+      <div className="hidden sm:block">
+        <ModeGrid />
+      </div>
 
       {/* Card with 3D flip + slide-in */}
       <div style={{ perspective: '1100px' }}>
@@ -384,7 +402,7 @@ export function QuizletStudy() {
             flipHook={flipHook}
             front={{ html: renderFaceContent(false) }}
             back={{ html: renderFaceContent(true) }}
-            style={{ height: '28rem' }}
+            style={{ height: 'clamp(16rem, 72vw, 28rem)' }}
           />
         </div>
       </div>
@@ -451,10 +469,16 @@ export function QuizletStudy() {
           style={{ width: `${progressPercent}%`, background: trackProgress ? 'linear-gradient(to right,#4ade80,#22c55e)' : 'var(--accent)' }} />
       </div>
 
+      {/* Mobile mode grid — below progress bar */}
+      <div className="block sm:hidden">
+        <ModeGrid mobile />
+      </div>
+
       <style>{`
         /* Override library defaults for dark theme */
         .flashcard-wrapper {
           width: 100% !important;
+          height: clamp(16rem, 72vw, 28rem) !important;
           bottom: auto !important;
           --front-bg: var(--bg-secondary);
           --back-bg: var(--bg-secondary);

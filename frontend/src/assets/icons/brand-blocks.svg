@@ -1,0 +1,11 @@
+<svg fill="none" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+  <rect x="4" y="4" width="7.2" height="7.2" rx="1.091" fill="var(--accent)"/>
+  <rect x="12.4" y="4" width="7.2" height="7.2" rx="1.091" fill="currentColor"/>
+  <rect x="20.8" y="4" width="7.2" height="7.2" rx="1.091" fill="#fff"/>
+  <rect x="4" y="12.4" width="7.2" height="7.2" rx="1.091" fill="var(--accent)"/>
+  <rect x="12.4" y="12.4" width="7.2" height="7.2" rx="1.091" fill="currentColor"/>
+  <rect x="20.8" y="12.4" width="7.2" height="7.2" rx="1.091" fill="currentColor"/>
+  <rect x="4" y="20.8" width="7.2" height="7.2" rx="1.091" fill="var(--accent)"/>
+  <rect x="12.4" y="20.8" width="7.2" height="7.2" rx="1.091" fill="var(--accent)"/>
+  <rect x="20.8" y="20.8" width="7.2" height="7.2" rx="1.091" fill="var(--accent)"/>
+</svg>

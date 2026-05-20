@@ -455,7 +455,6 @@ export function QuizletStudy() {
         /* Override library defaults for dark theme */
         .flashcard-wrapper {
           width: 100% !important;
-          height: 100% !important;
           bottom: auto !important;
           --front-bg: var(--bg-secondary);
           --back-bg: var(--bg-secondary);

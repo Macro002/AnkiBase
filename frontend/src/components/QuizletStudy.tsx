@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import confetti from 'canvas-confetti';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Star, ChevronLeft, ChevronRight, ChevronDown,
@@ -159,6 +160,59 @@ function EndScreen({ title, total, known, unknown, onRestart, onRestartUnknown, 
   );
 }
 
+function SimpleEndScreen({ title, total, onRestart, onBackToLast, onBack }: {
+  title: string; total: number;
+  onRestart: () => void; onBackToLast: () => void; onBack: () => void;
+}) {
+  useEffect(() => {
+    const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+    const hover  = getComputedStyle(document.documentElement).getPropertyValue('--accent-hover').trim();
+    const colors = [accent, hover, '#ffffff'];
+    confetti({ particleCount: 100, spread: 70, origin: { x: 0.5, y: 0.55 }, colors });
+    setTimeout(() => confetti({ particleCount: 55, spread: 90, origin: { x: 0.2, y: 0.5 }, colors }), 320);
+    setTimeout(() => confetti({ particleCount: 55, spread: 90, origin: { x: 0.8, y: 0.5 }, colors }), 550);
+  }, []);
+
+  return (
+    <div className="max-w-3xl mx-auto space-y-6 pb-8">
+      <button onClick={onBack} className="flex items-center gap-2 text-(--text-secondary) hover-accent text-sm">
+        <ArrowLeft className="w-4 h-4" /> Back to Decks
+      </button>
+      <h1 className="text-2xl font-bold">{title}</h1>
+      <ModeGrid />
+      <div className="card relative overflow-hidden">
+        <div className="absolute top-3 right-4 text-5xl leading-none select-none pointer-events-none" style={{ filter: 'drop-shadow(0 2px 12px rgba(0,0,0,0.5))' }}>
+          🎉
+        </div>
+        <h2 className="text-2xl font-bold mb-2">Way to go!</h2>
+        <p className="text-(--text-secondary) mb-6">You've reviewed all {total} cards.</p>
+        <div className="flex gap-8 mb-6">
+          <div>
+            <div className="text-3xl font-bold text-(--accent)">{total}</div>
+            <div className="text-xs text-(--text-secondary) mt-0.5">terms reviewed</div>
+          </div>
+          <div>
+            <div className="text-3xl font-bold text-green-400">0</div>
+            <div className="text-xs text-(--text-secondary) mt-0.5">terms left</div>
+          </div>
+        </div>
+        <p className="text-sm text-(--text-secondary) font-medium mb-3">Next steps</p>
+        <div className="space-y-3 max-w-sm">
+          <button className="btn w-full flex items-center justify-center gap-2 opacity-40 cursor-not-allowed bg-(--bg-tertiary)" disabled title="Coming soon">
+            <BookOpen className="w-4 h-4" /> Practice with questions
+          </button>
+          <button className="btn btn-secondary w-full" onClick={onRestart}>
+            Restart Flashcards
+          </button>
+          <button className="text-sm text-(--accent) hover-underline w-full text-center block" onClick={onBackToLast}>
+            Back to last question
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function QuizletStudy() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -230,7 +284,10 @@ export function QuizletStudy() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flipHook.resetCardState]);
 
-  const goNext = useCallback(() => { if (index < queue.length - 1) advance(index + 1); }, [index, queue.length, advance]);
+  const goNext = useCallback(() => {
+    if (index < queue.length - 1) advance(index + 1);
+    else setSessionDone(true);
+  }, [index, queue.length, advance]);
   const goPrev = useCallback(() => { if (index > 0) advance(index - 1); }, [index, advance]);
 
   const starCard = (cardId: number) => {
@@ -408,6 +465,18 @@ export function QuizletStudy() {
     );
   }
 
+  if (sessionDone && !trackProgress) {
+    return (
+      <SimpleEndScreen
+        title={title}
+        total={queue.length}
+        onRestart={() => restart()}
+        onBackToLast={() => { setSessionDone(false); advance(queue.length - 1); }}
+        onBack={() => navigate('/')}
+      />
+    );
+  }
+
   const isFaved = current ? favorites.has(current.id) : false;
 
   const generateHint = (text: string): string => {
@@ -544,7 +613,7 @@ export function QuizletStudy() {
                 : 'bg-(--bg-secondary) text-(--text-secondary) hover-accent disabled:opacity-30'
             }`}
             onClick={() => trackProgress ? markCard(true) : goNext()}
-            disabled={(!trackProgress && index === queue.length - 1) || !!feedback}
+            disabled={!!feedback}
           >
             {trackProgress ? <Check className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
           </button>

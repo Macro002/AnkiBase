@@ -6,6 +6,8 @@ import {
   TrendingUp, Lightbulb, CreditCard, BookOpen, ClipboardList,
   Grid3X3, Zap, Gamepad2,
 } from 'lucide-react';
+import { Flashcard, useFlashcard } from 'react-quizlet-flashcard';
+import 'react-quizlet-flashcard/dist/index.css';
 import { quizlet, type QuizletCard } from '../api';
 
 function shuffle<T>(arr: T[]): T[] {
@@ -154,7 +156,8 @@ export function QuizletStudy() {
   const [studiedToday, setStudiedToday] = useState(0);
 
   const [index, setIndex] = useState(0);
-  const [flipped, setFlipped] = useState(false);
+  const flipHook = useFlashcard({ flipDirection: 'bt' });
+  const flipped = flipHook.state === 'back';
   const [hintShown, setHintShown] = useState(false);
   const [slideDir, setSlideDir] = useState<'right' | 'left'>('right');
   const prevIndexRef = useRef(0);
@@ -189,9 +192,10 @@ export function QuizletStudy() {
     setSlideDir(nextIndex >= prevIndexRef.current ? 'right' : 'left');
     prevIndexRef.current = nextIndex;
     setIndex(nextIndex);
-    setFlipped(false);
+    flipHook.resetCardState();
     setHintShown(false);
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flipHook.resetCardState]);
 
   const goNext = useCallback(() => { if (index < queue.length - 1) advance(index + 1); }, [index, queue.length, advance]);
   const goPrev = useCallback(() => { if (index > 0) advance(index - 1); }, [index, advance]);
@@ -255,11 +259,12 @@ export function QuizletStudy() {
   useEffect(() => {
     if (!isAutoplay || trackProgress) return;
     autoplayRef.current = setTimeout(() => {
-      if (!flipped) setFlipped(true);
+      if (flipHook.state === 'front') flipHook.flip();
       else if (index < queue.length - 1) advance(index + 1);
       else setIsAutoplay(false);
     }, 2000);
     return () => { if (autoplayRef.current) clearTimeout(autoplayRef.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAutoplay, flipped, index, queue.length, trackProgress, advance]);
 
   const progressPercent = queue.length > 0
@@ -304,19 +309,18 @@ export function QuizletStudy() {
     return words.slice(0, show).join(' ') + ' ' + words.slice(show).map(() => '___').join(' ');
   };
 
-  // Shared card face renderer
-  const renderFace = (isBack: boolean) => {
+  // Card face content — library handles backface-visibility and flip transform
+  const renderFaceContent = (isBack: boolean) => {
     const text = isBack ? current?.back : current?.front;
     const hasImage = !!current?.image;
-
     return (
-      <div className="absolute inset-0 rounded-xl flex flex-col" style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', ...(isBack ? { transform: 'rotateX(180deg)' } : {}) }}>
+      <div className="flex flex-col h-full">
         {/* Top bar */}
         <div className="flex items-center justify-between px-5 pt-4 shrink-0">
           {!isBack ? (
             <button
               className={`flex items-start gap-1.5 text-xs transition-colors max-w-xs text-left ${hintShown ? 'text-(--accent)' : 'text-(--text-secondary) hover-accent'}`}
-              onClick={e => { e.stopPropagation(); setHintShown(h => !h); setFlipped(false); }}
+              onClick={e => { e.stopPropagation(); setHintShown(h => !h); flipHook.resetCardState(); }}
             >
               <Lightbulb className="w-3.5 h-3.5 mt-0.5 shrink-0" />
               {hintShown
@@ -371,26 +375,17 @@ export function QuizletStudy() {
       <ModeGrid />
 
       {/* Card with 3D flip + slide-in */}
-      <div style={{ perspective: '1100px' }} onClick={() => { if (!hintShown) setFlipped(f => !f); }}>
+      <div style={{ perspective: '1100px' }}>
         <div
           key={index}
           className={slideDir === 'right' ? 'card-slide-right' : 'card-slide-left'}
         >
-          <div style={{ perspective: '1200px' }}>
-            <div
-              className="relative rounded-xl bg-(--bg-secondary) cursor-pointer"
-              style={{
-                transformStyle: 'preserve-3d',
-                WebkitTransformStyle: 'preserve-3d',
-                transition: 'transform 0.38s cubic-bezier(0.4, 0, 0.2, 1)',
-                transform: flipped ? 'rotateX(180deg)' : 'rotateX(0deg)',
-                minHeight: '22rem',
-              }}
-            >
-              {renderFace(false)}
-              {renderFace(true)}
-            </div>
-          </div>
+          <Flashcard
+            flipHook={flipHook}
+            front={{ html: renderFaceContent(false) }}
+            back={{ html: renderFaceContent(true) }}
+            style={{ height: '22rem' }}
+          />
         </div>
       </div>
 
@@ -457,25 +452,28 @@ export function QuizletStudy() {
       </div>
 
       <style>{`
+        /* Override library defaults for dark theme */
+        .flashcard-wrapper {
+          width: 100% !important;
+          height: 100% !important;
+          bottom: auto !important;
+          --front-bg: var(--bg-secondary);
+          --back-bg: var(--bg-secondary);
+          --box-shadow: none;
+          --border-radius: 0.75rem;
+        }
+        .flashcard__front, .flashcard__back {
+          color: inherit !important;
+        }
+
+        /* Card slide animations */
         @keyframes cardSlideForward {
-          from {
-            opacity: 0.5;
-            transform: rotateY(-70deg) translateX(60px) scale(0.88);
-          }
-          to {
-            opacity: 1;
-            transform: rotateY(0deg) translateX(0) scale(1);
-          }
+          from { opacity: 0.5; transform: rotateY(-70deg) translateX(60px) scale(0.88); }
+          to   { opacity: 1;   transform: rotateY(0deg) translateX(0) scale(1); }
         }
         @keyframes cardSlideBack {
-          from {
-            opacity: 0.5;
-            transform: rotateY(70deg) translateX(-60px) scale(0.88);
-          }
-          to {
-            opacity: 1;
-            transform: rotateY(0deg) translateX(0) scale(1);
-          }
+          from { opacity: 0.5; transform: rotateY(70deg) translateX(-60px) scale(0.88); }
+          to   { opacity: 1;   transform: rotateY(0deg) translateX(0) scale(1); }
         }
         .card-slide-right { animation: cardSlideForward 0.48s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
         .card-slide-left  { animation: cardSlideBack    0.48s cubic-bezier(0.22, 1, 0.36, 1) forwards; }

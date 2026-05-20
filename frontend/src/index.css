@@ -307,6 +307,16 @@ input[type="checkbox"]:checked::after {
   opacity: 0.8;
 }
 
+/* Safe-area aware bottom padding for main content (accounts for mobile nav + home indicator) */
+.safe-pb-main {
+  padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
+}
+@media (min-width: 768px) {
+  .safe-pb-main {
+    padding-bottom: 1rem;
+  }
+}
+
 /* Fade out animation for answer feedback */
 @keyframes fade-out {
   0% {

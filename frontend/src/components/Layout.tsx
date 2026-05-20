@@ -93,7 +93,7 @@ export function Layout() {
   return (
     <div className="min-h-screen flex flex-col bg-(--bg-primary)">
       {/* Header */}
-      <header className="bg-(--bg-secondary)">
+      <header className="bg-(--bg-secondary)" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 h-14 flex items-center justify-between w-full gap-2">
           <Link to="/" className="flex items-center gap-2 hover-opacity-80 transition-opacity shrink-0">
             <Logo className="w-7 h-7" />
@@ -212,12 +212,12 @@ export function Layout() {
       </nav>
 
       {/* Main Content */}
-      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-4 pb-20 md:pb-4">
+      <main className="safe-pb-main flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-4">
         <Outlet />
       </main>
 
       {/* Mobile Bottom Navigation */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-(--bg-secondary) border-t border-(--bg-tertiary) z-50">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-(--bg-secondary) border-t border-(--bg-tertiary) z-50" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
         <div className="flex justify-around items-center h-16">
           {mobileNavItems.map(({ to, icon: Icon, label }) => (
             <NavLink

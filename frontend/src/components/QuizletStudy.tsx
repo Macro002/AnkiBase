@@ -747,7 +747,7 @@ export function QuizletStudy() {
             onClick={e => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="flex items-center justify-between p-6 shrink-0">
+            <div className="flex items-center justify-between p-6 shrink-0" style={{ paddingTop: 'calc(1.5rem + env(safe-area-inset-top, 0px))' }}>
               <h2 className="text-xl font-bold">Options</h2>
               <button className="icon-btn" onClick={closeOptions} title="Close">
                 <X className="w-5 h-5" />
@@ -828,7 +828,7 @@ export function QuizletStudy() {
             </div>
 
             {/* Restart */}
-            <div className="p-6">
+            <div className="p-6" style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))' }}>
               <button
                 className="text-sm text-(--accent) font-medium hover-underline"
                 onClick={() => { restart(); closeOptions(); }}

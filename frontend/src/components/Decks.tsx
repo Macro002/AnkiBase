@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { BookOpen, Clock, Plus, Pencil, Trash2, ChevronRight, FolderOpen, X, ExternalLink } from 'lucide-react';
+import { BookOpen, Clock, Plus, Pencil, Trash2, ChevronRight, FolderOpen, X, ExternalLink, TrendingUp, Star } from 'lucide-react';
 import { decks, quizlet, type DeckStats, type QuizletDeck } from '../api';
 import { Heatmap } from './Heatmap';
 
@@ -27,11 +27,17 @@ export function Decks() {
   const [quizletRenameModal, setQuizletRenameModal] = useState<{ deck: QuizletDeck; newName: string } | null>(null);
   const [quizletDeleteModal, setQuizletDeleteModal] = useState<QuizletDeck | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [quizletStats, setQuizletStats] = useState<Record<number, number>>({});
   const navigate = useNavigate();
 
   useEffect(() => {
     loadDecks();
-    quizlet.listDecks().then(r => setQuizletDecks(r.decks)).catch(() => {});
+    quizlet.listDecks().then(r => {
+      setQuizletDecks(r.decks);
+      Promise.all(r.decks.map(d => quizlet.deckStats(d.id).then(s => [d.id, s.studied_today] as const)))
+        .then(entries => setQuizletStats(Object.fromEntries(entries)))
+        .catch(() => {});
+    }).catch(() => {});
   }, []);
 
   // Reload decks when sync completes
@@ -268,6 +274,7 @@ export function Decks() {
           <div
             key={deck.id}
             className="card border border-(--bg-tertiary) hover-border-accent transition-all cursor-pointer flex flex-col relative group"
+            onClick={() => handleStudy(deck.name)}
           >
             {/* Edit/Delete buttons - always visible */}
             <div className="absolute top-3 right-3 flex items-center gap-1">
@@ -322,14 +329,14 @@ export function Decks() {
               {deck.hasSubdecks ? (
                 <>
                   <button
-                    onClick={() => handleViewDeck(deck.name)}
+                    onClick={(e) => { e.stopPropagation(); handleViewDeck(deck.name); }}
                     className="btn btn-secondary flex-1 flex items-center justify-center gap-2"
                   >
                     <FolderOpen className="w-4 h-4" />
                     {t('common.view', 'View')}
                   </button>
                   <button
-                    onClick={() => handleStudy(deck.name)}
+                    onClick={(e) => { e.stopPropagation(); handleStudy(deck.name); }}
                     className="btn btn-primary"
                     title={t('decks.studyNow')}
                   >
@@ -338,7 +345,7 @@ export function Decks() {
                 </>
               ) : (
                 <button
-                  onClick={() => handleStudy(deck.name)}
+                  onClick={(e) => { e.stopPropagation(); handleStudy(deck.name); }}
                   className="btn btn-primary flex-1"
                 >
                   {t('nav.study')}
@@ -420,7 +427,24 @@ export function Decks() {
                     </h3>
                   </div>
 
-                  <p className="text-sm text-(--text-secondary) mb-4">{deck.card_count} cards</p>
+                  <div className="flex items-center gap-3 text-sm text-(--text-secondary) mb-4 flex-wrap">
+                    <span>{deck.card_count} cards</span>
+                    {(quizletStats[deck.id] ?? 0) > 0 && (
+                      <span className="flex items-center gap-1">
+                        <TrendingUp className="w-3.5 h-3.5 text-(--accent)" />
+                        {quizletStats[deck.id]} today
+                      </span>
+                    )}
+                    {(() => {
+                      const favCount = (JSON.parse(localStorage.getItem(`quizlet-fav-${deck.id}`) ?? '[]') as number[]).length;
+                      return favCount > 0 ? (
+                        <span className="flex items-center gap-1">
+                          <Star className="w-3.5 h-3.5 fill-(--accent) text-(--accent)" />
+                          {favCount} favorited
+                        </span>
+                      ) : null;
+                    })()}
+                  </div>
 
                   <button className="btn btn-primary mt-auto" onClick={e => { e.stopPropagation(); navigate(`/quizlet/${deck.id}/study`); }}>
                     Study

@@ -520,6 +520,19 @@ export function QuizletStudy() {
               />
             </div>
 
+            {/* Filter count label */}
+            <div className="flex justify-end">
+              {listFilter === 'learning' ? (
+                <span className="text-xs text-orange-400">{unknown.size} still learning</span>
+              ) : listFilter === 'mastered' ? (
+                <span className="text-xs text-green-400">{known.size} mastered</span>
+              ) : listFilter === 'favorites' ? (
+                <span className="text-xs text-(--accent)">{favorites.size} favorited</span>
+              ) : (
+                <span className="text-xs text-white/70">{filtered.length} terms</span>
+              )}
+            </div>
+
             {/* Card rows */}
             <div className="space-y-2">
               {filtered.length === 0 ? (

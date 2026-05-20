@@ -93,6 +93,18 @@ interface EndScreenProps {
 }
 
 function EndScreen({ title, total, known, unknown, onRestart, onRestartUnknown, onBack }: EndScreenProps) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    if (!canvasRef.current) return;
+    const myConfetti = confetti.create(canvasRef.current, { resize: true });
+    const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+    const hover  = getComputedStyle(document.documentElement).getPropertyValue('--accent-hover').trim();
+    const colors = [accent, hover, '#ffffff'];
+    myConfetti({ particleCount: 80, angle: 65,  spread: 55, origin: { x: 0, y: 1 }, colors });
+    myConfetti({ particleCount: 80, angle: 115, spread: 55, origin: { x: 1, y: 1 }, colors });
+    return () => myConfetti.reset();
+  }, []);
+
   const knownCount = known.size;
   const unknownCount = unknown.size;
   const leftCount = Math.max(0, total - knownCount - unknownCount);
@@ -109,109 +121,60 @@ function EndScreen({ title, total, known, unknown, onRestart, onRestartUnknown, 
       </button>
       <h1 className="text-2xl font-bold">{title}</h1>
       <ModeGrid />
-      <div className="card">
-        <h2 className="text-2xl font-bold mb-6">{msg}</h2>
-        <div className="flex flex-col sm:flex-row gap-8">
-          <div className="flex-1">
-            <p className="text-sm text-(--text-secondary) font-medium mb-4">How you're doing</p>
-            <div className="flex items-center gap-6">
-              <DonutChart percent={percent} />
-              <div className="space-y-2 flex-1">
-                {[
-                  { label: 'Know', count: knownCount, color: 'bg-green-500' },
-                  { label: 'Still learning', count: unknownCount, color: 'bg-orange-500' },
-                  ...(leftCount > 0 ? [{ label: 'Terms left', count: leftCount, color: 'bg-(--bg-tertiary)' }] : []),
-                ].map(({ label, count, color }) => (
-                  <div key={label}>
-                    <div className="flex justify-between text-sm mb-1">
-                      <span className="flex items-center gap-2">
-                        <span className={`w-3 h-3 rounded-sm inline-block ${color}`} />{label}
-                      </span>
-                      <span className="font-semibold">{count}</span>
+      <div className="card relative overflow-hidden">
+        <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none" />
+        <div className="relative">
+          <h2 className="text-2xl font-bold mb-6">{msg}</h2>
+          <div className="flex flex-col sm:flex-row gap-8">
+            <div className="flex-1">
+              <p className="text-sm text-(--text-secondary) font-medium mb-4">How you're doing</p>
+              <div className="flex items-center gap-6">
+                <DonutChart percent={percent} />
+                <div className="space-y-2 flex-1">
+                  {[
+                    { label: 'Know', count: knownCount, color: 'bg-green-500' },
+                    { label: 'Still learning', count: unknownCount, color: 'bg-orange-500' },
+                    ...(leftCount > 0 ? [{ label: 'Terms left', count: leftCount, color: 'bg-(--bg-tertiary)' }] : []),
+                  ].map(({ label, count, color }) => (
+                    <div key={label}>
+                      <div className="flex justify-between text-sm mb-1">
+                        <span className="flex items-center gap-2">
+                          <span className={`w-3 h-3 rounded-sm inline-block ${color}`} />{label}
+                        </span>
+                        <span className="font-semibold">{count}</span>
+                      </div>
+                      <div className="w-full bg-(--bg-tertiary) rounded-full h-1.5">
+                        <div className={`h-1.5 rounded-full transition-all ${color}`}
+                          style={{ width: `${total > 0 ? (count / total) * 100 : 0}%` }} />
+                      </div>
                     </div>
-                    <div className="w-full bg-(--bg-tertiary) rounded-full h-1.5">
-                      <div className={`h-1.5 rounded-full transition-all ${color}`}
-                        style={{ width: `${total > 0 ? (count / total) * 100 : 0}%` }} />
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="flex-1">
+              <p className="text-sm text-(--text-secondary) font-medium mb-4">Next steps</p>
+              <div className="space-y-3">
+                <button className="btn w-full flex items-center justify-center gap-2 opacity-40 cursor-not-allowed bg-(--bg-tertiary)" disabled title="Coming soon">
+                  <BookOpen className="w-4 h-4" /> Practice with questions
+                </button>
+                {unknownCount > 0 && (
+                  <button className="btn btn-secondary w-full" onClick={onRestartUnknown}>
+                    Focus on {unknownCount} still learning
+                  </button>
+                )}
+                <button className="text-sm text-(--accent) hover-underline w-full text-center" onClick={onRestart}>
+                  Restart Flashcards
+                </button>
               </div>
             </div>
           </div>
-          <div className="flex-1">
-            <p className="text-sm text-(--text-secondary) font-medium mb-4">Next steps</p>
-            <div className="space-y-3">
-              <button className="btn w-full flex items-center justify-center gap-2 opacity-40 cursor-not-allowed bg-(--bg-tertiary)" disabled title="Coming soon">
-                <BookOpen className="w-4 h-4" /> Practice with questions
-              </button>
-              {unknownCount > 0 && (
-                <button className="btn btn-secondary w-full" onClick={onRestartUnknown}>
-                  Focus on {unknownCount} still learning
-                </button>
-              )}
-              <button className="text-sm text-(--accent) hover-underline w-full text-center" onClick={onRestart}>
-                Restart Flashcards
-              </button>
-            </div>
-          </div>
         </div>
       </div>
     </div>
   );
 }
 
-function SimpleEndScreen({ title, total, onRestart, onBackToLast, onBack }: {
-  title: string; total: number;
-  onRestart: () => void; onBackToLast: () => void; onBack: () => void;
-}) {
-  useEffect(() => {
-    const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
-    const hover  = getComputedStyle(document.documentElement).getPropertyValue('--accent-hover').trim();
-    const colors = [accent, hover, '#ffffff'];
-    confetti({ particleCount: 100, spread: 70, origin: { x: 0.5, y: 0.55 }, colors });
-    setTimeout(() => confetti({ particleCount: 55, spread: 90, origin: { x: 0.2, y: 0.5 }, colors }), 320);
-    setTimeout(() => confetti({ particleCount: 55, spread: 90, origin: { x: 0.8, y: 0.5 }, colors }), 550);
-  }, []);
-
-  return (
-    <div className="max-w-3xl mx-auto space-y-6 pb-8">
-      <button onClick={onBack} className="flex items-center gap-2 text-(--text-secondary) hover-accent text-sm">
-        <ArrowLeft className="w-4 h-4" /> Back to Decks
-      </button>
-      <h1 className="text-2xl font-bold">{title}</h1>
-      <ModeGrid />
-      <div className="card relative overflow-hidden">
-        <div className="absolute top-3 right-4 text-5xl leading-none select-none pointer-events-none" style={{ filter: 'drop-shadow(0 2px 12px rgba(0,0,0,0.5))' }}>
-          🎉
-        </div>
-        <h2 className="text-2xl font-bold mb-2">Way to go!</h2>
-        <p className="text-(--text-secondary) mb-6">You've reviewed all {total} cards.</p>
-        <div className="flex gap-8 mb-6">
-          <div>
-            <div className="text-3xl font-bold text-(--accent)">{total}</div>
-            <div className="text-xs text-(--text-secondary) mt-0.5">terms reviewed</div>
-          </div>
-          <div>
-            <div className="text-3xl font-bold text-green-400">0</div>
-            <div className="text-xs text-(--text-secondary) mt-0.5">terms left</div>
-          </div>
-        </div>
-        <p className="text-sm text-(--text-secondary) font-medium mb-3">Next steps</p>
-        <div className="space-y-3 max-w-sm">
-          <button className="btn w-full flex items-center justify-center gap-2 opacity-40 cursor-not-allowed bg-(--bg-tertiary)" disabled title="Coming soon">
-            <BookOpen className="w-4 h-4" /> Practice with questions
-          </button>
-          <button className="btn btn-secondary w-full" onClick={onRestart}>
-            Restart Flashcards
-          </button>
-          <button className="text-sm text-(--accent) hover-underline w-full text-center block" onClick={onBackToLast}>
-            Back to last question
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export function QuizletStudy() {
   const { id } = useParams<{ id: string }>();
@@ -467,13 +430,10 @@ export function QuizletStudy() {
 
   if (sessionDone && !trackProgress) {
     return (
-      <SimpleEndScreen
-        title={title}
-        total={queue.length}
-        onRestart={() => restart()}
-        onBackToLast={() => { setSessionDone(false); advance(queue.length - 1); }}
-        onBack={() => navigate('/')}
-      />
+      <EndScreen title={title} total={queue.length}
+        known={new Set<number>(queue.map(c => c.id))} unknown={new Set<number>()}
+        onRestart={() => restart()} onBack={() => navigate('/')}
+        onRestartUnknown={() => {}} />
     );
   }
 
@@ -780,7 +740,7 @@ export function QuizletStudy() {
 
       {/* Options panel */}
       {showOptions && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-black/50" onClick={closeOptions}>
+        <div className="fixed inset-0 z-[100] flex justify-end bg-black/50" onClick={closeOptions}>
           <div
             className={`${closingOptions ? 'options-panel-closing' : 'options-panel'} bg-(--bg-secondary) border-l border-(--bg-tertiary) w-full max-w-sm h-full overflow-y-auto shadow-2xl flex flex-col divide-y divide-white/8`}
             onClick={e => e.stopPropagation()}

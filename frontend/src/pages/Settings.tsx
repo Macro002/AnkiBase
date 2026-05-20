@@ -96,20 +96,21 @@ export function Settings() {
 
           <div className="space-y-4">
             {/* Presets */}
-            <div className="flex flex-wrap gap-3">
+            <div className="flex flex-wrap gap-4">
               {ACCENT_PRESETS.map(p => (
                 <button
                   key={p.name}
                   onClick={() => { saveAccentColor(p.accent, p.hover); setAccentColor(p.accent); }}
-                  className="flex flex-col items-center gap-1.5 group"
+                  className="flex flex-col items-center gap-1.5 group w-12"
                   title={p.name}
                 >
                   <div
-                    className="w-8 h-8 rounded-full ring-2 ring-offset-2 ring-offset-(--bg-primary) transition-all"
+                    className="w-8 h-8 rounded-full transition-all"
                     style={{
                       background: p.accent,
-                      outline: accentColor === p.accent ? `3px solid ${p.accent}` : '3px solid transparent',
-                      outlineOffset: '3px',
+                      boxShadow: accentColor === p.accent
+                        ? `0 0 0 2px var(--bg-primary), 0 0 0 4px ${p.accent}`
+                        : 'none',
                     }}
                   />
                   <span className="text-xs text-(--text-secondary) group-hover:text-(--text-primary) transition-colors">{p.name}</span>

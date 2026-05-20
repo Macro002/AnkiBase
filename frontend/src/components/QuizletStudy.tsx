@@ -172,7 +172,11 @@ export function QuizletStudy() {
 
   const [listFilter, setListFilter] = useState<'all' | 'favorites' | 'learning' | 'mastered' | 'alpha'>('all');
   const [listSearch, setListSearch] = useState('');
-  const [expandedCardId, setExpandedCardId] = useState<number | null>(null);
+  const [expandedImage, setExpandedImage] = useState<{
+    src: string;
+    fromRect: { top: number; left: number; width: number; height: number };
+    phase: 'from' | 'to' | 'closing';
+  } | null>(null);
 
   const [index, setIndex] = useState(0);
   const flipHook = useFlashcard({ flipDirection: 'bt' });
@@ -282,6 +286,14 @@ export function QuizletStudy() {
     setSessionDone(false);
     advance(0);
   };
+
+  useEffect(() => {
+    if (expandedImage?.phase !== 'from') return;
+    const t = setTimeout(() => {
+      setExpandedImage(prev => prev ? { ...prev, phase: 'to' } : null);
+    }, 16);
+    return () => clearTimeout(t);
+  }, [expandedImage?.phase]);
 
   useEffect(() => {
     if (!isAutoplay || trackProgress) return;
@@ -573,8 +585,7 @@ export function QuizletStudy() {
                 return (
                   <div
                     key={card.id}
-                    className="relative bg-(--bg-secondary) rounded-xl overflow-hidden cursor-pointer hover:ring-1 hover:ring-(--accent)/30 transition-all"
-                    onClick={() => setExpandedCardId(card.id)}
+                    className="relative bg-(--bg-secondary) rounded-xl overflow-hidden"
                   >
                     {/* Star top-right */}
                     <button
@@ -599,9 +610,18 @@ export function QuizletStudy() {
                           {isUnknownCard && <span className="text-[10px] font-semibold text-orange-400 ml-auto">Learning</span>}
                         </div>
                         <div className="flex-1 flex gap-2 min-h-0 items-center">
-                          <p className="text-sm text-(--text-secondary) leading-snug flex-1">{card.back}</p>
+                          <p className="text-sm text-white leading-snug flex-1">{card.back}</p>
                           {card.image && (
-                            <img src={card.image} alt="" className="shrink-0 rounded object-contain" style={{ width: '56px', height: '56px' }} />
+                            <img
+                              src={card.image} alt=""
+                              className="shrink-0 rounded object-contain cursor-zoom-in hover:opacity-85 transition-opacity"
+                              style={{ width: '56px', height: '56px' }}
+                              onClick={e => {
+                                e.stopPropagation();
+                                const r = e.currentTarget.getBoundingClientRect();
+                                setExpandedImage({ src: card.image!, fromRect: { top: r.top, left: r.left, width: r.width, height: r.height }, phase: 'from' });
+                              }}
+                            />
                           )}
                         </div>
                       </div>
@@ -614,56 +634,54 @@ export function QuizletStudy() {
         );
       })()}
 
-      {/* Expanded card modal */}
-      {expandedCardId !== null && (() => {
-        const ec = cards.find(c => c.id === expandedCardId);
-        if (!ec) return null;
-        const ecFaved = favorites.has(ec.id);
-        const ecKnown = known.has(ec.id);
-        const ecUnknown = unknown.has(ec.id);
+      {/* Expanded image overlay */}
+      {expandedImage && (() => {
+        const { src, fromRect, phase } = expandedImage;
+        const expandW = Math.min(window.innerWidth * 0.88, 800);
+        const expandH = Math.min(window.innerHeight * 0.82, 720);
+        const toStyle: React.CSSProperties = {
+          top: Math.max((window.innerHeight - expandH) / 2, 20),
+          left: Math.max((window.innerWidth - expandW) / 2, 20),
+          width: expandW,
+          height: expandH,
+          opacity: 1,
+          borderRadius: '0.75rem',
+        };
+        const fromStyle: React.CSSProperties = {
+          top: fromRect.top,
+          left: fromRect.left,
+          width: fromRect.width,
+          height: fromRect.height,
+          opacity: phase === 'closing' ? 0 : 1,
+          borderRadius: '0.25rem',
+        };
         return (
           <div
-            className="fixed inset-0 z-50 flex items-center justify-center p-4"
-            style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }}
-            onClick={() => setExpandedCardId(null)}
+            className="fixed inset-0 z-50"
+            style={{
+              background: phase === 'to' ? 'rgba(0,0,0,0.38)' : 'transparent',
+              transition: 'background 0.38s ease',
+            }}
+            onClick={() => setExpandedImage(prev => prev ? { ...prev, phase: 'closing' } : null)}
           >
-            <div
-              className="bg-(--bg-secondary) rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden"
+            <img
+              src={src}
+              alt=""
               onClick={e => e.stopPropagation()}
-            >
-              {/* Modal header */}
-              <div className="flex items-center justify-between px-4 pt-4 pb-0">
-                <div className="flex items-center gap-2">
-                  {ecKnown && <span className="text-xs font-semibold text-green-400">Mastered</span>}
-                  {ecUnknown && <span className="text-xs font-semibold text-orange-400">Still learning</span>}
-                </div>
-                <div className="flex items-center gap-1">
-                  <button onClick={e => toggleFavorite(ec.id, e)} className="p-1.5 rounded-lg hover:bg-(--bg-tertiary) transition-colors">
-                    <Star className={`w-4 h-4 transition-colors ${ecFaved ? 'fill-(--accent) text-(--accent)' : 'text-(--text-secondary) hover:text-(--accent)'}`} />
-                  </button>
-                  <button onClick={() => setExpandedCardId(null)} className="p-1.5 rounded-lg hover:bg-(--bg-tertiary) transition-colors text-(--text-secondary) hover:text-white">
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-
-              {/* Modal body: two halves */}
-              <div className="flex" style={{ minHeight: '200px' }}>
-                {/* Left: TERM */}
-                <div className="flex-1 flex flex-col p-5 border-r border-(--bg-tertiary)">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-(--text-secondary) mb-3">Term</span>
-                  <p className="text-lg font-medium leading-snug">{ec.front}</p>
-                </div>
-                {/* Right: DEFINITION + image */}
-                <div className="flex-1 flex flex-col p-5">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-(--text-secondary) mb-3">Definition</span>
-                  <p className="text-base text-(--text-secondary) leading-snug mb-3">{ec.back}</p>
-                  {ec.image && (
-                    <img src={ec.image} alt="" className="w-full object-contain rounded-lg" style={{ maxHeight: '160px' }} />
-                  )}
-                </div>
-              </div>
-            </div>
+              style={{
+                position: 'fixed',
+                objectFit: 'contain',
+                cursor: 'zoom-out',
+                transition: 'top 0.4s cubic-bezier(0.22,1,0.36,1), left 0.4s cubic-bezier(0.22,1,0.36,1), width 0.4s cubic-bezier(0.22,1,0.36,1), height 0.4s cubic-bezier(0.22,1,0.36,1), opacity 0.36s ease, border-radius 0.4s ease',
+                zIndex: 60,
+                ...(phase === 'to' ? toStyle : fromStyle),
+              }}
+              onTransitionEnd={e => {
+                if (e.propertyName === 'opacity' && expandedImage.phase === 'closing') {
+                  setExpandedImage(null);
+                }
+              }}
+            />
           </div>
         );
       })()}

@@ -170,6 +170,9 @@ export function QuizletStudy() {
   const [loading, setLoading] = useState(true);
   const [studiedToday, setStudiedToday] = useState(0);
 
+  const [listFilter, setListFilter] = useState<'all' | 'favorites' | 'learning' | 'mastered' | 'alpha'>('all');
+  const [listSearch, setListSearch] = useState('');
+
   const [index, setIndex] = useState(0);
   const flipHook = useFlashcard({ flipDirection: 'bt' });
   const flipped = flipHook.state === 'back';
@@ -473,6 +476,82 @@ export function QuizletStudy() {
       <div className="block sm:hidden">
         <ModeGrid mobile />
       </div>
+
+      {/* Card list */}
+      {(() => {
+        let filtered = cards;
+        if (listFilter === 'favorites') filtered = filtered.filter(c => favorites.has(c.id));
+        else if (listFilter === 'learning') filtered = filtered.filter(c => unknown.has(c.id));
+        else if (listFilter === 'mastered') filtered = filtered.filter(c => known.has(c.id));
+        if (listFilter === 'alpha') filtered = [...filtered].sort((a, b) => a.front.localeCompare(b.front));
+        if (listSearch.trim()) {
+          const q = listSearch.toLowerCase();
+          filtered = filtered.filter(c => c.front.toLowerCase().includes(q) || c.back.toLowerCase().includes(q));
+        }
+        return (
+          <div className="space-y-3 pt-4">
+            {/* Header row */}
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm font-semibold">Terms in this set ({cards.length})</span>
+              <select
+                value={listFilter}
+                onChange={e => setListFilter(e.target.value as typeof listFilter)}
+                className="text-xs bg-(--bg-secondary) border border-(--bg-tertiary) rounded-lg px-3 py-1.5 text-(--text-secondary) cursor-pointer focus:outline-none focus:border-(--accent)"
+              >
+                <option value="all">All</option>
+                <option value="favorites">Favorites</option>
+                <option value="learning">Still learning</option>
+                <option value="mastered">Mastered</option>
+                <option value="alpha">Alphabetical</option>
+              </select>
+            </div>
+
+            {/* Search bar */}
+            <div className="relative">
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-(--text-secondary) pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search terms..."
+                value={listSearch}
+                onChange={e => setListSearch(e.target.value)}
+                className="w-full bg-(--bg-secondary) border border-(--bg-tertiary) rounded-lg pl-8 pr-4 py-2 text-sm placeholder:text-(--text-secondary) focus:outline-none focus:border-(--accent)"
+              />
+            </div>
+
+            {/* Card rows */}
+            <div className="space-y-2">
+              {filtered.length === 0 ? (
+                <p className="text-sm text-(--text-secondary) text-center py-6">No terms match.</p>
+              ) : filtered.map(card => {
+                const isFavedCard = favorites.has(card.id);
+                const isKnownCard = known.has(card.id);
+                const isUnknownCard = unknown.has(card.id);
+                return (
+                  <div key={card.id} className="flex items-stretch gap-0 bg-(--bg-secondary) rounded-xl overflow-hidden">
+                    {card.image && (
+                      <img src={card.image} alt="" className="w-20 h-full object-cover shrink-0" style={{ minHeight: '64px' }} />
+                    )}
+                    <div className="flex-1 flex items-center gap-4 px-4 py-3 min-w-0">
+                      <span className="flex-1 text-sm font-medium truncate">{card.front}</span>
+                      <span className="text-(--text-secondary) text-xs shrink-0">—</span>
+                      <span className="flex-1 text-sm text-(--text-secondary) truncate">{card.back}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 pr-3 shrink-0">
+                      {isKnownCard && <span className="text-xs text-green-400 font-medium">Mastered</span>}
+                      {isUnknownCard && <span className="text-xs text-orange-400 font-medium">Learning</span>}
+                      <button onClick={e => toggleFavorite(card.id, e)} className="p-1">
+                        <Star className={`w-3.5 h-3.5 transition-colors ${isFavedCard ? 'fill-(--accent) text-(--accent)' : 'text-(--bg-tertiary) hover:text-(--accent)'}`} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       <style>{`
         /* Override library defaults for dark theme */

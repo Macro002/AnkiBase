@@ -320,7 +320,7 @@ export function QuizletStudy() {
           {!isBack ? (
             <button
               className={`flex items-start gap-1.5 text-xs transition-colors max-w-xs text-left ${hintShown ? 'text-(--accent)' : 'text-(--text-secondary) hover-accent'}`}
-              onClick={e => { e.stopPropagation(); setHintShown(h => !h); flipHook.resetCardState(); }}
+              onClick={e => { e.stopPropagation(); setHintShown(h => !h); }}
             >
               <Lightbulb className="w-3.5 h-3.5 mt-0.5 shrink-0" />
               {hintShown
@@ -338,13 +338,11 @@ export function QuizletStudy() {
         </div>
 
         {/* Content */}
-        <div className="flex-1 flex items-center px-6 py-4 min-h-0">
+        <div className="flex-1 flex items-center justify-center px-6 py-4 min-h-0">
           {hasImage ? (
-            <div className="flex items-center gap-6 w-full">
-              <div className="flex-1 flex flex-col items-start justify-center">
-                <p className="text-2xl font-medium leading-snug">{text}</p>
-              </div>
-              <img src={current!.image!} alt="" className="w-40 h-32 object-cover rounded-lg shrink-0" />
+            <div className="flex items-center justify-center gap-8 w-full">
+              <p className="text-2xl font-medium leading-snug text-center max-w-[44%]">{text}</p>
+              <img src={current!.image!} alt="" className="max-w-[44%] max-h-52 w-auto h-auto object-contain rounded-lg shrink-0" />
             </div>
           ) : (
             <div className="w-full flex flex-col items-center justify-center text-center">
@@ -384,7 +382,7 @@ export function QuizletStudy() {
             flipHook={flipHook}
             front={{ html: renderFaceContent(false) }}
             back={{ html: renderFaceContent(true) }}
-            style={{ height: '22rem' }}
+            style={{ height: '28rem' }}
           />
         </div>
       </div>
@@ -467,15 +465,15 @@ export function QuizletStudy() {
 
         /* Card slide animations */
         @keyframes cardSlideForward {
-          from { opacity: 0.5; transform: rotateY(-70deg) translateX(60px) scale(0.88); }
-          to   { opacity: 1;   transform: rotateY(0deg) translateX(0) scale(1); }
+          from { opacity: 0; transform: translateX(60px) rotateY(-12deg) scale(0.96); }
+          to   { opacity: 1; transform: translateX(0) rotateY(0deg) scale(1); }
         }
         @keyframes cardSlideBack {
-          from { opacity: 0.5; transform: rotateY(70deg) translateX(-60px) scale(0.88); }
-          to   { opacity: 1;   transform: rotateY(0deg) translateX(0) scale(1); }
+          from { opacity: 0; transform: translateX(-60px) rotateY(12deg) scale(0.96); }
+          to   { opacity: 1; transform: translateX(0) rotateY(0deg) scale(1); }
         }
-        .card-slide-right { animation: cardSlideForward 0.48s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
-        .card-slide-left  { animation: cardSlideBack    0.48s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+        .card-slide-right { animation: cardSlideForward 0.38s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+        .card-slide-left  { animation: cardSlideBack    0.38s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
       `}</style>
     </div>
   );

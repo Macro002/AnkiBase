@@ -172,6 +172,7 @@ export function QuizletStudy() {
 
   const [listFilter, setListFilter] = useState<'all' | 'favorites' | 'learning' | 'mastered' | 'alpha'>('all');
   const [listSearch, setListSearch] = useState('');
+  const [expandedCardId, setExpandedCardId] = useState<number | null>(null);
 
   const [index, setIndex] = useState(0);
   const flipHook = useFlashcard({ flipDirection: 'bt' });
@@ -187,6 +188,8 @@ export function QuizletStudy() {
   const [unknown, setUnknown] = useState<Set<number>>(new Set());
   const [history, setHistory] = useState<Array<{ cardId: number; wasKnown: boolean }>>([]);
   const [sessionDone, setSessionDone] = useState(false);
+
+  const [feedback, setFeedback] = useState<'known' | 'unknown' | null>(null);
 
   const [isShuffled, setIsShuffled] = useState(false);
   const [isAutoplay, setIsAutoplay] = useState(false);
@@ -229,7 +232,7 @@ export function QuizletStudy() {
   };
 
   const markCard = (isKnown: boolean) => {
-    if (!current) return;
+    if (!current || feedback) return;
     quizlet.review(deckId, current.id, isKnown ? 2 : 1);
     setStudiedToday(t => t + 1);
     setHistory(prev => [...prev, { cardId: current.id, wasKnown: isKnown }]);
@@ -240,8 +243,14 @@ export function QuizletStudy() {
       setUnknown(prev => new Set([...prev, current.id]));
       setKnown(prev => { const n = new Set(prev); n.delete(current.id); return n; });
     }
-    if (index >= queue.length - 1) setSessionDone(true);
-    else advance(index + 1);
+    const isLast = index >= queue.length - 1;
+    const capturedIndex = index;
+    setFeedback(isKnown ? 'known' : 'unknown');
+    setTimeout(() => {
+      setFeedback(null);
+      if (isLast) setSessionDone(true);
+      else advance(capturedIndex + 1);
+    }, 430);
   };
 
   const undoLast = () => {
@@ -399,8 +408,28 @@ export function QuizletStudy() {
       <div style={{ perspective: '1100px' }}>
         <div
           key={index}
-          className={slideDir === 'right' ? 'card-slide-right' : 'card-slide-left'}
+          className={`relative ${
+            feedback
+              ? (feedback === 'unknown' ? 'card-swipe-left' : 'card-swipe-right')
+              : (slideDir === 'right' ? 'card-slide-right' : 'card-slide-left')
+          }`}
         >
+          {feedback && (
+            <div
+              className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none"
+              style={{
+                border: `3px solid ${feedback === 'unknown' ? '#f97316' : '#4ade80'}`,
+                borderRadius: '0.75rem',
+              }}
+            >
+              <span
+                className={`text-2xl font-bold px-6 py-2.5 rounded-xl ${feedback === 'unknown' ? 'text-orange-400' : 'text-green-400'}`}
+                style={{ background: feedback === 'unknown' ? 'rgba(249,115,22,0.15)' : 'rgba(74,222,128,0.15)' }}
+              >
+                {feedback === 'unknown' ? 'Still learning' : 'Got it!'}
+              </span>
+            </div>
+          )}
           <Flashcard
             flipHook={flipHook}
             front={{ html: renderFaceContent(false) }}
@@ -424,22 +453,22 @@ export function QuizletStudy() {
         <div className="flex items-center gap-2">
           <button
             className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
-              trackProgress ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
+              trackProgress ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30 disabled:opacity-30'
                 : 'bg-(--bg-secondary) text-(--text-secondary) hover-accent disabled:opacity-30'
             }`}
             onClick={() => trackProgress ? markCard(false) : goPrev()}
-            disabled={!trackProgress && index === 0}
+            disabled={(!trackProgress && index === 0) || !!feedback}
           >
             {trackProgress ? <X className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
           </button>
           <span className="text-sm text-(--text-secondary) w-16 text-center tabular-nums">{index + 1} / {queue.length}</span>
           <button
             className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
-              trackProgress ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
+              trackProgress ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30 disabled:opacity-30'
                 : 'bg-(--bg-secondary) text-(--text-secondary) hover-accent disabled:opacity-30'
             }`}
             onClick={() => trackProgress ? markCard(true) : goNext()}
-            disabled={!trackProgress && index === queue.length - 1}
+            disabled={(!trackProgress && index === queue.length - 1) || !!feedback}
           >
             {trackProgress ? <Check className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
           </button>
@@ -469,7 +498,7 @@ export function QuizletStudy() {
       {/* Progress bar */}
       <div className="w-full bg-(--bg-tertiary) rounded-full h-1 overflow-hidden">
         <div className="h-full rounded-full transition-all duration-300"
-          style={{ width: `${progressPercent}%`, background: trackProgress ? 'linear-gradient(to right,#4ade80,#22c55e)' : 'var(--accent)' }} />
+          style={{ width: `${progressPercent}%`, background: 'var(--accent)' }} />
       </div>
 
       {/* Mobile mode grid — below progress bar */}
@@ -542,25 +571,98 @@ export function QuizletStudy() {
                 const isKnownCard = known.has(card.id);
                 const isUnknownCard = unknown.has(card.id);
                 return (
-                  <div key={card.id} className="flex items-stretch gap-0 bg-(--bg-secondary) rounded-xl overflow-hidden">
-                    {card.image && (
-                      <img src={card.image} alt="" className="w-20 h-full object-cover shrink-0" style={{ minHeight: '64px' }} />
-                    )}
-                    <div className="flex-1 flex items-center gap-4 px-4 py-3 min-w-0">
-                      <span className="flex-1 text-sm font-medium truncate">{card.front}</span>
-                      <span className="text-(--text-secondary) text-xs shrink-0">—</span>
-                      <span className="flex-1 text-sm text-(--text-secondary) truncate">{card.back}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 pr-3 shrink-0">
-                      {isKnownCard && <span className="text-xs text-green-400 font-medium">Mastered</span>}
-                      {isUnknownCard && <span className="text-xs text-orange-400 font-medium">Learning</span>}
-                      <button onClick={e => toggleFavorite(card.id, e)} className="p-1">
-                        <Star className={`w-3.5 h-3.5 transition-colors ${isFavedCard ? 'fill-(--accent) text-(--accent)' : 'text-(--bg-tertiary) hover:text-(--accent)'}`} />
-                      </button>
+                  <div
+                    key={card.id}
+                    className="relative bg-(--bg-secondary) rounded-xl overflow-hidden cursor-pointer hover:ring-1 hover:ring-(--accent)/30 transition-all"
+                    onClick={() => setExpandedCardId(card.id)}
+                  >
+                    {/* Star top-right */}
+                    <button
+                      onClick={e => toggleFavorite(card.id, e)}
+                      className="absolute top-2 right-2 z-10 p-1"
+                    >
+                      <Star className={`w-3.5 h-3.5 transition-colors ${isFavedCard ? 'fill-(--accent) text-(--accent)' : 'text-(--bg-tertiary) hover:text-(--accent)'}`} />
+                    </button>
+
+                    {/* Two-half split */}
+                    <div className="flex" style={{ minHeight: '88px' }}>
+                      {/* Left: TERM */}
+                      <div className="flex-1 flex flex-col p-3 border-r border-(--bg-tertiary)">
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-(--text-secondary) mb-1.5">Term</span>
+                        <p className="text-sm font-medium leading-snug flex-1 flex items-center">{card.front}</p>
+                      </div>
+                      {/* Right: DEFINITION + image */}
+                      <div className="flex-1 flex flex-col p-3 pr-8">
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <span className="text-[10px] font-semibold uppercase tracking-wider text-(--text-secondary)">Definition</span>
+                          {isKnownCard && <span className="text-[10px] font-semibold text-green-400 ml-auto">Mastered</span>}
+                          {isUnknownCard && <span className="text-[10px] font-semibold text-orange-400 ml-auto">Learning</span>}
+                        </div>
+                        <div className="flex-1 flex gap-2 min-h-0 items-center">
+                          <p className="text-sm text-(--text-secondary) leading-snug flex-1">{card.back}</p>
+                          {card.image && (
+                            <img src={card.image} alt="" className="shrink-0 rounded object-contain" style={{ width: '56px', height: '56px' }} />
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 );
               })}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Expanded card modal */}
+      {expandedCardId !== null && (() => {
+        const ec = cards.find(c => c.id === expandedCardId);
+        if (!ec) return null;
+        const ecFaved = favorites.has(ec.id);
+        const ecKnown = known.has(ec.id);
+        const ecUnknown = unknown.has(ec.id);
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }}
+            onClick={() => setExpandedCardId(null)}
+          >
+            <div
+              className="bg-(--bg-secondary) rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden"
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Modal header */}
+              <div className="flex items-center justify-between px-4 pt-4 pb-0">
+                <div className="flex items-center gap-2">
+                  {ecKnown && <span className="text-xs font-semibold text-green-400">Mastered</span>}
+                  {ecUnknown && <span className="text-xs font-semibold text-orange-400">Still learning</span>}
+                </div>
+                <div className="flex items-center gap-1">
+                  <button onClick={e => toggleFavorite(ec.id, e)} className="p-1.5 rounded-lg hover:bg-(--bg-tertiary) transition-colors">
+                    <Star className={`w-4 h-4 transition-colors ${ecFaved ? 'fill-(--accent) text-(--accent)' : 'text-(--text-secondary) hover:text-(--accent)'}`} />
+                  </button>
+                  <button onClick={() => setExpandedCardId(null)} className="p-1.5 rounded-lg hover:bg-(--bg-tertiary) transition-colors text-(--text-secondary) hover:text-white">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Modal body: two halves */}
+              <div className="flex" style={{ minHeight: '200px' }}>
+                {/* Left: TERM */}
+                <div className="flex-1 flex flex-col p-5 border-r border-(--bg-tertiary)">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-(--text-secondary) mb-3">Term</span>
+                  <p className="text-lg font-medium leading-snug">{ec.front}</p>
+                </div>
+                {/* Right: DEFINITION + image */}
+                <div className="flex-1 flex flex-col p-5">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-(--text-secondary) mb-3">Definition</span>
+                  <p className="text-base text-(--text-secondary) leading-snug mb-3">{ec.back}</p>
+                  {ec.image && (
+                    <img src={ec.image} alt="" className="w-full object-contain rounded-lg" style={{ maxHeight: '160px' }} />
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         );
@@ -581,7 +683,7 @@ export function QuizletStudy() {
           color: inherit !important;
         }
 
-        /* Card slide animations */
+        /* Card slide-in animations */
         @keyframes cardSlideForward {
           from { opacity: 0; transform: translateX(60px) rotateY(-12deg) scale(0.96); }
           to   { opacity: 1; transform: translateX(0) rotateY(0deg) scale(1); }
@@ -592,6 +694,22 @@ export function QuizletStudy() {
         }
         .card-slide-right { animation: cardSlideForward 0.38s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
         .card-slide-left  { animation: cardSlideBack    0.38s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+
+        /* Mark card swipe-away animations */
+        @keyframes swipeLeft {
+          0%   { transform: translateX(0)     rotateZ(0deg);   opacity: 1; }
+          20%  { transform: translateX(-18px) rotateZ(5deg);   opacity: 1; }
+          65%  { opacity: 0.5; }
+          100% { transform: translateX(-145%) rotateZ(22deg);  opacity: 0; }
+        }
+        @keyframes swipeRight {
+          0%   { transform: translateX(0)    rotateZ(0deg);    opacity: 1; }
+          20%  { transform: translateX(18px) rotateZ(-5deg);   opacity: 1; }
+          65%  { opacity: 0.5; }
+          100% { transform: translateX(145%) rotateZ(-22deg);  opacity: 0; }
+        }
+        .card-swipe-left  { animation: swipeLeft  0.43s cubic-bezier(0.4, 0, 0.9, 0.6) forwards; }
+        .card-swipe-right { animation: swipeRight 0.43s cubic-bezier(0.4, 0, 0.9, 0.6) forwards; }
       `}</style>
     </div>
   );

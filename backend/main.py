@@ -1894,8 +1894,17 @@ def _scrape_quizlet_sync(url: str) -> dict:
     if not texts:
         raise Exception("No flashcard terms found. The deck may be private or the URL is invalid.")
 
+    def _unwrap_cdn_image(url):
+        # Quizlet serves images through Cloudflare Image Resizing with baked-in h/w/fit params.
+        # Strip the cdn-cgi wrapper to get the original full-resolution URL.
+        if not url:
+            return url
+        import re
+        m = re.search(r'cdn-cgi/image/[^/]+/(https?://.+)$', url)
+        return m.group(1) if m else url
+
     cards = [
-        {"front": texts[i], "back": texts[i + 1], "image": images[i // 2] if images and i // 2 < len(images) else None}
+        {"front": texts[i], "back": texts[i + 1], "image": _unwrap_cdn_image(images[i // 2] if images and i // 2 < len(images) else None)}
         for i in range(0, len(texts) - 1, 2)
     ]
     return {"title": title or "Quizlet Import", "cards": cards}

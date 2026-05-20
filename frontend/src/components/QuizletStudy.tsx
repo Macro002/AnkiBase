@@ -338,18 +338,20 @@ export function QuizletStudy() {
         </div>
 
         {/* Content */}
-        <div className="flex-1 flex items-center justify-center px-6 py-4 min-h-0">
-          {hasImage ? (
-            <div className="flex items-center justify-center gap-8 w-full">
-              <p className="text-2xl font-medium leading-snug text-center max-w-[44%]">{text}</p>
-              <img src={current!.image!} alt="" className="max-w-[44%] max-h-52 w-auto h-auto object-contain rounded-lg shrink-0" />
+        {hasImage ? (
+          <div className="flex-1 flex min-h-0">
+            <div className="flex-1 flex items-center justify-center px-6 py-4 border-r border-(--bg-tertiary)">
+              <p className="text-2xl font-medium leading-snug text-center">{text}</p>
             </div>
-          ) : (
-            <div className="w-full flex flex-col items-center justify-center text-center">
-              <p className="text-2xl font-medium leading-snug">{text}</p>
+            <div className="flex-1 p-4">
+              <img src={current!.image!} alt="" className="w-full h-full object-contain rounded-lg" />
             </div>
-          )}
-        </div>
+          </div>
+        ) : (
+          <div className="flex-1 flex items-center justify-center px-6 py-4 min-h-0">
+            <p className="text-2xl font-medium leading-snug text-center w-full">{text}</p>
+          </div>
+        )}
 
         <div className="pb-4 shrink-0" />
       </div>

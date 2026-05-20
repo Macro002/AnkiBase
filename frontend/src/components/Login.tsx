@@ -38,7 +38,7 @@ export function Login() {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-(--bg-primary)">
-      <div className="card w-full max-w-md">
+      <div className="card w-full max-w-md shadow-none border border-(--bg-tertiary)">
         <div className="flex items-center justify-center mb-6">
           <Logo className="w-16 h-16" />
         </div>

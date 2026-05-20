@@ -195,9 +195,15 @@ export function QuizletStudy() {
 
   const [feedback, setFeedback] = useState<'known' | 'unknown' | null>(null);
 
+  const [showOptions, setShowOptions] = useState(false);
+  const [studyStarredOnly, setStudyStarredOnly] = useState(false);
+  const [frontSide, setFrontSide] = useState<'term' | 'definition'>('term');
+  const [showShortcuts, setShowShortcuts] = useState(false);
+
   const [isShuffled, setIsShuffled] = useState(false);
   const [isAutoplay, setIsAutoplay] = useState(false);
   const autoplayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const keyHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {});
 
   const current = queue[index];
 
@@ -225,12 +231,30 @@ export function QuizletStudy() {
   const goNext = useCallback(() => { if (index < queue.length - 1) advance(index + 1); }, [index, queue.length, advance]);
   const goPrev = useCallback(() => { if (index > 0) advance(index - 1); }, [index, advance]);
 
-  const toggleFavorite = (cardId: number, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const starCard = (cardId: number) => {
     setFavorites(prev => {
       const next = new Set(prev);
       next.has(cardId) ? next.delete(cardId) : next.add(cardId);
       localStorage.setItem(`quizlet-fav-${deckId}`, JSON.stringify([...next]));
+      return next;
+    });
+  };
+
+  const toggleFavorite = (cardId: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    starCard(cardId);
+  };
+
+  const toggleStudyStarred = (currentFavorites: Set<number>) => {
+    setStudyStarredOnly(prev => {
+      const next = !prev;
+      const base = next
+        ? (currentFavorites.size > 0 ? cards.filter(c => currentFavorites.has(c.id)) : cards)
+        : cards;
+      setQueue(isShuffled ? shuffle([...base]) : [...base]);
+      setKnown(new Set()); setUnknown(new Set()); setHistory([]);
+      setSessionDone(false);
+      advance(0);
       return next;
     });
   };
@@ -306,6 +330,28 @@ export function QuizletStudy() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAutoplay, flipped, index, queue.length, trackProgress, advance]);
 
+  // Keyboard shortcuts — ref keeps handler fresh without re-registering the listener
+  keyHandlerRef.current = (e: KeyboardEvent) => {
+    if (showOptions) return;
+    const tag = (e.target as HTMLElement).tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    switch (e.key) {
+      case 'ArrowRight': e.preventDefault(); trackProgress ? markCard(true)  : goNext(); break;
+      case 'ArrowLeft':  e.preventDefault(); trackProgress ? markCard(false) : goPrev(); break;
+      case ' ':          e.preventDefault(); flipHook.flip(); break;
+      case 's': case 'S': if (current) starCard(current.id); break;
+      case 'h': case 'H': toggleShuffle(); break;
+      case 'd': case 'D': setFrontSide('definition'); break;
+      case 't': case 'T': setFrontSide('term'); break;
+    }
+  };
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => keyHandlerRef.current(e);
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   const progressPercent = queue.length > 0
     ? trackProgress
       ? Math.round(((known.size + unknown.size) / queue.length) * 100)
@@ -350,8 +396,12 @@ export function QuizletStudy() {
 
   // Card face content — library handles backface-visibility and flip transform
   const renderFaceContent = (isBack: boolean) => {
-    const text = isBack ? current?.back : current?.front;
-    const hasImage = !isBack && !!current?.image;
+    const swapped = frontSide === 'definition';
+    const showingTerm = swapped ? isBack : !isBack;
+    const text = showingTerm ? current?.front : current?.back;
+    const hasImage = showingTerm && !!current?.image;
+    const hintTarget = swapped ? (current?.front ?? '') : (current?.back ?? '');
+    const backLabel = swapped ? 'Term' : 'Definition';
     return (
       <div className="flex flex-col h-full">
         {/* Top bar */}
@@ -363,11 +413,11 @@ export function QuizletStudy() {
             >
               <Lightbulb className="w-3.5 h-3.5 mt-0.5 shrink-0" />
               {hintShown
-                ? <span className="leading-snug">{generateHint(current?.back ?? '')}</span>
+                ? <span className="leading-snug">{generateHint(hintTarget)}</span>
                 : 'Get a hint'}
             </button>
           ) : (
-            <span className="text-xs text-(--text-secondary) uppercase tracking-wide">Definition</span>
+            <span className="text-xs text-(--text-secondary) uppercase tracking-wide">{backLabel}</span>
           )}
           <div className="flex items-center gap-2">
             <button className="p-1 transition-colors" onClick={e => current && toggleFavorite(current.id, e)} title="Favorite">
@@ -497,7 +547,7 @@ export function QuizletStudy() {
             <button className={`icon-btn ${isShuffled ? 'text-(--accent)' : ''}`} onClick={toggleShuffle} title={isShuffled ? 'Unshuffle' : 'Shuffle'}>
               <Shuffle className="w-4 h-4" />
             </button>
-            <button className="icon-btn" title="Settings (coming soon)"><Settings className="w-4 h-4" /></button>
+            <button className="icon-btn" title="Options" onClick={() => setShowOptions(true)}><Settings className="w-4 h-4" /></button>
             <button className="icon-btn" title="Fullscreen (coming soon)"><Maximize2 className="w-4 h-4" /></button>
           </div>
         </div>
@@ -631,6 +681,109 @@ export function QuizletStudy() {
         );
       })()}
 
+      {/* Options panel */}
+      {showOptions && (
+        <div className="fixed inset-0 z-50 flex justify-end" onClick={() => setShowOptions(false)}>
+          <div
+            className="options-panel relative bg-(--bg-secondary) w-full max-w-sm h-full overflow-y-auto shadow-2xl flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 pt-6 pb-2 shrink-0">
+              <h2 className="text-3xl font-bold">Options</h2>
+              <button
+                onClick={() => setShowOptions(false)}
+                className="w-10 h-10 rounded-full bg-(--bg-tertiary) flex items-center justify-center hover:bg-(--accent) transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Track progress */}
+            <div className="px-6 py-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="font-semibold text-base">Track progress</span>
+                <button onClick={toggleTrackProgress} className="shrink-0">
+                  <div className={`relative w-11 h-6 rounded-full transition-colors ${trackProgress ? 'bg-(--accent)' : 'bg-(--bg-tertiary)'}`}>
+                    <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${trackProgress ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </div>
+                </button>
+              </div>
+              <p className="text-sm text-(--text-secondary) leading-relaxed">Sort your flashcards to keep track of what you know and what you're still learning. Turn it off to quickly review without scoring.</p>
+            </div>
+            <div className="border-t border-(--bg-tertiary)" />
+
+            {/* Study only starred terms */}
+            <div className="px-6 py-4 flex items-center justify-between gap-4">
+              <span className="font-semibold text-base">Study only starred terms</span>
+              <button onClick={() => toggleStudyStarred(favorites)} className="shrink-0">
+                <div className={`relative w-11 h-6 rounded-full transition-colors ${studyStarredOnly ? 'bg-(--accent)' : 'bg-(--bg-tertiary)'}`}>
+                  <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${studyStarredOnly ? 'translate-x-6' : 'translate-x-1'}`} />
+                </div>
+              </button>
+            </div>
+            <div className="border-t border-(--bg-tertiary)" />
+
+            {/* Front */}
+            <div className="px-6 py-4 flex items-center justify-between gap-4">
+              <span className="font-semibold text-base">Front</span>
+              <select
+                value={frontSide}
+                onChange={e => { setFrontSide(e.target.value as 'term' | 'definition'); flipHook.resetCardState(); }}
+                className="bg-(--bg-tertiary) text-white font-medium rounded-full px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-(--accent) cursor-pointer"
+              >
+                <option value="term">Term</option>
+                <option value="definition">Definition</option>
+              </select>
+            </div>
+            <div className="border-t border-(--bg-tertiary)" />
+
+            {/* Keyboard shortcuts */}
+            <div className="px-6 py-4">
+              <button
+                className="flex items-center justify-between w-full"
+                onClick={() => setShowShortcuts(s => !s)}
+              >
+                <span className="font-semibold text-base">Keyboard shortcuts</span>
+                <span className={`flex items-center gap-1 text-sm font-medium transition-colors ${showShortcuts ? 'text-(--accent)' : 'text-(--text-secondary)'}`}>
+                  {showShortcuts ? 'Hide' : 'View'}
+                  <ChevronLeft className={`w-4 h-4 transition-transform ${showShortcuts ? 'rotate-90' : '-rotate-90'}`} />
+                </span>
+              </button>
+              {showShortcuts && (
+                <div className="mt-4 space-y-2">
+                  {[
+                    ['→', 'Know / Next'],
+                    ['←', 'Still learning / Prev'],
+                    ['Space', 'Flip card'],
+                    ['S', 'Star card'],
+                    ['H', 'Shuffle'],
+                    ['T', 'Answer with term'],
+                    ['D', 'Answer with definition'],
+                  ].map(([key, label]) => (
+                    <div key={key} className="flex items-center justify-between text-sm">
+                      <span className="text-(--text-secondary)">{label}</span>
+                      <kbd className="px-2 py-0.5 rounded bg-(--bg-tertiary) text-white font-mono text-xs">{key}</kbd>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="border-t border-(--bg-tertiary)" />
+
+            {/* Restart */}
+            <div className="px-6 py-4">
+              <button
+                className="text-(--accent) font-semibold text-base hover:underline"
+                onClick={() => { restart(); setShowOptions(false); }}
+              >
+                Restart Flashcards
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Expanded image overlay */}
       {expandedImage && (() => {
         const { src, fromRect, phase } = expandedImage;
@@ -686,6 +839,13 @@ export function QuizletStudy() {
       })()}
 
       <style>{`
+        /* Options panel slide-in */
+        @keyframes panelSlideIn {
+          from { transform: translateX(100%); }
+          to   { transform: translateX(0); }
+        }
+        .options-panel { animation: panelSlideIn 0.28s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+
         /* Override library defaults for dark theme */
         .flashcard-wrapper {
           width: 100% !important;

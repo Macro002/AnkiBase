@@ -427,16 +427,9 @@ export function QuizletStudy() {
           }`}
         >
           {feedback && (
-            <div
-              className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none"
-              style={{
-                border: `3px solid ${feedback === 'unknown' ? '#f97316' : '#4ade80'}`,
-                borderRadius: '0.75rem',
-              }}
-            >
+            <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
               <span
-                className={`text-2xl font-bold px-6 py-2.5 rounded-xl ${feedback === 'unknown' ? 'text-orange-400' : 'text-green-400'}`}
-                style={{ background: feedback === 'unknown' ? 'rgba(249,115,22,0.15)' : 'rgba(74,222,128,0.15)' }}
+                className={`text-4xl font-bold ${feedback === 'unknown' ? 'text-orange-400' : 'text-green-400'}`}
               >
                 {feedback === 'unknown' ? 'Still learning' : 'Got it!'}
               </span>
@@ -637,11 +630,13 @@ export function QuizletStudy() {
       {/* Expanded image overlay */}
       {expandedImage && (() => {
         const { src, fromRect, phase } = expandedImage;
-        const expandW = Math.min(window.innerWidth * 0.88, 800);
-        const expandH = Math.min(window.innerHeight * 0.82, 720);
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const expandW = Math.min(vw * 0.82, 640);
+        const expandH = Math.min(vh * 0.65, 520);
         const toStyle: React.CSSProperties = {
-          top: Math.max((window.innerHeight - expandH) / 2, 20),
-          left: Math.max((window.innerWidth - expandW) / 2, 20),
+          top: Math.max((vh - expandH) / 2, 16),
+          left: Math.max((vw - expandW) / 2, 16),
           width: expandW,
           height: expandH,
           opacity: 1,
@@ -667,7 +662,7 @@ export function QuizletStudy() {
             <img
               src={src}
               alt=""
-              onClick={e => e.stopPropagation()}
+              onClick={() => setExpandedImage(prev => prev ? { ...prev, phase: 'closing' } : null)}
               style={{
                 position: 'fixed',
                 objectFit: 'contain',

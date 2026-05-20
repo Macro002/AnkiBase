@@ -196,6 +196,7 @@ export function QuizletStudy() {
   const [feedback, setFeedback] = useState<'known' | 'unknown' | null>(null);
 
   const [showOptions, setShowOptions] = useState(false);
+  const [closingOptions, setClosingOptions] = useState(false);
   const [studyStarredOnly, setStudyStarredOnly] = useState(false);
   const [frontSide, setFrontSide] = useState<'term' | 'definition'>('term');
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -204,6 +205,7 @@ export function QuizletStudy() {
   const [isAutoplay, setIsAutoplay] = useState(false);
   const autoplayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const keyHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {});
+  const trackProgressIndexRef = useRef(0);
 
   const current = queue[index];
 
@@ -297,9 +299,17 @@ export function QuizletStudy() {
   };
 
   const toggleTrackProgress = () => {
-    if (trackProgress) setSessionDone(false);
-    setTrackProgress(t => !t);
-    setIsAutoplay(false);
+    if (trackProgress) {
+      trackProgressIndexRef.current = index;
+      if (sessionDone) setSessionDone(false);
+      setTrackProgress(false);
+      setIsAutoplay(false);
+      advance(0);
+    } else {
+      setTrackProgress(true);
+      setIsAutoplay(false);
+      advance(trackProgressIndexRef.current);
+    }
   };
 
   const restart = (subset?: QuizletCard[]) => {
@@ -331,6 +341,22 @@ export function QuizletStudy() {
     return () => { if (autoplayRef.current) clearTimeout(autoplayRef.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAutoplay, flipped, index, queue.length, trackProgress, advance]);
+
+  // Dynamically update queue when starring/unstarring while studyStarredOnly is active
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!studyStarredOnly || cards.length === 0) return;
+    const base = favorites.size > 0 ? cards.filter(c => favorites.has(c.id)) : cards;
+    const newQueue = isShuffled ? shuffle([...base]) : [...base];
+    setQueue(newQueue);
+    setIndex(prev => Math.min(prev, Math.max(0, newQueue.length - 1)));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [favorites, studyStarredOnly]);
+
+  const closeOptions = () => {
+    setClosingOptions(true);
+    setTimeout(() => { setShowOptions(false); setClosingOptions(false); }, 260);
+  };
 
   // Keyboard shortcuts — ref keeps handler fresh without re-registering the listener
   keyHandlerRef.current = (e: KeyboardEvent) => {
@@ -511,7 +537,7 @@ export function QuizletStudy() {
           >
             {trackProgress ? <X className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
           </button>
-          <span className="text-sm text-(--text-secondary) w-14 text-center tabular-nums">{index + 1} / {queue.length}</span>
+          <span className="text-sm text-(--text-secondary) text-center tabular-nums whitespace-nowrap px-1">{index + 1} / {queue.length}</span>
           <button
             className={`w-12 h-12 sm:w-10 sm:h-10 rounded-full flex items-center justify-center transition-colors ${
               trackProgress ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30 disabled:opacity-30'
@@ -641,7 +667,7 @@ export function QuizletStudy() {
                       onClick={e => toggleFavorite(card.id, e)}
                       className="absolute top-2 right-2 z-10 p-1"
                     >
-                      <Star className={`w-3.5 h-3.5 transition-colors ${isFavedCard ? 'fill-(--accent) text-(--accent)' : 'text-(--bg-tertiary) hover:text-(--accent)'}`} />
+                      <Star className={`w-3.5 h-3.5 transition-colors ${isFavedCard ? 'fill-(--accent) text-(--accent)' : 'text-(--text-secondary) hover:text-(--accent)'}`} />
                     </button>
 
                     {/* Two-half split */}
@@ -685,55 +711,51 @@ export function QuizletStudy() {
 
       {/* Options panel */}
       {showOptions && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-black/50 backdrop-blur-sm" onClick={() => setShowOptions(false)}>
+        <div className="fixed inset-0 z-50 flex justify-end bg-black/50" onClick={closeOptions}>
           <div
-            className="options-panel bg-(--bg-secondary) border-l border-(--bg-tertiary) w-full max-w-sm h-full overflow-y-auto shadow-2xl flex flex-col"
+            className={`${closingOptions ? 'options-panel-closing' : 'options-panel'} bg-(--bg-secondary) border-l border-(--bg-tertiary) w-full max-w-sm h-full overflow-y-auto shadow-2xl flex flex-col divide-y divide-white/8`}
             onClick={e => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="flex items-center justify-between p-6 border-b border-(--bg-tertiary) shrink-0">
+            <div className="flex items-center justify-between p-6 shrink-0">
               <h2 className="text-xl font-bold">Options</h2>
-              <button className="icon-btn" onClick={() => setShowOptions(false)} title="Close">
+              <button className="icon-btn" onClick={closeOptions} title="Close">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {/* Track progress */}
-            <div className="p-6 border-b border-(--bg-tertiary)">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="font-medium text-sm">Track progress</p>
-                  <p className="text-xs text-(--text-secondary) mt-0.5">Know / Still learning sorting. Progress is kept when toggled off.</p>
-                </div>
-                <button onClick={toggleTrackProgress} className="shrink-0">
-                  <div className={`relative w-9 h-5 rounded-full transition-colors ${trackProgress ? 'bg-(--accent)' : 'bg-(--bg-tertiary)'}`}>
-                    <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${trackProgress ? 'translate-x-4' : 'translate-x-0.5'}`} />
-                  </div>
-                </button>
+            <div className="p-6 flex items-center justify-between gap-4">
+              <div>
+                <p className="font-medium text-sm">Track progress</p>
+                <p className="text-xs text-(--text-secondary) mt-0.5">Toggle off returns to card 1. Toggle on resumes where you left off.</p>
               </div>
+              <button onClick={toggleTrackProgress} className="shrink-0">
+                <div className={`relative w-9 h-5 rounded-full transition-colors ${trackProgress ? 'bg-(--accent)' : 'bg-(--bg-tertiary)'}`}>
+                  <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${trackProgress ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                </div>
+              </button>
             </div>
 
             {/* Study only starred terms */}
-            <div className="p-6 border-b border-(--bg-tertiary)">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p className={`font-medium text-sm ${favorites.size === 0 ? 'text-(--text-secondary)' : ''}`}>Study only starred terms</p>
-                  {favorites.size === 0 && <p className="text-xs text-(--text-secondary) mt-0.5">Star some cards first.</p>}
-                </div>
-                <button
-                  onClick={() => favorites.size > 0 && toggleStudyStarred(favorites)}
-                  disabled={favorites.size === 0}
-                  className={favorites.size === 0 ? 'opacity-40 cursor-not-allowed shrink-0' : 'shrink-0'}
-                >
-                  <div className={`relative w-9 h-5 rounded-full transition-colors ${studyStarredOnly ? 'bg-(--accent)' : 'bg-(--bg-tertiary)'}`}>
-                    <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${studyStarredOnly ? 'translate-x-4' : 'translate-x-0.5'}`} />
-                  </div>
-                </button>
+            <div className="p-6 flex items-center justify-between gap-4">
+              <div>
+                <p className={`font-medium text-sm ${favorites.size === 0 ? 'text-(--text-secondary)' : ''}`}>Study only starred terms</p>
+                {favorites.size === 0 && <p className="text-xs text-(--text-secondary) mt-0.5">Star some cards first.</p>}
               </div>
+              <button
+                onClick={() => favorites.size > 0 && toggleStudyStarred(favorites)}
+                disabled={favorites.size === 0}
+                className={`shrink-0 ${favorites.size === 0 ? 'opacity-40 cursor-not-allowed' : ''}`}
+              >
+                <div className={`relative w-9 h-5 rounded-full transition-colors ${studyStarredOnly ? 'bg-(--accent)' : 'bg-(--bg-tertiary)'}`}>
+                  <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${studyStarredOnly ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                </div>
+              </button>
             </div>
 
             {/* Front */}
-            <div className="p-6 border-b border-(--bg-tertiary) flex items-center justify-between gap-4">
+            <div className="p-6 flex items-center justify-between gap-4">
               <p className="font-medium text-sm">Front</p>
               <select
                 value={frontSide}
@@ -746,7 +768,7 @@ export function QuizletStudy() {
             </div>
 
             {/* Keyboard shortcuts */}
-            <div className="border-b border-(--bg-tertiary)">
+            <div>
               <button
                 className="w-full flex items-center justify-between p-6"
                 onClick={() => setShowShortcuts(s => !s)}
@@ -764,7 +786,7 @@ export function QuizletStudy() {
                     ['H',    'Shuffle'],
                     ['T',    'Answer with term'],
                     ['D',    'Answer with definition'],
-                    ['E',    'Edit card (coming soon)'],
+                    ['E',    'Edit card'],
                   ] as [string, string][]).map(([key, label]) => (
                     <div key={key} className="flex items-center justify-between">
                       <span className="text-sm text-(--text-secondary)">{label}</span>
@@ -779,7 +801,7 @@ export function QuizletStudy() {
             <div className="p-6">
               <button
                 className="text-sm text-(--accent) font-medium hover-underline"
-                onClick={() => { restart(); setShowOptions(false); }}
+                onClick={() => { restart(); closeOptions(); }}
               >
                 Restart Flashcards
               </button>
@@ -843,12 +865,11 @@ export function QuizletStudy() {
       })()}
 
       <style>{`
-        /* Options panel slide-in */
-        @keyframes panelSlideIn {
-          from { transform: translateX(100%); }
-          to   { transform: translateX(0); }
-        }
-        .options-panel { animation: panelSlideIn 0.28s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+        /* Options panel slide in / out */
+        @keyframes panelSlideIn  { from { transform: translateX(100%); } to { transform: translateX(0); } }
+        @keyframes panelSlideOut { from { transform: translateX(0); }    to { transform: translateX(100%); } }
+        .options-panel         { animation: panelSlideIn  0.28s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+        .options-panel-closing { animation: panelSlideOut 0.26s cubic-bezier(0.4,  0, 1,    1) forwards; }
 
         /* Override library defaults for dark theme */
         .flashcard-wrapper {

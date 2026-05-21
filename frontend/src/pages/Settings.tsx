@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Key, Globe, Palette, RotateCcw, X } from 'lucide-react';
+import { Key, Globe, Palette, RotateCcw, X, Download, Upload, Trash2 } from 'lucide-react';
 import { auth, theme as themeApi, type User } from '../api';
 import { useNavigate } from 'react-router-dom';
 import { UserManagement } from '../components/UserManagement';
@@ -17,12 +17,32 @@ interface BaseColorField {
   label: string;
 }
 
+interface ThemeEntry {
+  name: string;
+  accent: string;
+  hover: string;
+  base: BaseColors;
+}
+
 interface ThemeFile {
   name: string;
   version: number;
   accent: string;
   hover: string;
   base: BaseColors;
+}
+
+const CUSTOM_THEMES_KEY = 'ankibase-custom-themes';
+
+function loadCustomThemes(): ThemeEntry[] {
+  try {
+    const raw = localStorage.getItem(CUSTOM_THEMES_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+function saveCustomThemes(themes: ThemeEntry[]) {
+  localStorage.setItem(CUSTOM_THEMES_KEY, JSON.stringify(themes));
 }
 
 const BG_FIELDS: BaseColorField[] = [
@@ -36,7 +56,7 @@ const TEXT_FIELDS: BaseColorField[] = [
   { key: 'text_secondary', label: 'Secondary text' },
 ];
 
-const THEMES = [
+const BUILTIN_THEMES: ThemeEntry[] = [
   {
     name: 'AnkiBase',
     accent: '#e94560',
@@ -45,8 +65,8 @@ const THEMES = [
   },
   {
     name: 'Midnight',
-    accent: '#e94560',
-    hover: '#ff6b6b',
+    accent: '#a855f7',
+    hover: '#c084fc',
     base: {
       bg_primary:     '#0d0d0d',
       bg_secondary:   '#141414',
@@ -57,8 +77,8 @@ const THEMES = [
   },
   {
     name: 'Chalk',
-    accent: '#e94560',
-    hover: '#ff6b6b',
+    accent: '#06b6d4',
+    hover: '#22d3ee',
     base: {
       bg_primary:     '#f0f2f5',
       bg_secondary:   '#ffffff',
@@ -117,7 +137,10 @@ export function Settings() {
   // Shared mode toggle
   const [mode, setMode] = useState<ThemeMode>('personal');
 
-  // Import/export
+  // Custom themes (localStorage)
+  const [customThemes, setCustomThemes] = useState<ThemeEntry[]>(loadCustomThemes);
+
+  // Import
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importPreview, setImportPreview] = useState<ThemeFile | null>(null);
   const [importName, setImportName] = useState('');
@@ -200,7 +223,7 @@ export function Settings() {
 
   // ── Theme preset ─────────────────────────────────────────────────────────────
 
-  const handleApplyTheme = async (th: typeof THEMES[0]) => {
+  const handleApplyTheme = async (th: ThemeEntry) => {
     if (mode === 'server') {
       await handleSaveServerAccent(th.accent, th.hover);
       await handleSaveServerBase(th.base);
@@ -210,10 +233,16 @@ export function Settings() {
     }
   };
 
-  const isThemeActive = (th: typeof THEMES[0]) => {
+  const isThemeActive = (th: ThemeEntry) => {
     const a = mode === 'server' ? serverAccent : accentColor;
     const b = mode === 'server' ? serverBase : personalBase;
     return a === th.accent && Object.entries(th.base).every(([k, v]) => b[k as keyof BaseColors] === v);
+  };
+
+  const handleDeleteCustomTheme = (index: number) => {
+    const updated = customThemes.filter((_, i) => i !== index);
+    setCustomThemes(updated);
+    saveCustomThemes(updated);
   };
 
   // ── Export / Import ──────────────────────────────────────────────────────────
@@ -252,7 +281,7 @@ export function Settings() {
           base: { ...BASE_COLORS_DEFAULT, ...data.base },
         });
         setImportName(typeof data.name === 'string' ? data.name : 'Imported Theme');
-      } catch { /* invalid file — silently ignore */ }
+      } catch { /* invalid file */ }
     };
     reader.readAsText(file);
     e.target.value = '';
@@ -260,8 +289,19 @@ export function Settings() {
 
   const handleApplyImport = async () => {
     if (!importPreview) return;
-    await handleSavePersonalAccent(importPreview.accent, importPreview.hover);
-    await handleSavePersonalBase(importPreview.base);
+    const entry: ThemeEntry = {
+      name: importName.trim() || 'Imported Theme',
+      accent: importPreview.accent,
+      hover: importPreview.hover,
+      base: importPreview.base,
+    };
+    // Save to custom themes list
+    const updated = [...customThemes, entry];
+    setCustomThemes(updated);
+    saveCustomThemes(updated);
+    // Apply as personal colors
+    await handleSavePersonalAccent(entry.accent, entry.hover);
+    await handleSavePersonalBase(entry.base);
     setImportPreview(null);
   };
 
@@ -310,6 +350,45 @@ export function Settings() {
     } finally { setLoading(false); }
   };
 
+  // ── Theme card rendering ─────────────────────────────────────────────────────
+
+  const ThemeCard = ({ th, onDelete }: { th: ThemeEntry; onDelete?: () => void }) => (
+    <div className="relative group/card">
+      <button
+        onClick={() => handleApplyTheme(th)}
+        className="flex flex-col items-center gap-2"
+      >
+        <div
+          className="relative w-20 h-20 rounded-xl overflow-hidden border-2 transition-all"
+          style={{
+            borderColor: isThemeActive(th) ? th.accent : 'var(--bg-tertiary)',
+            boxShadow: isThemeActive(th) ? `0 0 0 2px ${th.accent}` : 'none',
+          }}
+        >
+          <div className="absolute inset-0 flex flex-col">
+            <div className="flex-1" style={{ background: th.base.bg_primary }} />
+            <div className="flex-1" style={{ background: th.base.bg_secondary }} />
+            <div className="flex-1" style={{ background: th.base.bg_tertiary }} />
+          </div>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <Logo className="w-9 h-9" color={th.accent} />
+          </div>
+        </div>
+        <span className="text-xs text-(--text-secondary) group-hover/card:text-(--text-primary) transition-colors">
+          {th.name}
+        </span>
+      </button>
+      {onDelete && (
+        <button
+          onClick={e => { e.stopPropagation(); onDelete(); }}
+          className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-(--bg-tertiary) text-(--text-secondary) hover:text-(--error) transition-colors items-center justify-center hidden group-hover/card:flex"
+        >
+          <Trash2 className="w-3 h-3" />
+        </button>
+      )}
+    </div>
+  );
+
   return (
     <div className={currentUser?.is_admin ? "max-w-7xl mx-auto" : "max-w-2xl mx-auto"}>
       <div className="space-y-6">
@@ -321,11 +400,13 @@ export function Settings() {
               <Palette className="w-5 h-5 text-(--accent)" />
               <h2 className="text-xl font-semibold">Theme</h2>
             </div>
-            <div className="flex items-center gap-3">
-              <button onClick={handleExport} className="text-sm text-(--text-secondary) hover:text-(--text-primary) transition-colors">
+            <div className="flex items-center gap-2">
+              <button onClick={handleExport} className="btn btn-secondary flex items-center gap-1.5 text-sm py-1.5 px-3">
+                <Download className="w-3.5 h-3.5" />
                 Export
               </button>
-              <button onClick={() => fileInputRef.current?.click()} className="text-sm text-(--text-secondary) hover:text-(--text-primary) transition-colors">
+              <button onClick={() => fileInputRef.current?.click()} className="btn btn-secondary flex items-center gap-1.5 text-sm py-1.5 px-3">
+                <Upload className="w-3.5 h-3.5" />
                 Import
               </button>
               <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={handleImportFile} />
@@ -345,33 +426,12 @@ export function Settings() {
           {/* Themes */}
           <div>
             <p className="text-xs font-semibold uppercase tracking-widest text-(--text-secondary) mb-3">Themes</p>
-            <div className="flex gap-3">
-              {THEMES.map(th => (
-                <button
-                  key={th.name}
-                  onClick={() => handleApplyTheme(th)}
-                  className="flex flex-col items-center gap-2 group"
-                >
-                  <div
-                    className="relative w-20 h-20 rounded-xl overflow-hidden border-2 transition-all"
-                    style={{
-                      borderColor: isThemeActive(th) ? th.accent : 'var(--bg-tertiary)',
-                      boxShadow: isThemeActive(th) ? `0 0 0 2px ${th.accent}` : 'none',
-                    }}
-                  >
-                    <div className="absolute inset-0 flex flex-col">
-                      <div className="flex-1" style={{ background: th.base.bg_primary }} />
-                      <div className="flex-1" style={{ background: th.base.bg_secondary }} />
-                      <div className="flex-1" style={{ background: th.base.bg_tertiary }} />
-                    </div>
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <Logo className="w-9 h-9" color={th.accent} />
-                    </div>
-                  </div>
-                  <span className="text-xs text-(--text-secondary) group-hover:text-(--text-primary) transition-colors">
-                    {th.name}
-                  </span>
-                </button>
+            <div className="flex flex-wrap gap-4">
+              {BUILTIN_THEMES.map(th => (
+                <ThemeCard key={th.name} th={th} />
+              ))}
+              {customThemes.map((th, i) => (
+                <ThemeCard key={`custom-${i}`} th={th} onDelete={() => handleDeleteCustomTheme(i)} />
               ))}
             </div>
           </div>
@@ -390,52 +450,50 @@ export function Settings() {
                 </button>
               )}
             </div>
-            <div className="space-y-1">
-              <div className="flex flex-wrap gap-3">
-                {ACCENT_PRESETS.map(p => (
-                  <button
-                    key={p.name}
-                    onClick={() => onPickAccentPreset(p.accent, p.hover)}
-                    className="flex flex-col items-center gap-1 group w-10"
-                    title={p.name}
-                    disabled={accentSaving}
-                  >
-                    <div
-                      className="w-7 h-7 rounded-full transition-all"
-                      style={{
-                        background: p.accent,
-                        boxShadow: activeAccent === p.accent
-                          ? `0 0 0 2px var(--bg-primary), 0 0 0 4px ${p.accent}`
-                          : 'none',
-                      }}
-                    />
-                    <span className="text-xs text-(--text-secondary) group-hover:text-(--text-primary) transition-colors leading-none">{p.name}</span>
-                  </button>
-                ))}
-                {/* Custom — inline with presets */}
-                <div className="flex flex-col items-center gap-1 w-10">
+            <div className="flex flex-wrap gap-3">
+              {ACCENT_PRESETS.map(p => (
+                <button
+                  key={p.name}
+                  onClick={() => onPickAccentPreset(p.accent, p.hover)}
+                  className="flex flex-col items-center gap-1 group w-10"
+                  title={p.name}
+                  disabled={accentSaving}
+                >
                   <div
-                    className="relative w-7 h-7 rounded-full shrink-0 cursor-pointer transition-all"
+                    className="w-7 h-7 rounded-full transition-all"
                     style={{
-                      background: activeAccent,
-                      boxShadow: isCustomAccent
-                        ? `0 0 0 2px var(--bg-primary), 0 0 0 4px ${activeAccent}`
+                      background: p.accent,
+                      boxShadow: activeAccent === p.accent
+                        ? `0 0 0 2px var(--bg-primary), 0 0 0 4px ${p.accent}`
                         : 'none',
                     }}
-                  >
-                    <input
-                      type="color"
-                      value={activeAccent}
-                      onChange={e => onPickAccentPreset(e.target.value)}
-                      disabled={accentSaving}
-                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full rounded-full"
-                    />
-                  </div>
-                  <span className="text-xs text-(--text-secondary) leading-none">Custom</span>
-                  {isCustomAccent && (
-                    <span className="text-[10px] font-mono text-(--text-secondary) leading-none">{activeAccent}</span>
-                  )}
+                  />
+                  <span className="text-xs text-(--text-secondary) group-hover:text-(--text-primary) transition-colors leading-none">{p.name}</span>
+                </button>
+              ))}
+              {/* Custom — inline with presets */}
+              <div className="flex flex-col items-center gap-1 w-10">
+                <div
+                  className="relative w-7 h-7 rounded-full shrink-0 cursor-pointer transition-all"
+                  style={{
+                    background: activeAccent,
+                    boxShadow: isCustomAccent
+                      ? `0 0 0 2px var(--bg-primary), 0 0 0 4px ${activeAccent}`
+                      : 'none',
+                  }}
+                >
+                  <input
+                    type="color"
+                    value={activeAccent}
+                    onChange={e => onPickAccentPreset(e.target.value)}
+                    disabled={accentSaving}
+                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full rounded-full"
+                  />
                 </div>
+                <span className="text-xs text-(--text-secondary) leading-none">Custom</span>
+                {isCustomAccent && (
+                  <span className="text-[10px] font-mono text-(--text-secondary) leading-none">{activeAccent}</span>
+                )}
               </div>
             </div>
           </div>
@@ -461,13 +519,8 @@ export function Settings() {
                   {BG_FIELDS.map(({ key, label }) => (
                     <div key={key} className="flex items-center gap-3">
                       <div className="relative w-7 h-7 rounded-full shrink-0 cursor-pointer" style={{ background: activeBase[key] }}>
-                        <input
-                          type="color"
-                          value={activeBase[key]}
-                          onChange={e => onChangeBase(key, e.target.value)}
-                          disabled={baseColorsSaving}
-                          className="absolute inset-0 opacity-0 cursor-pointer w-full h-full rounded-full"
-                        />
+                        <input type="color" value={activeBase[key]} onChange={e => onChangeBase(key, e.target.value)}
+                          disabled={baseColorsSaving} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full rounded-full" />
                       </div>
                       <span className="text-sm text-(--text-secondary) w-28 shrink-0">{label}</span>
                       <span className="text-xs font-mono text-(--text-secondary)">{activeBase[key]}</span>
@@ -481,13 +534,8 @@ export function Settings() {
                   {TEXT_FIELDS.map(({ key, label }) => (
                     <div key={key} className="flex items-center gap-3">
                       <div className="relative w-7 h-7 rounded-full shrink-0 cursor-pointer" style={{ background: activeBase[key] }}>
-                        <input
-                          type="color"
-                          value={activeBase[key]}
-                          onChange={e => onChangeBase(key, e.target.value)}
-                          disabled={baseColorsSaving}
-                          className="absolute inset-0 opacity-0 cursor-pointer w-full h-full rounded-full"
-                        />
+                        <input type="color" value={activeBase[key]} onChange={e => onChangeBase(key, e.target.value)}
+                          disabled={baseColorsSaving} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full rounded-full" />
                       </div>
                       <span className="text-sm text-(--text-secondary) w-28 shrink-0">{label}</span>
                       <span className="text-xs font-mono text-(--text-secondary)">{activeBase[key]}</span>
@@ -564,7 +612,6 @@ export function Settings() {
               </button>
             </div>
 
-            {/* Preview */}
             <div className="flex items-center gap-4">
               <div className="relative w-20 h-20 rounded-xl overflow-hidden border-2 shrink-0" style={{ borderColor: importPreview.accent }}>
                 <div className="absolute inset-0 flex flex-col">
@@ -577,12 +624,12 @@ export function Settings() {
                 </div>
               </div>
               <div className="space-y-1 text-xs font-mono text-(--text-secondary)">
-                {[
+                {([
                   ['Accent', importPreview.accent],
                   ['BG', importPreview.base.bg_primary],
                   ['Card', importPreview.base.bg_secondary],
                   ['Border', importPreview.base.bg_tertiary],
-                ].map(([label, val]) => (
+                ] as [string, string][]).map(([label, val]) => (
                   <div key={label} className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded-full shrink-0" style={{ background: val }} />
                     <span className="text-(--text-secondary)">{label}</span>
@@ -592,7 +639,6 @@ export function Settings() {
               </div>
             </div>
 
-            {/* Name input */}
             <div>
               <label className="block text-sm font-medium mb-1">Theme name</label>
               <input
@@ -605,7 +651,7 @@ export function Settings() {
             </div>
 
             <div className="flex gap-3">
-              <button onClick={handleApplyImport} className="btn btn-primary flex-1">Apply</button>
+              <button onClick={handleApplyImport} className="btn btn-primary flex-1">Apply & Save</button>
               <button onClick={() => setImportPreview(null)} className="btn btn-secondary flex-1">Cancel</button>
             </div>
           </div>

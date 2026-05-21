@@ -258,7 +258,7 @@ input[type="checkbox"]:checked::after {
 }
 
 .hover-white:hover {
-  color: white !important;
+  color: var(--text-primary) !important;
 }
 
 .hover-underline:hover {

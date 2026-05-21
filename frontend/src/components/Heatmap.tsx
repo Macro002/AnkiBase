@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { stats, type ReviewHistory } from '../api';
@@ -19,14 +19,13 @@ export function Heatmap({ className = '' }: HeatmapProps) {
   const [hoveredDay, setHoveredDay] = useState<{ date: string; count: number } | null>(null);
   const [source, setSource] = useState<Source>('all');
   const [slideDir, setSlideDir] = useState<'left' | 'right' | null>(null);
+  const [prevYear, setPrevYear] = useState<number | null>(null);
   const [colorScheme, setColorScheme] = useState<ColorScheme>(() => {
     if (typeof window !== 'undefined') {
       return (localStorage.getItem('heatmap-color') as ColorScheme) || 'accent';
     }
     return 'accent';
   });
-  const containerRef = useRef<HTMLDivElement>(null);
-
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
@@ -48,9 +47,9 @@ export function Heatmap({ className = '' }: HeatmapProps) {
 
   const currentYear = new Date().getFullYear();
 
-  const handlePrevYear = () => { setSlideDir('left'); setYear(y => y - 1); };
-  const handleNextYear = () => { setSlideDir('right'); setYear(y => Math.min(y + 1, currentYear)); };
-  const handleResetYear = () => { if (year !== currentYear) { setSlideDir('right'); setYear(currentYear); } };
+  const handlePrevYear = () => { setPrevYear(year); setHoveredDay(null); setSlideDir('left'); setYear(y => y - 1); };
+  const handleNextYear = () => { setPrevYear(year); setHoveredDay(null); setSlideDir('right'); setYear(y => Math.min(y + 1, currentYear)); };
+  const handleResetYear = () => { if (year !== currentYear) { setPrevYear(year); setHoveredDay(null); setSlideDir('right'); setYear(currentYear); } };
 
   const buildWeeksForYear = (targetYear: number) => {
     const startDate = new Date(targetYear, 0, 1);
@@ -111,6 +110,7 @@ export function Heatmap({ className = '' }: HeatmapProps) {
   };
 
   const yearData = useMemo(() => buildWeeksForYear(year), [year, data]);
+  const prevYearData = useMemo(() => prevYear !== null ? buildWeeksForYear(prevYear) : null, [prevYear, data]);
 
   const getColorStyle = (count: number, isCurrentYear: boolean): React.CSSProperties => {
     if (!isCurrentYear) return { backgroundColor: 'rgba(15, 52, 96, 0.3)' };
@@ -277,6 +277,57 @@ export function Heatmap({ className = '' }: HeatmapProps) {
   const squareSize = 16;
   const gap = 3;
 
+  const renderGrid = (targetYear: number, targetData: ReturnType<typeof buildWeeksForYear>) => (
+    <div className="flex">
+      <div className="flex flex-col text-xs text-(--text-secondary) mr-2 shrink-0" style={{ gap: `${gap}px`, marginTop: '20px' }}>
+        {dayLabels.map((day, i) => (
+          <div key={i} className="flex items-center justify-end w-10" style={{ height: `${squareSize}px` }}>
+            {day}
+          </div>
+        ))}
+      </div>
+      <div className="overflow-x-auto pb-2">
+        <div className="flex relative mb-1" style={{ height: '20px' }}>
+          {targetData.monthLabels.map(({ month, weekIndex }, i) => (
+            <span
+              key={i}
+              className="absolute text-xs text-(--text-secondary)"
+              style={{ left: `${weekIndex * (squareSize + gap)}px` }}
+            >
+              {t(`heatmap.${month}`)}
+            </span>
+          ))}
+        </div>
+        <div className="flex" style={{ gap: `${gap}px` }}>
+          {targetData.weeks.map((week, weekIndex) => (
+            <div key={weekIndex} className="flex flex-col" style={{ gap: `${gap}px` }}>
+              {week.map((day, dayIndex) => {
+                const dateStr = `${day.date.getFullYear()}-${String(day.date.getMonth() + 1).padStart(2, '0')}-${String(day.date.getDate()).padStart(2, '0')}`;
+                const isToday = dateStr === todayStr && targetYear === currentYear;
+                const isHovered = hoveredDay?.date === dateStr;
+                return (
+                  <div
+                    key={dayIndex}
+                    className={`rounded-sm cursor-pointer transition-all duration-150 ${
+                      isToday ? 'ring-2 ring-white ring-offset-1 ring-offset-(--bg-secondary)' : ''
+                    } ${isHovered ? 'scale-125 z-10' : 'hover:scale-110'}`}
+                    style={{
+                      width: `${squareSize}px`,
+                      height: `${squareSize}px`,
+                      ...getColorStyle(day.count, day.isCurrentYear)
+                    }}
+                    onMouseEnter={() => day.isCurrentYear && setHoveredDay({ date: dateStr, count: day.count })}
+                    onMouseLeave={() => setHoveredDay(null)}
+                  />
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className={`card ${className}`}>
       {/* Header with year navigation */}
@@ -339,66 +390,22 @@ export function Heatmap({ className = '' }: HeatmapProps) {
       </div>
 
       {/* Heatmap grid */}
-      <div
-        key={year}
-        ref={containerRef}
-        className={slideDir === 'right' ? 'slide-in-right' : slideDir === 'left' ? 'slide-in-left' : ''}
-        onAnimationEnd={() => setSlideDir(null)}
-      >
-        {/* Grid with day labels */}
-        <div className="flex">
-          {/* Day labels column */}
-          <div className="flex flex-col text-xs text-(--text-secondary) mr-2 shrink-0" style={{ gap: `${gap}px`, marginTop: '20px' }}>
-            {dayLabels.map((day, i) => (
-              <div key={i} className="flex items-center justify-end w-10" style={{ height: `${squareSize}px` }}>
-                {day}
-              </div>
-            ))}
+      <div className="relative overflow-hidden">
+        {prevYear !== null && prevYearData && slideDir && (
+          <div
+            key={`out-${prevYear}`}
+            className={`absolute inset-0 ${slideDir === 'left' ? 'slide-out-right' : 'slide-out-left'}`}
+            style={{ pointerEvents: 'none' }}
+          >
+            {renderGrid(prevYear, prevYearData)}
           </div>
-
-          {/* Scrollable container for months and weeks */}
-          <div className="overflow-x-auto pb-2">
-            {/* Month labels row */}
-            <div className="flex relative mb-1" style={{ height: '20px' }}>
-              {yearData.monthLabels.map(({ month, weekIndex }, i) => (
-                <span
-                  key={i}
-                  className="absolute text-xs text-(--text-secondary)"
-                  style={{ left: `${weekIndex * (squareSize + gap)}px` }}
-                >
-                  {t(`heatmap.${month}`)}
-                </span>
-              ))}
-            </div>
-
-            {/* Weeks grid */}
-            <div className="flex" style={{ gap: `${gap}px` }}>
-              {yearData.weeks.map((week, weekIndex) => (
-                <div key={weekIndex} className="flex flex-col" style={{ gap: `${gap}px` }}>
-                  {week.map((day, dayIndex) => {
-                    const dateStr = `${day.date.getFullYear()}-${String(day.date.getMonth() + 1).padStart(2, '0')}-${String(day.date.getDate()).padStart(2, '0')}`;
-                    const isToday = dateStr === todayStr && year === currentYear;
-                    const isHovered = hoveredDay?.date === dateStr;
-                    return (
-                      <div
-                        key={dayIndex}
-                        className={`rounded-sm cursor-pointer transition-all duration-150 ${
-                          isToday ? 'ring-2 ring-white ring-offset-1 ring-offset-(--bg-secondary)' : ''
-                        } ${isHovered ? 'scale-125 z-10' : 'hover:scale-110'}`}
-                        style={{
-                          width: `${squareSize}px`,
-                          height: `${squareSize}px`,
-                          ...getColorStyle(day.count, day.isCurrentYear)
-                        }}
-                        onMouseEnter={() => day.isCurrentYear && setHoveredDay({ date: dateStr, count: day.count })}
-                        onMouseLeave={() => setHoveredDay(null)}
-                      />
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-          </div>
+        )}
+        <div
+          key={`in-${year}`}
+          className={slideDir ? (slideDir === 'left' ? 'slide-in-left' : 'slide-in-right') : ''}
+          onAnimationEnd={() => { setSlideDir(null); setPrevYear(null); }}
+        >
+          {renderGrid(year, yearData)}
         </div>
       </div>
 

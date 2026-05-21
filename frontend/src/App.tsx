@@ -4,8 +4,11 @@ import { useTranslation } from 'react-i18next';
 import { auth, setup } from './api';
 import { loadAccentColor, saveAccentColor, loadBaseColors, saveBaseColors } from './hooks/useAccentColor';
 
-loadAccentColor();
-loadBaseColors();
+// Skip localStorage theme on /login so the server default shows without flash.
+if (window.location.pathname !== '/login') {
+  loadAccentColor();
+  loadBaseColors();
+}
 import { Login } from './components/Login';
 import { Layout } from './components/Layout';
 import { Decks } from './components/Decks';

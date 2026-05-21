@@ -218,6 +218,7 @@ export function Settings() {
 
   const handleSaveServerBase = async (colors: BaseColors) => {
     setServerBase(colors);
+    setPersonalBase(colors);
     applyBaseColors(colors);
     try {
       await themeApi.setBase(colors);

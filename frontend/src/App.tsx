@@ -38,12 +38,12 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
         const res = await auth.check();
         setAuthenticated(res.authenticated);
         if (res.user?.language) i18n.changeLanguage(res.user.language);
-        // Only write to localStorage when the server has personal overrides.
-        // If there's no personal data, we leave localStorage alone so any
-        // locally-stored theme isn't wiped by the server default.
-        if (res.user?.has_personal_accent && res.user?.accent_color)
+        // localStorage is authoritative for theme on this device.
+        // Only seed from server when localStorage is empty (new device/browser).
+        // This prevents server data (which may diverge) from overwriting a valid local theme.
+        if (!localStorage.getItem('ankibase-accent') && res.user?.has_personal_accent && res.user?.accent_color)
           saveAccentColor(res.user.accent_color, res.user.accent_hover ?? undefined);
-        if (res.user?.has_personal_base_colors && res.user?.base_colors)
+        if (!localStorage.getItem('ankibase-base-colors') && res.user?.has_personal_base_colors && res.user?.base_colors)
           saveBaseColors(res.user.base_colors);
       } catch {
         setAuthenticated(false);

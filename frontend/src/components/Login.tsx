@@ -32,12 +32,16 @@ export function Login() {
 
     try {
       await auth.login(username, password);
-      // Save the user's effective accent to localStorage before redirect
-      // so the correct color is applied instantly on the next page load
+      // Seed localStorage from server only when empty (new device).
+      // If localStorage already has data, trust it — don't overwrite with potentially stale server data.
       try {
-        const me = await auth.me();
-        if (me.accent_color) saveAccentColor(me.accent_color, me.accent_hover ?? undefined);
-        if (me.base_colors) saveBaseColors(me.base_colors);
+        const noLocalAccent = !localStorage.getItem('ankibase-accent');
+        const noLocalBase = !localStorage.getItem('ankibase-base-colors');
+        if (noLocalAccent || noLocalBase) {
+          const me = await auth.me();
+          if (noLocalAccent && me.accent_color) saveAccentColor(me.accent_color, me.accent_hover ?? undefined);
+          if (noLocalBase && me.base_colors) saveBaseColors(me.base_colors);
+        }
       } catch {}
       // Force a full page reload to ensure fresh data from the correct container
       window.location.href = '/';

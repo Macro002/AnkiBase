@@ -20,9 +20,11 @@ export function Login() {
     setup.status().then(s => {
       if (s.needs_setup || !s.has_container) navigate('/setup', { replace: true });
     }).catch(() => {});
-    // Apply server accent + base colors on the login page (no user yet)
-    themeApi.get().then(t => applyAccentColor(t.accent, t.hover)).catch(() => {});
-    themeApi.getBase().then(c => applyBaseColors(c)).catch(() => {});
+    // Apply server colors only when localStorage has no personal theme.
+    if (!localStorage.getItem('ankibase-accent'))
+      themeApi.get().then(t => applyAccentColor(t.accent, t.hover)).catch(() => {});
+    if (!localStorage.getItem('ankibase-base-colors'))
+      themeApi.getBase().then(c => applyBaseColors(c)).catch(() => {});
   }, [navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {

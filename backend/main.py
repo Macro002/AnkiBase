@@ -85,20 +85,31 @@ async def startup_event():
             settings = get_settings()
             migrate_to_user_system(settings.app_password)
 
-        creds = AnkiWebCredentials()
-        if creds.has_credentials():
-            print("Found stored AnkiWeb credentials, auto-configuring...")
-            credentials = creds.load_credentials()
-            if credentials:
-                configurator = AnkiConfigurator()
-                success = configurator.configure_ankiweb_login(
-                    credentials["email"],
-                    credentials["password"]
-                )
-                if success:
-                    print(f"✓ AnkiWeb auto-configured for {credentials['email']}")
-                else:
-                    print("✗ Failed to auto-configure AnkiWeb")
+        active_account = get_active_account()
+        if active_account:
+            creds = AnkiWebCredentials(container_name=active_account["container_name"])
+            # One-time migration: move old global .credentials into the active container's dir
+            if not creds.has_credentials():
+                legacy = AnkiWebCredentials()
+                if legacy.has_credentials():
+                    old_data = legacy.load_credentials()
+                    if old_data:
+                        creds.save_credentials(old_data["email"], old_data["password"])
+                        legacy.delete_credentials()
+                        print(f"✓ Migrated AnkiWeb credentials to container '{active_account['container_name']}'")
+            if creds.has_credentials():
+                print("Found stored AnkiWeb credentials, auto-configuring...")
+                credentials = creds.load_credentials()
+                if credentials:
+                    configurator = AnkiConfigurator()
+                    success = configurator.configure_ankiweb_login(
+                        credentials["email"],
+                        credentials["password"]
+                    )
+                    if success:
+                        print(f"✓ AnkiWeb auto-configured for {credentials['email']}")
+                    else:
+                        print("✗ Failed to auto-configure AnkiWeb")
     except Exception as e:
         print(f"Error during AnkiWeb auto-configuration: {e}")
 
@@ -1690,7 +1701,8 @@ async def ankiweb_login(request: AnkiWebLoginRequest, _: str = Depends(require_a
         import asyncio
 
         # Initialize credentials manager and configurator
-        creds = AnkiWebCredentials()
+        active_account = get_active_account()
+        creds = AnkiWebCredentials(container_name=active_account["container_name"] if active_account else None)
         configurator = AnkiConfigurator()
 
         # Save encrypted credentials first
@@ -1742,7 +1754,8 @@ async def ankiweb_login(request: AnkiWebLoginRequest, _: str = Depends(require_a
 async def ankiweb_status(_: str = Depends(require_auth)):
     """Check if AnkiWeb credentials are configured"""
     try:
-        creds = AnkiWebCredentials()
+        active_account = get_active_account()
+        creds = AnkiWebCredentials(container_name=active_account["container_name"] if active_account else None)
         configurator = AnkiConfigurator()
 
         has_credentials = creds.has_credentials()
@@ -1807,7 +1820,8 @@ async def ankiweb_debug(_: str = Depends(require_auth)):
 async def delete_ankiweb_credentials(_: str = Depends(require_auth)):
     """Delete stored AnkiWeb credentials"""
     try:
-        creds = AnkiWebCredentials()
+        active_account = get_active_account()
+        creds = AnkiWebCredentials(container_name=active_account["container_name"] if active_account else None)
         configurator = AnkiConfigurator()
 
         # Delete encrypted credentials file

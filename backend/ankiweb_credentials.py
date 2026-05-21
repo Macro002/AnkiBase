@@ -9,8 +9,15 @@ from typing import Optional
 
 
 class AnkiWebCredentials:
-    def __init__(self, credentials_file: str = ".credentials"):
-        self.credentials_file = Path(credentials_file)
+    def __init__(self, container_name: Optional[str] = None):
+        base_dir = Path(__file__).parent
+        if container_name:
+            container_dir = base_dir / "data" / container_name
+            container_dir.mkdir(parents=True, exist_ok=True)
+            self.credentials_file = container_dir / ".credentials"
+        else:
+            # Legacy path — used only for migration
+            self.credentials_file = base_dir / ".credentials"
         self.encryption_key = self._get_or_create_key()
         self.fernet = Fernet(self.encryption_key)
 

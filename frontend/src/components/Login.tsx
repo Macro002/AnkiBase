@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { auth, setup } from '../api';
+import { auth, setup, theme as themeApi } from '../api';
 import { Logo } from './Logo';
+import { applyAccentColor, saveAccentColor } from '../hooks/useAccentColor';
 
 export function Login() {
   const { t } = useTranslation();
@@ -18,6 +19,8 @@ export function Login() {
     setup.status().then(s => {
       if (s.needs_setup || !s.has_container) navigate('/setup', { replace: true });
     }).catch(() => {});
+    // Apply server accent on the login page (no user yet)
+    themeApi.get().then(t => applyAccentColor(t.accent, t.hover)).catch(() => {});
   }, [navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -27,6 +30,12 @@ export function Login() {
 
     try {
       await auth.login(username, password);
+      // Save the user's effective accent to localStorage before redirect
+      // so the correct color is applied instantly on the next page load
+      try {
+        const me = await auth.me();
+        if (me.accent_color) saveAccentColor(me.accent_color, me.accent_hover ?? undefined);
+      } catch {}
       // Force a full page reload to ensure fresh data from the correct container
       window.location.href = '/';
     } catch {

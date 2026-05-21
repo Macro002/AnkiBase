@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { auth, setup } from './api';
-import { loadAccentColor, applyAccentColor } from './hooks/useAccentColor';
+import { loadAccentColor, saveAccentColor } from './hooks/useAccentColor';
 
 loadAccentColor();
 import { Login } from './components/Login';
@@ -37,7 +37,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
         const res = await auth.check();
         setAuthenticated(res.authenticated);
         if (res.user?.language) i18n.changeLanguage(res.user.language);
-        if (res.user?.accent_color) applyAccentColor(res.user.accent_color, res.user.accent_hover ?? undefined);
+        if (res.user?.accent_color) saveAccentColor(res.user.accent_color, res.user.accent_hover ?? undefined);
       } catch {
         setAuthenticated(false);
       } finally {

@@ -6,7 +6,7 @@ import { UserManagement } from '../components/UserManagement';
 import { Logo } from '../components/Logo';
 import { useTranslation } from 'react-i18next';
 import {
-  ACCENT_PRESETS, saveAccentColor, applyAccentColor, applyBaseColors,
+  ACCENT_PRESETS, saveAccentColor, applyBaseColors,
   BASE_COLORS_DEFAULT, saveBaseColors, type BaseColors,
 } from '../hooks/useAccentColor';
 
@@ -190,8 +190,9 @@ export function Settings() {
     setServerAccent(accent); setServerHover(h);
     try {
       await themeApi.set(accent, h);
-      applyAccentColor(accent, h); // live preview — CSS vars only, no localStorage
-      if (!currentUser?.has_personal_accent) saveAccentColor(accent, h); // seed localStorage for users with no personal
+      await auth.setAccent(accent, h);
+      setAccentColor(accent);
+      saveAccentColor(accent, h);
     } catch (err) { console.error(err); }
   };
 
@@ -217,10 +218,11 @@ export function Settings() {
 
   const handleSaveServerBase = async (colors: BaseColors) => {
     setServerBase(colors);
-    applyBaseColors(colors); // live preview — CSS vars only, no localStorage
+    applyBaseColors(colors);
     try {
       await themeApi.setBase(colors);
-      if (!currentUser?.has_personal_base_colors) saveBaseColors(colors); // seed localStorage for users with no personal
+      await auth.setBaseColors(colors);
+      saveBaseColors(colors);
     } catch (err) { console.error(err); }
   };
 

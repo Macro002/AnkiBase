@@ -307,18 +307,69 @@ input[type="checkbox"]:checked::after {
   opacity: 0.8;
 }
 
-/* Theme card hover — border fills in with --card-accent on hover, double ring when active */
+/* Theme card hover — corner brackets animate in from each corner */
 .theme-card {
-  border: 2px solid transparent;
-  box-shadow: 0 0 0 0px transparent;
-  transition: border-color 0.22s ease, box-shadow 0.22s ease;
+  position: relative;
+  border-radius: 0.75rem;
 }
-.theme-card:hover {
-  border-color: var(--card-accent);
+
+.theme-card::before,
+.theme-card::after,
+.theme-card .theme-card-corners::before,
+.theme-card .theme-card-corners::after {
+  content: '';
+  position: absolute;
+  width: 0;
+  height: 0;
+  transition: width 0.22s ease, height 0.22s ease;
+  pointer-events: none;
 }
-.theme-card-active {
-  border-color: var(--card-accent) !important;
-  box-shadow: 0 0 0 2px var(--card-accent) !important;
+
+/* Top-left */
+.theme-card::before {
+  top: -1px; left: -1px;
+  border-top: 2px solid var(--card-accent);
+  border-left: 2px solid var(--card-accent);
+  border-top-left-radius: 0.75rem;
+}
+/* Bottom-right */
+.theme-card::after {
+  bottom: -1px; right: -1px;
+  border-bottom: 2px solid var(--card-accent);
+  border-right: 2px solid var(--card-accent);
+  border-bottom-right-radius: 0.75rem;
+}
+/* Top-right */
+.theme-card .theme-card-corners::before {
+  top: -1px; right: -1px;
+  border-top: 2px solid var(--card-accent);
+  border-right: 2px solid var(--card-accent);
+  border-top-right-radius: 0.75rem;
+}
+/* Bottom-left */
+.theme-card .theme-card-corners::after {
+  bottom: -1px; left: -1px;
+  border-bottom: 2px solid var(--card-accent);
+  border-left: 2px solid var(--card-accent);
+  border-bottom-left-radius: 0.75rem;
+}
+
+/* Hover: each bracket extends ~1/4 of perimeter */
+.theme-card:hover::before,
+.theme-card:hover::after,
+.theme-card:hover .theme-card-corners::before,
+.theme-card:hover .theme-card-corners::after {
+  width: 30%;
+  height: 30%;
+}
+
+/* Active: brackets meet in the middle — full border */
+.theme-card-active::before,
+.theme-card-active::after,
+.theme-card-active .theme-card-corners::before,
+.theme-card-active .theme-card-corners::after {
+  width: 50%;
+  height: 50%;
 }
 
 /* Color swatch hover — ring grows in with --swatch-color */

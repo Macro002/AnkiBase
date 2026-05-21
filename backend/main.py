@@ -21,6 +21,7 @@ from database import (
     rename_quizlet_deck, record_quizlet_review, get_quizlet_daily_counts,
     get_quizlet_deck_stats, get_quizlet_favorites, toggle_quizlet_favorite,
     get_setting, set_setting, get_user_accent, set_user_accent, clear_user_accent,
+    get_user,
 )
 from ankiweb_credentials import AnkiWebCredentials
 from anki_config import AnkiConfigurator
@@ -417,13 +418,15 @@ async def check_auth(request: Request):
     session_id = request.cookies.get("session_id")
     authenticated = session_id is not None and session_id in sessions
     user = sessions.get(session_id) if authenticated else None
+    if user:
+        db_user = get_user(user['user_id']) or {}
     return {
         "authenticated": authenticated,
         "user": {
             'username': user['username'],
             'is_admin': user['is_admin'],
             'can_add_containers': user['can_add_containers'],
-            'can_edit_server_accent': user.get('can_edit_server_accent', False),
+            'can_edit_server_accent': bool(db_user.get('can_edit_server_accent', 0)),
             'language': user.get('language', 'en'),
             **(_resolve_user_accent(user['user_id']))
         } if user else None
@@ -433,11 +436,12 @@ async def check_auth(request: Request):
 @app.get("/api/auth/me")
 async def get_current_user(user: dict = Depends(require_auth)):
     """Get current user info."""
+    db_user = get_user(user['user_id']) or {}
     return {
         'username': user['username'],
         'is_admin': user['is_admin'],
         'can_add_containers': user['can_add_containers'],
-        'can_edit_server_accent': user.get('can_edit_server_accent', False),
+        'can_edit_server_accent': bool(db_user.get('can_edit_server_accent', 0)),
         'language': user.get('language', 'en'),
         **_resolve_user_accent(user['user_id'])
     }
@@ -455,7 +459,8 @@ async def get_theme():
 @app.patch("/api/theme")
 async def set_theme(request: SetAccentRequest, user: dict = Depends(require_auth)):
     """Set server-default accent (requires can_edit_server_accent or admin)."""
-    if not user.get('can_edit_server_accent') and not user.get('is_admin'):
+    db_user = get_user(user['user_id']) or {}
+    if not db_user.get('can_edit_server_accent') and not user.get('is_admin'):
         raise HTTPException(status_code=403, detail="Permission to edit server accent required")
     accent = request.accent.strip()
     hover  = (request.hover or '').strip() or None

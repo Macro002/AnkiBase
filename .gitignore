@@ -1,5 +1,6 @@
 # Personal / deployment
 todo.txt
+backend/.version
 deploy.sh
 nginx-*.conf
 .claude/

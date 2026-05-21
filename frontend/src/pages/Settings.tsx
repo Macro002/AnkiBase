@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Key, Globe, Palette, RotateCcw } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Key, Globe, Palette, RotateCcw, Upload, Download, X } from 'lucide-react';
 import { auth, theme as themeApi, type User } from '../api';
 import { useNavigate } from 'react-router-dom';
 import { UserManagement } from '../components/UserManagement';
@@ -15,6 +15,14 @@ type ThemeMode = 'personal' | 'server';
 interface BaseColorField {
   key: keyof BaseColors;
   label: string;
+}
+
+interface ThemeFile {
+  name: string;
+  version: number;
+  accent: string;
+  hover: string;
+  base: BaseColors;
 }
 
 const BG_FIELDS: BaseColorField[] = [
@@ -35,7 +43,29 @@ const THEMES = [
     hover: '#ff6b6b',
     base: BASE_COLORS_DEFAULT,
   },
+  {
+    name: 'Quizlet',
+    accent: '#423ed8',
+    hover: '#605cf6',
+    base: {
+      bg_primary:   '#0a092d',
+      bg_secondary: '#2e3856',
+      bg_tertiary:  '#3d4f7c',
+      text_primary:   '#ffffff',
+      text_secondary: '#8b95b5',
+    } as BaseColors,
+  },
 ];
+
+function isValidThemeFile(data: unknown): data is ThemeFile {
+  if (!data || typeof data !== 'object') return false;
+  const d = data as Record<string, unknown>;
+  if (typeof d.accent !== 'string') return false;
+  if (!d.base || typeof d.base !== 'object') return false;
+  const b = d.base as Record<string, unknown>;
+  return ['bg_primary', 'bg_secondary', 'bg_tertiary', 'text_primary', 'text_secondary']
+    .every(k => typeof b[k] === 'string');
+}
 
 export function Settings() {
   const navigate = useNavigate();
@@ -60,8 +90,13 @@ export function Settings() {
   const [serverBase, setServerBase] = useState<BaseColors>({ ...BASE_COLORS_DEFAULT });
   const [baseColorsSaving, setBaseColorsSaving] = useState(false);
 
-  // Shared mode toggle (affects both accent and base colors)
+  // Shared mode toggle
   const [mode, setMode] = useState<ThemeMode>('personal');
+
+  // Import/export
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importPreview, setImportPreview] = useState<ThemeFile | null>(null);
+  const [importName, setImportName] = useState('');
 
   const canEditServer = !!(currentUser?.is_admin || currentUser?.can_edit_server_accent);
 
@@ -70,9 +105,7 @@ export function Settings() {
   const loadAll = async () => {
     try {
       const [user, serverTheme, serverBaseColors] = await Promise.all([
-        auth.me(),
-        themeApi.get(),
-        themeApi.getBase(),
+        auth.me(), themeApi.get(), themeApi.getBase(),
       ]);
       setCurrentUser(user);
       setServerAccent(serverTheme.accent);
@@ -80,12 +113,10 @@ export function Settings() {
       setAccentColor(user.accent_color ?? serverTheme.accent);
       setServerBase({ ...BASE_COLORS_DEFAULT, ...serverBaseColors });
       setPersonalBase({ ...BASE_COLORS_DEFAULT, ...(user.base_colors ?? serverBaseColors) });
-    } catch (err) {
-      console.error('Failed to load settings:', err);
-    }
+    } catch (err) { console.error('Failed to load settings:', err); }
   };
 
-  // ── Accent handlers ─────────────────────────────────────────────────────────
+  // ── Accent ───────────────────────────────────────────────────────────────────
 
   const handleSavePersonalAccent = async (accent: string, hover?: string) => {
     const h = hover ?? serverHover;
@@ -108,18 +139,14 @@ export function Settings() {
 
   const handleSaveServerAccent = async (accent: string, hover?: string) => {
     const h = hover ?? serverHover;
-    setServerAccent(accent);
-    setServerHover(h);
+    setServerAccent(accent); setServerHover(h);
     try {
       await themeApi.set(accent, h);
-      if (!currentUser?.has_personal_accent) {
-        setAccentColor(accent);
-        saveAccentColor(accent, h);
-      }
+      if (!currentUser?.has_personal_accent) saveAccentColor(accent, h);
     } catch (err) { console.error(err); }
   };
 
-  // ── Base color handlers ──────────────────────────────────────────────────────
+  // ── Base Colors ──────────────────────────────────────────────────────────────
 
   const handleSavePersonalBase = async (colors: BaseColors) => {
     setPersonalBase(colors);
@@ -133,16 +160,14 @@ export function Settings() {
     setBaseColorsSaving(true);
     try {
       const res = await auth.clearBaseColors();
-      const c = { ...BASE_COLORS_DEFAULT, ...res };
-      setPersonalBase(c as BaseColors);
-      saveBaseColors(c);
+      const c = { ...BASE_COLORS_DEFAULT, ...res } as BaseColors;
+      setPersonalBase(c); saveBaseColors(c);
       await loadAll();
     } finally { setBaseColorsSaving(false); }
   };
 
   const handleSaveServerBase = async (colors: BaseColors) => {
-    setServerBase(colors);
-    saveBaseColors(colors);
+    setServerBase(colors); saveBaseColors(colors);
     try {
       await themeApi.setBase(colors);
       if (!currentUser?.has_personal_base_colors) saveBaseColors(colors);
@@ -162,17 +187,66 @@ export function Settings() {
   };
 
   const isThemeActive = (th: typeof THEMES[0]) => {
-    const activeAccent = mode === 'server' ? serverAccent : accentColor;
-    const activeBase = mode === 'server' ? serverBase : personalBase;
-    return activeAccent === th.accent
-      && Object.entries(th.base).every(([k, v]) => activeBase[k as keyof BaseColors] === v);
+    const a = mode === 'server' ? serverAccent : accentColor;
+    const b = mode === 'server' ? serverBase : personalBase;
+    return a === th.accent && Object.entries(th.base).every(([k, v]) => b[k as keyof BaseColors] === v);
+  };
+
+  // ── Export / Import ──────────────────────────────────────────────────────────
+
+  const handleExport = () => {
+    const hover = getComputedStyle(document.documentElement).getPropertyValue('--accent-hover').trim();
+    const payload: ThemeFile = {
+      name: isServer ? 'Server Theme' : 'My Theme',
+      version: 1,
+      accent: activeAccent,
+      hover: hover || activeAccent,
+      base: activeBase,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'ankibase-theme.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const data = JSON.parse(ev.target?.result as string);
+        if (!isValidThemeFile(data)) throw new Error('Invalid theme file');
+        setImportPreview({
+          name: typeof data.name === 'string' ? data.name : 'Imported Theme',
+          version: 1,
+          accent: data.accent,
+          hover: data.hover || data.accent,
+          base: { ...BASE_COLORS_DEFAULT, ...data.base },
+        });
+        setImportName(typeof data.name === 'string' ? data.name : 'Imported Theme');
+      } catch { /* invalid file — silently ignore */ }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  const handleApplyImport = async () => {
+    if (!importPreview) return;
+    await handleSavePersonalAccent(importPreview.accent, importPreview.hover);
+    await handleSavePersonalBase(importPreview.base);
+    setImportPreview(null);
   };
 
   // ── Active pickers ───────────────────────────────────────────────────────────
 
   const isServer = mode === 'server';
   const activeAccent = isServer ? serverAccent : accentColor;
-  const activeBase = isServer ? serverBase : personalBase;
+  const activeBase   = isServer ? serverBase   : personalBase;
+  const isCustomAccent = ACCENT_PRESETS.every(p => p.accent !== activeAccent);
 
   const onPickAccentPreset = (accent: string, hover?: string) =>
     isServer ? handleSaveServerAccent(accent, hover) : handleSavePersonalAccent(accent, hover);
@@ -223,16 +297,25 @@ export function Settings() {
               <Palette className="w-5 h-5 text-(--accent)" />
               <h2 className="text-xl font-semibold">Theme</h2>
             </div>
-            {canEditServer && (
-              <select
-                value={mode}
-                onChange={e => setMode(e.target.value as ThemeMode)}
-                className="input text-sm py-1 px-2 h-auto"
-              >
-                <option value="personal">Personal</option>
-                <option value="server">Server default</option>
-              </select>
-            )}
+            <div className="flex items-center gap-2">
+              <button onClick={handleExport} className="icon-btn" title="Export theme">
+                <Download className="w-4 h-4" />
+              </button>
+              <button onClick={() => fileInputRef.current?.click()} className="icon-btn" title="Import theme">
+                <Upload className="w-4 h-4" />
+              </button>
+              <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={handleImportFile} />
+              {canEditServer && (
+                <select
+                  value={mode}
+                  onChange={e => setMode(e.target.value as ThemeMode)}
+                  className="input text-sm py-1 px-2 h-auto"
+                >
+                  <option value="personal">Personal</option>
+                  <option value="server">Server default</option>
+                </select>
+              )}
+            </div>
           </div>
 
           {/* Themes */}
@@ -283,7 +366,7 @@ export function Settings() {
                 </button>
               )}
             </div>
-            <div className="space-y-3">
+            <div className="space-y-1">
               <div className="flex flex-wrap gap-3">
                 {ACCENT_PRESETS.map(p => (
                   <button
@@ -305,27 +388,30 @@ export function Settings() {
                     <span className="text-xs text-(--text-secondary) group-hover:text-(--text-primary) transition-colors leading-none">{p.name}</span>
                   </button>
                 ))}
-              </div>
-              <div className="flex items-center gap-3">
-                <div
-                  className="relative w-7 h-7 rounded-full shrink-0 cursor-pointer transition-all"
-                  style={{
-                    background: activeAccent,
-                    boxShadow: ACCENT_PRESETS.every(p => p.accent !== activeAccent)
-                      ? `0 0 0 2px var(--bg-primary), 0 0 0 4px ${activeAccent}`
-                      : 'none',
-                  }}
-                >
-                  <input
-                    type="color"
-                    value={activeAccent}
-                    onChange={e => onPickAccentPreset(e.target.value)}
-                    disabled={accentSaving}
-                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full rounded-full"
-                  />
+                {/* Custom — inline with presets */}
+                <div className="flex flex-col items-center gap-1 w-10">
+                  <div
+                    className="relative w-7 h-7 rounded-full shrink-0 cursor-pointer transition-all"
+                    style={{
+                      background: activeAccent,
+                      boxShadow: isCustomAccent
+                        ? `0 0 0 2px var(--bg-primary), 0 0 0 4px ${activeAccent}`
+                        : 'none',
+                    }}
+                  >
+                    <input
+                      type="color"
+                      value={activeAccent}
+                      onChange={e => onPickAccentPreset(e.target.value)}
+                      disabled={accentSaving}
+                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full rounded-full"
+                    />
+                  </div>
+                  <span className="text-xs text-(--text-secondary) leading-none">Custom</span>
+                  {isCustomAccent && (
+                    <span className="text-[10px] font-mono text-(--text-secondary) leading-none">{activeAccent}</span>
+                  )}
                 </div>
-                <span className="text-sm text-(--text-secondary)">Custom</span>
-                <span className="text-sm font-mono text-(--text-secondary)">{activeAccent}</span>
               </div>
             </div>
           </div>
@@ -350,10 +436,7 @@ export function Settings() {
                 <div className="space-y-2">
                   {BG_FIELDS.map(({ key, label }) => (
                     <div key={key} className="flex items-center gap-3">
-                      <div
-                        className="relative w-7 h-7 rounded-full shrink-0 cursor-pointer"
-                        style={{ background: activeBase[key] }}
-                      >
+                      <div className="relative w-7 h-7 rounded-full shrink-0 cursor-pointer" style={{ background: activeBase[key] }}>
                         <input
                           type="color"
                           value={activeBase[key]}
@@ -373,10 +456,7 @@ export function Settings() {
                 <div className="space-y-2">
                   {TEXT_FIELDS.map(({ key, label }) => (
                     <div key={key} className="flex items-center gap-3">
-                      <div
-                        className="relative w-7 h-7 rounded-full shrink-0 cursor-pointer"
-                        style={{ background: activeBase[key] }}
-                      >
+                      <div className="relative w-7 h-7 rounded-full shrink-0 cursor-pointer" style={{ background: activeBase[key] }}>
                         <input
                           type="color"
                           value={activeBase[key]}
@@ -403,17 +483,11 @@ export function Settings() {
           </div>
           <p className="text-(--text-secondary) text-sm mb-6">{t('settings.languageDescription')}</p>
           {languageSuccess && (
-            <div className="mb-4 p-3 bg-green-500/10 border border-green-500/30 rounded text-green-400 text-sm">
-              {languageSuccess}
-            </div>
+            <div className="mb-4 p-3 bg-green-500/10 border border-green-500/30 rounded text-green-400 text-sm">{languageSuccess}</div>
           )}
           <div>
             <label className="block text-sm font-medium mb-2">{t('settings.selectLanguage')}</label>
-            <select
-              value={currentUser?.language || 'en'}
-              onChange={(e) => handleLanguageChange(e.target.value)}
-              className="input w-full"
-            >
+            <select value={currentUser?.language || 'en'} onChange={e => handleLanguageChange(e.target.value)} className="input w-full">
               <option value="en">English</option>
               <option value="de">Deutsch</option>
             </select>
@@ -427,12 +501,8 @@ export function Settings() {
             <h2 className="text-xl font-semibold">{t('settings.changePassword')}</h2>
           </div>
           <p className="text-(--text-secondary) text-sm mb-6">{t('settings.passwordDescription')}</p>
-          {error && (
-            <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded text-red-400 text-sm">{error}</div>
-          )}
-          {success && (
-            <div className="mb-4 p-3 bg-green-500/10 border border-green-500/30 rounded text-green-400 text-sm">{success}</div>
-          )}
+          {error && <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded text-red-400 text-sm">{error}</div>}
+          {success && <div className="mb-4 p-3 bg-green-500/10 border border-green-500/30 rounded text-green-400 text-sm">{success}</div>}
           <form onSubmit={handlePasswordReset} className="space-y-4">
             <div>
               <label className="block text-sm font-medium mb-1">{t('settings.currentPassword')}</label>
@@ -455,9 +525,68 @@ export function Settings() {
           </form>
         </div>
 
-        {/* User Management (admin only) */}
+        {/* User Management */}
         {currentUser?.is_admin && <UserManagement />}
       </div>
+
+      {/* ── Import preview modal ─────────────────────────────────────────── */}
+      {importPreview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="card max-w-sm w-full space-y-5">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold">Import Theme</h3>
+              <button onClick={() => setImportPreview(null)} className="icon-btn">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Preview */}
+            <div className="flex items-center gap-4">
+              <div className="relative w-20 h-20 rounded-xl overflow-hidden border-2 shrink-0" style={{ borderColor: importPreview.accent }}>
+                <div className="absolute inset-0 flex flex-col">
+                  <div className="flex-1" style={{ background: importPreview.base.bg_primary }} />
+                  <div className="flex-1" style={{ background: importPreview.base.bg_secondary }} />
+                  <div className="flex-1" style={{ background: importPreview.base.bg_tertiary }} />
+                </div>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <Logo className="w-9 h-9" color={importPreview.accent} />
+                </div>
+              </div>
+              <div className="space-y-1 text-xs font-mono text-(--text-secondary)">
+                {[
+                  ['Accent', importPreview.accent],
+                  ['BG', importPreview.base.bg_primary],
+                  ['Card', importPreview.base.bg_secondary],
+                  ['Border', importPreview.base.bg_tertiary],
+                ].map(([label, val]) => (
+                  <div key={label} className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full shrink-0" style={{ background: val }} />
+                    <span className="text-(--text-secondary)">{label}</span>
+                    <span>{val}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Name input */}
+            <div>
+              <label className="block text-sm font-medium mb-1">Theme name</label>
+              <input
+                type="text"
+                value={importName}
+                onChange={e => setImportName(e.target.value)}
+                className="input w-full"
+                placeholder="My Theme"
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={handleApplyImport} className="btn btn-primary flex-1">Apply</button>
+              <button onClick={() => setImportPreview(null)} className="btn btn-secondary flex-1">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

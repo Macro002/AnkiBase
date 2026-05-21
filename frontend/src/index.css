@@ -317,6 +317,25 @@ input[type="checkbox"]:checked::after {
   }
 }
 
+/* Heatmap year slide animations */
+@keyframes slide-in-right {
+  from { transform: translateX(40px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes slide-in-left {
+  from { transform: translateX(-40px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+.slide-in-right {
+  animation: slide-in-right 0.25s ease-out;
+}
+
+.slide-in-left {
+  animation: slide-in-left 0.25s ease-out;
+}
+
 /* Fade out animation for answer feedback */
 @keyframes fade-out {
   0% {

@@ -428,7 +428,7 @@ export function Decks() {
                   </div>
 
                   <div className="flex items-center gap-3 text-sm text-(--text-secondary) mb-4 flex-wrap">
-                    <span className="flex items-center gap-1"><Layers className="w-3.5 h-3.5" />{deck.card_count} cards</span>
+                    <span className="flex items-center gap-1"><Layers className="w-3.5 h-3.5 text-(--accent)" />{deck.card_count} cards</span>
                     {(quizletStats[deck.id] ?? 0) > 0 && (
                       <span className="flex items-center gap-1">
                         <TrendingUp className="w-3.5 h-3.5 text-(--accent)" />

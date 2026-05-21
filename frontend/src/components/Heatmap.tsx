@@ -18,6 +18,7 @@ export function Heatmap({ className = '' }: HeatmapProps) {
   const [year, setYear] = useState(new Date().getFullYear());
   const [hoveredDay, setHoveredDay] = useState<{ date: string; count: number } | null>(null);
   const [source, setSource] = useState<Source>('all');
+  const [slideDir, setSlideDir] = useState<'left' | 'right' | null>(null);
   const [colorScheme, setColorScheme] = useState<ColorScheme>(() => {
     if (typeof window !== 'undefined') {
       return (localStorage.getItem('heatmap-color') as ColorScheme) || 'accent';
@@ -46,6 +47,10 @@ export function Heatmap({ className = '' }: HeatmapProps) {
   }, [colorScheme]);
 
   const currentYear = new Date().getFullYear();
+
+  const handlePrevYear = () => { setSlideDir('left'); setYear(y => y - 1); };
+  const handleNextYear = () => { setSlideDir('right'); setYear(y => Math.min(y + 1, currentYear)); };
+  const handleResetYear = () => { if (year !== currentYear) { setSlideDir('right'); setYear(currentYear); } };
 
   const buildWeeksForYear = (targetYear: number) => {
     const startDate = new Date(targetYear, 0, 1);
@@ -276,10 +281,33 @@ export function Heatmap({ className = '' }: HeatmapProps) {
     <div className={`card ${className}`}>
       {/* Header with year navigation */}
       <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <h3 className="font-semibold">{t('heatmap.activityHeatmap')}</h3>
+        <h3 className="font-semibold">{t('heatmap.activityHeatmap')}</h3>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={handlePrevYear}
+            className="p-1.5 hover-bg-tertiary rounded transition-colors"
+            title={t('heatmap.previousYear', 'Previous year')}
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <button
+            onClick={handleResetYear}
+            disabled={year === currentYear}
+            className="px-3 py-1.5 text-sm font-medium min-w-[60px] text-center rounded hover-bg-tertiary transition-colors disabled:opacity-50 disabled:cursor-default"
+            title={year !== currentYear ? 'Return to current year' : undefined}
+          >
+            {year}
+          </button>
+          <button
+            onClick={handleNextYear}
+            disabled={year >= currentYear}
+            className="p-1.5 hover-bg-tertiary rounded transition-colors disabled:opacity-30"
+            title={t('heatmap.nextYear', 'Next year')}
+          >
+            <ChevronRight className="w-5 h-5" />
+          </button>
           <select
-            className="input text-sm py-1 px-2"
+            className="input text-sm py-1 px-2 ml-1"
             value={source}
             onChange={e => setSource(e.target.value as Source)}
           >
@@ -287,26 +315,6 @@ export function Heatmap({ className = '' }: HeatmapProps) {
             <option value="anki">Anki</option>
             <option value="quizlet">Quizlet</option>
           </select>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setYear(y => y - 1)}
-            className="p-1.5 hover-bg-tertiary rounded transition-colors"
-            title={t('heatmap.previousYear', 'Previous year')}
-          >
-            <ChevronLeft className="w-5 h-5" />
-          </button>
-          <span className="px-3 py-1.5 text-sm font-medium min-w-[60px] text-center">
-            {year}
-          </span>
-          <button
-            onClick={() => setYear(y => Math.min(y + 1, currentYear))}
-            disabled={year >= currentYear}
-            className="p-1.5 hover-bg-tertiary rounded transition-colors disabled:opacity-30"
-            title={t('heatmap.nextYear', 'Next year')}
-          >
-            <ChevronRight className="w-5 h-5" />
-          </button>
         </div>
       </div>
 
@@ -331,7 +339,12 @@ export function Heatmap({ className = '' }: HeatmapProps) {
       </div>
 
       {/* Heatmap grid */}
-      <div ref={containerRef}>
+      <div
+        key={year}
+        ref={containerRef}
+        className={slideDir === 'right' ? 'slide-in-right' : slideDir === 'left' ? 'slide-in-left' : ''}
+        onAnimationEnd={() => setSlideDir(null)}
+      >
         {/* Grid with day labels */}
         <div className="flex">
           {/* Day labels column */}

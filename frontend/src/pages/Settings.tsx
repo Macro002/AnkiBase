@@ -99,6 +99,42 @@ const BUILTIN_THEMES: ThemeEntry[] = [
       text_secondary: '#d8dee9',
     } as BaseColors,
   },
+  {
+    name: 'Dracula',
+    accent: '#ff79c6',
+    hover: '#ff92d0',
+    base: {
+      bg_primary:     '#282a36',
+      bg_secondary:   '#1e1f29',
+      bg_tertiary:    '#44475a',
+      text_primary:   '#f8f8f2',
+      text_secondary: '#6272a4',
+    } as BaseColors,
+  },
+  {
+    name: 'Tokyo',
+    accent: '#7aa2f7',
+    hover: '#89b4fa',
+    base: {
+      bg_primary:     '#1a1b26',
+      bg_secondary:   '#16161e',
+      bg_tertiary:    '#292e42',
+      text_primary:   '#c0caf5',
+      text_secondary: '#565f89',
+    } as BaseColors,
+  },
+  {
+    name: 'Catppuccin',
+    accent: '#cba6f7',
+    hover: '#d4b2f8',
+    base: {
+      bg_primary:     '#1e1e2e',
+      bg_secondary:   '#181825',
+      bg_tertiary:    '#313244',
+      text_primary:   '#cdd6f4',
+      text_secondary: '#6c7086',
+    } as BaseColors,
+  },
 ];
 
 function isValidThemeFile(data: unknown): data is ThemeFile {

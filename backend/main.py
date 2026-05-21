@@ -21,6 +21,8 @@ from database import (
     rename_quizlet_deck, record_quizlet_review, get_quizlet_daily_counts,
     get_quizlet_deck_stats, get_quizlet_favorites, toggle_quizlet_favorite,
     get_setting, set_setting, get_user_accent, set_user_accent, clear_user_accent,
+    get_server_base_colors, set_server_base_colors,
+    get_user_base_colors, set_user_base_colors, clear_user_base_colors,
     get_user,
 )
 from ankiweb_credentials import AnkiWebCredentials
@@ -219,6 +221,15 @@ def _resolve_user_accent(user_id: int) -> dict:
         'accent_color': get_setting('server_accent_color', _SERVER_ACCENT_DEFAULT),
         'accent_hover': get_setting('server_accent_hover', _SERVER_HOVER_DEFAULT),
         'has_personal_accent': False,
+    }
+
+
+def _resolve_user_base_colors(user_id: int) -> dict:
+    """Return base color fields for a user: personal override if set, else server default."""
+    personal = get_user_base_colors(user_id)
+    return {
+        'base_colors': personal if personal is not None else get_server_base_colors(),
+        'has_personal_base_colors': personal is not None,
     }
 
 
@@ -428,7 +439,8 @@ async def check_auth(request: Request):
             'can_add_containers': user['can_add_containers'],
             'can_edit_server_accent': bool(db_user.get('can_edit_server_accent', 0)),
             'language': user.get('language', 'en'),
-            **(_resolve_user_accent(user['user_id']))
+            **_resolve_user_accent(user['user_id']),
+            **_resolve_user_base_colors(user['user_id']),
         } if user else None
     }
 
@@ -443,7 +455,8 @@ async def get_current_user(user: dict = Depends(require_auth)):
         'can_add_containers': user['can_add_containers'],
         'can_edit_server_accent': bool(db_user.get('can_edit_server_accent', 0)),
         'language': user.get('language', 'en'),
-        **_resolve_user_accent(user['user_id'])
+        **_resolve_user_accent(user['user_id']),
+        **_resolve_user_base_colors(user['user_id']),
     }
 
 
@@ -486,6 +499,36 @@ async def clear_personal_accent(user: dict = Depends(require_auth)):
     server = {"accent": get_setting('server_accent_color', _SERVER_ACCENT_DEFAULT),
               "hover":  get_setting('server_accent_hover',  _SERVER_HOVER_DEFAULT)}
     return {"success": True, **server}
+
+
+@app.get("/api/theme/base")
+async def get_theme_base():
+    """Return server-default base colors (no auth required)."""
+    return get_server_base_colors()
+
+
+@app.patch("/api/theme/base")
+async def set_theme_base(request: dict, user: dict = Depends(require_auth)):
+    """Set server-default base colors (requires can_edit_server_accent or admin)."""
+    db_user = get_user(user['user_id']) or {}
+    if not db_user.get('can_edit_server_accent') and not user.get('is_admin'):
+        raise HTTPException(status_code=403, detail="Permission to edit server theme required")
+    set_server_base_colors(request)
+    return {"success": True, **get_server_base_colors()}
+
+
+@app.patch("/api/auth/base-colors")
+async def set_personal_base_colors(request: dict, user: dict = Depends(require_auth)):
+    """Save the current user's personal base color overrides."""
+    set_user_base_colors(user['user_id'], request)
+    return {"success": True}
+
+
+@app.delete("/api/auth/base-colors")
+async def clear_personal_base_colors(user: dict = Depends(require_auth)):
+    """Remove the current user's personal base color overrides."""
+    clear_user_base_colors(user['user_id'])
+    return {"success": True, **get_server_base_colors()}
 
 
 @app.post("/api/auth/change-password")

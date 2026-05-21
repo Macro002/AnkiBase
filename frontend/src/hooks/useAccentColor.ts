@@ -1,4 +1,5 @@
 const STORAGE_KEY = 'ankibase-accent';
+const BASE_COLORS_KEY = 'ankibase-base-colors';
 
 const DEFAULT = { accent: '#e94560', hover: '#ff6b6b' };
 
@@ -50,6 +51,46 @@ export function getAccentColor(): { accent: string; hover: string } {
     if (saved) return JSON.parse(saved);
   } catch {}
   return DEFAULT;
+}
+
+export interface BaseColors {
+  bg_primary: string;
+  bg_secondary: string;
+  bg_tertiary: string;
+  text_primary: string;
+  text_secondary: string;
+  [key: string]: string;
+}
+
+export const BASE_COLORS_DEFAULT: BaseColors = {
+  bg_primary: '#1a1a2e',
+  bg_secondary: '#16213e',
+  bg_tertiary: '#0f3460',
+  text_primary: '#eeeeee',
+  text_secondary: '#aaaaaa',
+};
+
+export function applyBaseColors(colors: Partial<BaseColors>) {
+  const c = { ...BASE_COLORS_DEFAULT, ...colors };
+  const root = document.documentElement;
+  root.style.setProperty('--bg-primary', c.bg_primary);
+  root.style.setProperty('--bg-secondary', c.bg_secondary);
+  root.style.setProperty('--bg-tertiary', c.bg_tertiary);
+  root.style.setProperty('--text-primary', c.text_primary);
+  root.style.setProperty('--text-secondary', c.text_secondary);
+}
+
+export function saveBaseColors(colors: Partial<BaseColors>) {
+  const c = { ...BASE_COLORS_DEFAULT, ...colors };
+  localStorage.setItem(BASE_COLORS_KEY, JSON.stringify(c));
+  applyBaseColors(c);
+}
+
+export function loadBaseColors() {
+  try {
+    const saved = localStorage.getItem(BASE_COLORS_KEY);
+    if (saved) applyBaseColors(JSON.parse(saved));
+  } catch {}
 }
 
 export const ACCENT_PRESETS = [

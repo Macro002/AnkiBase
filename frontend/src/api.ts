@@ -44,6 +44,8 @@ export interface User {
   accent_color?: string | null;
   accent_hover?: string | null;
   has_personal_accent?: boolean;
+  base_colors?: Record<string, string> | null;
+  has_personal_base_colors?: boolean;
 }
 
 export const auth = {
@@ -71,6 +73,12 @@ export const auth = {
       body: JSON.stringify({ accent, hover }),
     }),
   clearAccent: () => fetchAPI<{ success: boolean; accent: string; hover: string }>('/auth/accent', { method: 'DELETE' }),
+  setBaseColors: (colors: Record<string, string>) =>
+    fetchAPI<{ success: boolean }>('/auth/base-colors', {
+      method: 'PATCH',
+      body: JSON.stringify(colors),
+    }),
+  clearBaseColors: () => fetchAPI<Record<string, string>>('/auth/base-colors', { method: 'DELETE' }),
 };
 
 export const theme = {
@@ -79,6 +87,12 @@ export const theme = {
     fetchAPI<{ success: boolean; accent: string; hover: string }>('/theme', {
       method: 'PATCH',
       body: JSON.stringify({ accent, hover }),
+    }),
+  getBase: () => fetchAPI<Record<string, string>>('/theme/base'),
+  setBase: (colors: Record<string, string>) =>
+    fetchAPI<Record<string, string>>('/theme/base', {
+      method: 'PATCH',
+      body: JSON.stringify(colors),
     }),
 };
 

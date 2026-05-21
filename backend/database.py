@@ -95,6 +95,8 @@ def init_global_db():
             cursor.execute("ALTER TABLE users ADD COLUMN accent_hover TEXT")
         if 'can_edit_server_accent' not in columns:
             cursor.execute("ALTER TABLE users ADD COLUMN can_edit_server_accent INTEGER DEFAULT 0")
+        if 'base_colors' not in columns:
+            cursor.execute("ALTER TABLE users ADD COLUMN base_colors TEXT")
 
         # App-wide settings table (key-value)
         cursor.execute("""
@@ -1034,6 +1036,52 @@ def clear_user_accent(user_id: int) -> None:
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("UPDATE users SET accent_color = NULL, accent_hover = NULL WHERE id = ?", (user_id,))
+        conn.commit()
+
+
+_BASE_COLORS_DEFAULT = {
+    'bg_primary': '#1a1a2e',
+    'bg_secondary': '#16213e',
+    'bg_tertiary': '#0f3460',
+    'text_primary': '#eeeeee',
+    'text_secondary': '#aaaaaa',
+}
+
+def get_server_base_colors() -> dict:
+    val = get_setting('server_base_colors')
+    if val:
+        try:
+            return {**_BASE_COLORS_DEFAULT, **json.loads(val)}
+        except Exception:
+            pass
+    return dict(_BASE_COLORS_DEFAULT)
+
+def set_server_base_colors(colors: dict) -> None:
+    merged = {**_BASE_COLORS_DEFAULT, **colors}
+    set_setting('server_base_colors', json.dumps(merged))
+
+def get_user_base_colors(user_id: int) -> Optional[dict]:
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT base_colors FROM users WHERE id = ?", (user_id,))
+        row = cursor.fetchone()
+        if row and row[0]:
+            try:
+                return json.loads(row[0])
+            except Exception:
+                pass
+    return None
+
+def set_user_base_colors(user_id: int, colors: dict) -> None:
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE users SET base_colors = ? WHERE id = ?", (json.dumps(colors), user_id))
+        conn.commit()
+
+def clear_user_base_colors(user_id: int) -> None:
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE users SET base_colors = NULL WHERE id = ?", (user_id,))
         conn.commit()
 
 

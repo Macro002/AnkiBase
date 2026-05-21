@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { auth, setup } from './api';
-import { loadAccentColor, saveAccentColor } from './hooks/useAccentColor';
+import { loadAccentColor, saveAccentColor, loadBaseColors, saveBaseColors } from './hooks/useAccentColor';
 
 loadAccentColor();
+loadBaseColors();
 import { Login } from './components/Login';
 import { Layout } from './components/Layout';
 import { Decks } from './components/Decks';
@@ -38,6 +39,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
         setAuthenticated(res.authenticated);
         if (res.user?.language) i18n.changeLanguage(res.user.language);
         if (res.user?.accent_color) saveAccentColor(res.user.accent_color, res.user.accent_hover ?? undefined);
+        if (res.user?.base_colors) saveBaseColors(res.user.base_colors);
       } catch {
         setAuthenticated(false);
       } finally {

@@ -3,8 +3,9 @@ import { Eye, EyeOff } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { auth, setup, theme as themeApi } from '../api';
+
 import { Logo } from './Logo';
-import { applyAccentColor, saveAccentColor } from '../hooks/useAccentColor';
+import { applyAccentColor, saveAccentColor, applyBaseColors, saveBaseColors } from '../hooks/useAccentColor';
 
 export function Login() {
   const { t } = useTranslation();
@@ -19,8 +20,9 @@ export function Login() {
     setup.status().then(s => {
       if (s.needs_setup || !s.has_container) navigate('/setup', { replace: true });
     }).catch(() => {});
-    // Apply server accent on the login page (no user yet)
+    // Apply server accent + base colors on the login page (no user yet)
     themeApi.get().then(t => applyAccentColor(t.accent, t.hover)).catch(() => {});
+    themeApi.getBase().then(c => applyBaseColors(c)).catch(() => {});
   }, [navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -35,6 +37,7 @@ export function Login() {
       try {
         const me = await auth.me();
         if (me.accent_color) saveAccentColor(me.accent_color, me.accent_hover ?? undefined);
+        if (me.base_colors) saveBaseColors(me.base_colors);
       } catch {}
       // Force a full page reload to ensure fresh data from the correct container
       window.location.href = '/';

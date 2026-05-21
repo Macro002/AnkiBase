@@ -1600,15 +1600,16 @@ def _read_local_version() -> str:
 
 @app.get("/api/update/check")
 async def update_check(_: dict = Depends(require_admin)):
-    import httpx
+    import asyncio
     local = _read_local_version()
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            r = await client.get(
-                f"https://api.github.com/repos/{GITHUB_REPO}/commits/main",
-                headers={"Accept": "application/vnd.github.sha"},
-            )
-            latest = r.text.strip() if r.status_code == 200 else "unknown"
+        proc = await asyncio.create_subprocess_exec(
+            "git", "ls-remote", f"https://github.com/{GITHUB_REPO}.git", "HEAD",
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=15)
+        line = stdout.decode().strip()
+        latest = line.split()[0] if line else "unknown"
     except Exception:
         latest = "unknown"
 

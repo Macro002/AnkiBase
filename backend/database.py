@@ -130,6 +130,18 @@ def init_global_db():
         except Exception:
             pass
 
+        # Migration: add container_id to quizlet_decks
+        try:
+            cursor.execute("ALTER TABLE quizlet_decks ADD COLUMN container_id INTEGER REFERENCES anki_accounts(id) ON DELETE CASCADE")
+        except Exception:
+            pass
+        # Backfill existing unscoped decks to whichever container is currently active
+        cursor.execute("""
+            UPDATE quizlet_decks
+            SET container_id = (SELECT id FROM anki_accounts WHERE is_active = 1 LIMIT 1)
+            WHERE container_id IS NULL
+        """)
+
         # Quizlet reviews table (for heatmap)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS quizlet_reviews (
@@ -851,11 +863,13 @@ def migrate_to_user_system(existing_password: str) -> bool:
 # ============================================================================
 
 def create_quizlet_deck(title: str, url: str, cards: list[dict]) -> int:
+    active = get_active_account()
+    container_id = active["id"] if active else None
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO quizlet_decks (title, url, card_count) VALUES (?, ?, ?)",
-            (title, url, len(cards))
+            "INSERT INTO quizlet_decks (title, url, card_count, container_id) VALUES (?, ?, ?, ?)",
+            (title, url, len(cards), container_id)
         )
         deck_id = cursor.lastrowid
         for i, card in enumerate(cards):
@@ -867,9 +881,14 @@ def create_quizlet_deck(title: str, url: str, cards: list[dict]) -> int:
         return deck_id
 
 def get_quizlet_decks() -> list[dict]:
+    active = get_active_account()
+    container_id = active["id"] if active else None
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT id, title, url, card_count, created_at FROM quizlet_decks ORDER BY created_at DESC")
+        cursor.execute(
+            "SELECT id, title, url, card_count, created_at FROM quizlet_decks WHERE container_id = ? ORDER BY created_at DESC",
+            (container_id,)
+        )
         return [dict(zip([d[0] for d in cursor.description], row)) for row in cursor.fetchall()]
 
 def get_quizlet_deck(deck_id: int) -> Optional[dict]:
@@ -917,13 +936,17 @@ def get_quizlet_deck_stats(deck_id: int) -> dict:
         return {"studied_today": cursor.fetchone()[0]}
 
 def get_quizlet_daily_counts() -> dict[str, int]:
+    active = get_active_account()
+    container_id = active["id"] if active else None
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT date(reviewed_at) as day, COUNT(*) as cnt
-            FROM quizlet_reviews
+            SELECT date(qr.reviewed_at) as day, COUNT(*) as cnt
+            FROM quizlet_reviews qr
+            JOIN quizlet_decks qd ON qr.deck_id = qd.id
+            WHERE qd.container_id = ?
             GROUP BY day
-        """)
+        """, (container_id,))
         return {row[0]: row[1] for row in cursor.fetchall()}
 
 

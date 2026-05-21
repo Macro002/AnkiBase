@@ -139,6 +139,7 @@ export function Settings() {
 
   // Custom themes (localStorage)
   const [customThemes, setCustomThemes] = useState<ThemeEntry[]>(loadCustomThemes);
+  const [deleteThemeModal, setDeleteThemeModal] = useState<{ index: number; name: string } | null>(null);
 
   // Import
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -239,10 +240,12 @@ export function Settings() {
     return a === th.accent && Object.entries(th.base).every(([k, v]) => b[k as keyof BaseColors] === v);
   };
 
-  const handleDeleteCustomTheme = (index: number) => {
-    const updated = customThemes.filter((_, i) => i !== index);
+  const handleConfirmDeleteTheme = () => {
+    if (!deleteThemeModal) return;
+    const updated = customThemes.filter((_, i) => i !== deleteThemeModal.index);
     setCustomThemes(updated);
     saveCustomThemes(updated);
+    setDeleteThemeModal(null);
   };
 
   // ── Export / Import ──────────────────────────────────────────────────────────
@@ -295,11 +298,9 @@ export function Settings() {
       hover: importPreview.hover,
       base: importPreview.base,
     };
-    // Save to custom themes list
     const updated = [...customThemes, entry];
     setCustomThemes(updated);
     saveCustomThemes(updated);
-    // Apply as personal colors
     await handleSavePersonalAccent(entry.accent, entry.hover);
     await handleSavePersonalBase(entry.base);
     setImportPreview(null);
@@ -350,20 +351,16 @@ export function Settings() {
     } finally { setLoading(false); }
   };
 
-  // ── Theme card rendering ─────────────────────────────────────────────────────
+  // ── Theme card ───────────────────────────────────────────────────────────────
 
-  const ThemeCard = ({ th, onDelete }: { th: ThemeEntry; onDelete?: () => void }) => (
-    <div className="relative group/card">
-      <button
-        onClick={() => handleApplyTheme(th)}
-        className="flex flex-col items-center gap-2"
-      >
-        <div
-          className="relative w-20 h-20 rounded-xl overflow-hidden border-2 transition-all"
-          style={{
-            borderColor: isThemeActive(th) ? th.accent : 'var(--bg-tertiary)',
-            boxShadow: isThemeActive(th) ? `0 0 0 2px ${th.accent}` : 'none',
-          }}
+  const ThemeCard = ({ th, customIndex }: { th: ThemeEntry; customIndex?: number }) => {
+    const active = isThemeActive(th);
+    return (
+      <div className="relative group/card flex flex-col items-center gap-2">
+        <button
+          onClick={() => handleApplyTheme(th)}
+          className={`theme-card rounded-xl overflow-hidden w-20 h-20${active ? ' theme-card-active' : ''}`}
+          style={{ '--card-accent': th.accent } as React.CSSProperties}
         >
           <div className="absolute inset-0 flex flex-col">
             <div className="flex-1" style={{ background: th.base.bg_primary }} />
@@ -373,21 +370,22 @@ export function Settings() {
           <div className="absolute inset-0 flex items-center justify-center">
             <Logo className="w-9 h-9" color={th.accent} />
           </div>
-        </div>
+        </button>
         <span className="text-xs text-(--text-secondary) group-hover/card:text-(--text-primary) transition-colors">
           {th.name}
         </span>
-      </button>
-      {onDelete && (
-        <button
-          onClick={e => { e.stopPropagation(); onDelete(); }}
-          className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-(--bg-tertiary) text-(--text-secondary) hover:text-(--error) transition-colors items-center justify-center hidden group-hover/card:flex"
-        >
-          <Trash2 className="w-3 h-3" />
-        </button>
-      )}
-    </div>
-  );
+        {customIndex !== undefined && (
+          <button
+            onClick={() => setDeleteThemeModal({ index: customIndex, name: th.name })}
+            className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-(--bg-tertiary) border border-(--bg-tertiary) text-(--text-secondary) hover:bg-red-500/20 hover:text-red-400 hover:border-red-500/40 transition-all items-center justify-center hidden group-hover/card:flex"
+            title="Delete theme"
+          >
+            <Trash2 className="w-3 h-3" />
+          </button>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className={currentUser?.is_admin ? "max-w-7xl mx-auto" : "max-w-2xl mx-auto"}>
@@ -431,7 +429,7 @@ export function Settings() {
                 <ThemeCard key={th.name} th={th} />
               ))}
               {customThemes.map((th, i) => (
-                <ThemeCard key={`custom-${i}`} th={th} onDelete={() => handleDeleteCustomTheme(i)} />
+                <ThemeCard key={`custom-${i}`} th={th} customIndex={i} />
               ))}
             </div>
           </div>
@@ -456,17 +454,14 @@ export function Settings() {
                   key={p.name}
                   onClick={() => onPickAccentPreset(p.accent, p.hover)}
                   className="flex flex-col items-center gap-1 group w-10"
-                  title={p.name}
                   disabled={accentSaving}
                 >
                   <div
-                    className="w-7 h-7 rounded-full transition-all"
+                    className={`color-swatch w-7 h-7 rounded-full transition-all${activeAccent === p.accent ? ' color-swatch-active' : ''}`}
                     style={{
                       background: p.accent,
-                      boxShadow: activeAccent === p.accent
-                        ? `0 0 0 2px var(--bg-primary), 0 0 0 4px ${p.accent}`
-                        : 'none',
-                    }}
+                      '--swatch-color': p.accent,
+                    } as React.CSSProperties}
                   />
                   <span className="text-xs text-(--text-secondary) group-hover:text-(--text-primary) transition-colors leading-none">{p.name}</span>
                 </button>
@@ -474,13 +469,11 @@ export function Settings() {
               {/* Custom — inline with presets */}
               <div className="flex flex-col items-center gap-1 w-10">
                 <div
-                  className="relative w-7 h-7 rounded-full shrink-0 cursor-pointer transition-all"
+                  className={`color-swatch relative w-7 h-7 rounded-full shrink-0 cursor-pointer${isCustomAccent ? ' color-swatch-active' : ''}`}
                   style={{
                     background: activeAccent,
-                    boxShadow: isCustomAccent
-                      ? `0 0 0 2px var(--bg-primary), 0 0 0 4px ${activeAccent}`
-                      : 'none',
-                  }}
+                    '--swatch-color': activeAccent,
+                  } as React.CSSProperties}
                 >
                   <input
                     type="color"
@@ -518,7 +511,10 @@ export function Settings() {
                 <div className="space-y-2">
                   {BG_FIELDS.map(({ key, label }) => (
                     <div key={key} className="flex items-center gap-3">
-                      <div className="relative w-7 h-7 rounded-full shrink-0 cursor-pointer" style={{ background: activeBase[key] }}>
+                      <div
+                        className="color-swatch relative w-7 h-7 rounded-full shrink-0 cursor-pointer"
+                        style={{ background: activeBase[key], '--swatch-color': activeBase[key] } as React.CSSProperties}
+                      >
                         <input type="color" value={activeBase[key]} onChange={e => onChangeBase(key, e.target.value)}
                           disabled={baseColorsSaving} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full rounded-full" />
                       </div>
@@ -533,7 +529,10 @@ export function Settings() {
                 <div className="space-y-2">
                   {TEXT_FIELDS.map(({ key, label }) => (
                     <div key={key} className="flex items-center gap-3">
-                      <div className="relative w-7 h-7 rounded-full shrink-0 cursor-pointer" style={{ background: activeBase[key] }}>
+                      <div
+                        className="color-swatch relative w-7 h-7 rounded-full shrink-0 cursor-pointer"
+                        style={{ background: activeBase[key], '--swatch-color': activeBase[key] } as React.CSSProperties}
+                      >
                         <input type="color" value={activeBase[key]} onChange={e => onChangeBase(key, e.target.value)}
                           disabled={baseColorsSaving} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full rounded-full" />
                       </div>
@@ -601,6 +600,31 @@ export function Settings() {
         {currentUser?.is_admin && <UserManagement />}
       </div>
 
+      {/* ── Delete custom theme confirmation ────────────────────────────── */}
+      {deleteThemeModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="card max-w-md w-full mx-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-lg font-semibold">Delete Theme</h3>
+              <button onClick={() => setDeleteThemeModal(null)} className="icon-btn">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-(--text-secondary) mb-4">
+              Delete "<span className="text-(--text-primary) font-medium">{deleteThemeModal.name}</span>"? This can't be undone.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setDeleteThemeModal(null)} className="btn btn-secondary">
+                Cancel
+              </button>
+              <button onClick={handleConfirmDeleteTheme} className="btn btn-error">
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Import preview modal ─────────────────────────────────────────── */}
       {importPreview && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
@@ -611,9 +635,11 @@ export function Settings() {
                 <X className="w-4 h-4" />
               </button>
             </div>
-
             <div className="flex items-center gap-4">
-              <div className="relative w-20 h-20 rounded-xl overflow-hidden border-2 shrink-0" style={{ borderColor: importPreview.accent }}>
+              <div
+                className="theme-card theme-card-active relative w-20 h-20 rounded-xl overflow-hidden shrink-0"
+                style={{ '--card-accent': importPreview.accent } as React.CSSProperties}
+              >
                 <div className="absolute inset-0 flex flex-col">
                   <div className="flex-1" style={{ background: importPreview.base.bg_primary }} />
                   <div className="flex-1" style={{ background: importPreview.base.bg_secondary }} />
@@ -632,24 +658,17 @@ export function Settings() {
                 ] as [string, string][]).map(([label, val]) => (
                   <div key={label} className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded-full shrink-0" style={{ background: val }} />
-                    <span className="text-(--text-secondary)">{label}</span>
+                    <span>{label}</span>
                     <span>{val}</span>
                   </div>
                 ))}
               </div>
             </div>
-
             <div>
               <label className="block text-sm font-medium mb-1">Theme name</label>
-              <input
-                type="text"
-                value={importName}
-                onChange={e => setImportName(e.target.value)}
-                className="input w-full"
-                placeholder="My Theme"
-              />
+              <input type="text" value={importName} onChange={e => setImportName(e.target.value)}
+                className="input w-full" placeholder="My Theme" />
             </div>
-
             <div className="flex gap-3">
               <button onClick={handleApplyImport} className="btn btn-primary flex-1">Apply & Save</button>
               <button onClick={() => setImportPreview(null)} className="btn btn-secondary flex-1">Cancel</button>

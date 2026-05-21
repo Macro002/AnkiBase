@@ -307,6 +307,31 @@ input[type="checkbox"]:checked::after {
   opacity: 0.8;
 }
 
+/* Theme card hover — border fills in with --card-accent on hover, double ring when active */
+.theme-card {
+  border: 2px solid transparent;
+  box-shadow: 0 0 0 0px transparent;
+  transition: border-color 0.22s ease, box-shadow 0.22s ease;
+}
+.theme-card:hover {
+  border-color: var(--card-accent);
+}
+.theme-card-active {
+  border-color: var(--card-accent) !important;
+  box-shadow: 0 0 0 2px var(--card-accent) !important;
+}
+
+/* Color swatch hover — ring grows in with --swatch-color */
+.color-swatch {
+  transition: box-shadow 0.18s ease;
+}
+.color-swatch:hover {
+  box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 3.5px var(--swatch-color);
+}
+.color-swatch-active {
+  box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 4px var(--swatch-color) !important;
+}
+
 /* Safe-area aware bottom padding for main content (accounts for mobile nav + home indicator) */
 .safe-pb-main {
   padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px));

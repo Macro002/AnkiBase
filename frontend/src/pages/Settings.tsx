@@ -3,6 +3,7 @@ import { Key, Globe, Palette, RotateCcw } from 'lucide-react';
 import { auth, theme as themeApi, type User } from '../api';
 import { useNavigate } from 'react-router-dom';
 import { UserManagement } from '../components/UserManagement';
+import { Logo } from '../components/Logo';
 import { useTranslation } from 'react-i18next';
 import {
   ACCENT_PRESETS, saveAccentColor,
@@ -244,17 +245,21 @@ export function Settings() {
                   onClick={() => handleApplyTheme(th)}
                   className="flex flex-col items-center gap-2 group"
                 >
-                  {/* Mini palette preview */}
                   <div
-                    className="w-16 h-16 rounded-xl overflow-hidden border-2 transition-all"
+                    className="relative w-20 h-20 rounded-xl overflow-hidden border-2 transition-all"
                     style={{
                       borderColor: isThemeActive(th) ? th.accent : 'var(--bg-tertiary)',
                       boxShadow: isThemeActive(th) ? `0 0 0 2px ${th.accent}` : 'none',
                     }}
                   >
-                    <div className="w-full h-1/2" style={{ background: th.base.bg_primary }} />
-                    <div className="w-full h-1/4" style={{ background: th.base.bg_secondary }} />
-                    <div className="w-full h-1/4" style={{ background: th.accent }} />
+                    <div className="absolute inset-0 flex flex-col">
+                      <div className="flex-1" style={{ background: th.base.bg_primary }} />
+                      <div className="flex-1" style={{ background: th.base.bg_secondary }} />
+                      <div className="flex-1" style={{ background: th.base.bg_tertiary }} />
+                    </div>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <Logo className="w-9 h-9" color={th.accent} />
+                    </div>
                   </div>
                   <span className="text-xs text-(--text-secondary) group-hover:text-(--text-primary) transition-colors">
                     {th.name}
@@ -302,14 +307,24 @@ export function Settings() {
                 ))}
               </div>
               <div className="flex items-center gap-3">
-                <label className="text-sm text-(--text-secondary) shrink-0">Custom</label>
-                <input
-                  type="color"
-                  value={activeAccent}
-                  onChange={e => onPickAccentPreset(e.target.value)}
-                  className="w-9 h-9 rounded-lg cursor-pointer border-2 border-(--bg-tertiary) bg-transparent p-0.5"
-                  disabled={accentSaving}
-                />
+                <div
+                  className="relative w-7 h-7 rounded-full shrink-0 cursor-pointer transition-all"
+                  style={{
+                    background: activeAccent,
+                    boxShadow: ACCENT_PRESETS.every(p => p.accent !== activeAccent)
+                      ? `0 0 0 2px var(--bg-primary), 0 0 0 4px ${activeAccent}`
+                      : 'none',
+                  }}
+                >
+                  <input
+                    type="color"
+                    value={activeAccent}
+                    onChange={e => onPickAccentPreset(e.target.value)}
+                    disabled={accentSaving}
+                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full rounded-full"
+                  />
+                </div>
+                <span className="text-sm text-(--text-secondary)">Custom</span>
                 <span className="text-sm font-mono text-(--text-secondary)">{activeAccent}</span>
               </div>
             </div>
@@ -335,13 +350,18 @@ export function Settings() {
                 <div className="space-y-2">
                   {BG_FIELDS.map(({ key, label }) => (
                     <div key={key} className="flex items-center gap-3">
-                      <input
-                        type="color"
-                        value={activeBase[key]}
-                        onChange={e => onChangeBase(key, e.target.value)}
-                        disabled={baseColorsSaving}
-                        className="w-8 h-8 rounded-lg cursor-pointer border-2 border-(--bg-tertiary) bg-transparent p-0.5 shrink-0"
-                      />
+                      <div
+                        className="relative w-7 h-7 rounded-full shrink-0 cursor-pointer"
+                        style={{ background: activeBase[key] }}
+                      >
+                        <input
+                          type="color"
+                          value={activeBase[key]}
+                          onChange={e => onChangeBase(key, e.target.value)}
+                          disabled={baseColorsSaving}
+                          className="absolute inset-0 opacity-0 cursor-pointer w-full h-full rounded-full"
+                        />
+                      </div>
                       <span className="text-sm text-(--text-secondary) w-28 shrink-0">{label}</span>
                       <span className="text-xs font-mono text-(--text-secondary)">{activeBase[key]}</span>
                     </div>
@@ -353,13 +373,18 @@ export function Settings() {
                 <div className="space-y-2">
                   {TEXT_FIELDS.map(({ key, label }) => (
                     <div key={key} className="flex items-center gap-3">
-                      <input
-                        type="color"
-                        value={activeBase[key]}
-                        onChange={e => onChangeBase(key, e.target.value)}
-                        disabled={baseColorsSaving}
-                        className="w-8 h-8 rounded-lg cursor-pointer border-2 border-(--bg-tertiary) bg-transparent p-0.5 shrink-0"
-                      />
+                      <div
+                        className="relative w-7 h-7 rounded-full shrink-0 cursor-pointer"
+                        style={{ background: activeBase[key] }}
+                      >
+                        <input
+                          type="color"
+                          value={activeBase[key]}
+                          onChange={e => onChangeBase(key, e.target.value)}
+                          disabled={baseColorsSaving}
+                          className="absolute inset-0 opacity-0 cursor-pointer w-full h-full rounded-full"
+                        />
+                      </div>
                       <span className="text-sm text-(--text-secondary) w-28 shrink-0">{label}</span>
                       <span className="text-xs font-mono text-(--text-secondary)">{activeBase[key]}</span>
                     </div>

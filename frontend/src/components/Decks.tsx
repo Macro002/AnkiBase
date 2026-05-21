@@ -435,7 +435,7 @@ export function Decks() {
                     </span>
                     <span className="flex items-center gap-1">
                       <Star className="w-3.5 h-3.5 fill-(--accent) text-(--accent)" />
-                      {(JSON.parse(localStorage.getItem(`quizlet-fav-${deck.id}`) ?? '[]') as number[]).length} favorited
+                      {deck.favorites_count ?? 0} favorited
                     </span>
                   </div>
 

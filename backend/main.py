@@ -19,7 +19,7 @@ from database import (
     migrate_to_user_system,
     create_quizlet_deck, get_quizlet_decks, get_quizlet_deck, delete_quizlet_deck,
     rename_quizlet_deck, record_quizlet_review, get_quizlet_daily_counts,
-    get_quizlet_deck_stats,
+    get_quizlet_deck_stats, get_quizlet_favorites, toggle_quizlet_favorite,
 )
 from ankiweb_credentials import AnkiWebCredentials
 from anki_config import AnkiConfigurator
@@ -1966,6 +1966,17 @@ async def quizlet_rename_deck(deck_id: int, request: QuizletRenameRequest, _: st
 @app.get("/api/quizlet/decks/{deck_id}/stats")
 async def quizlet_get_deck_stats(deck_id: int, _: str = Depends(require_auth)):
     return get_quizlet_deck_stats(deck_id)
+
+
+@app.get("/api/quizlet/decks/{deck_id}/favorites")
+async def quizlet_get_favorites(deck_id: int, _: str = Depends(require_auth)):
+    return {"card_ids": get_quizlet_favorites(deck_id)}
+
+
+@app.post("/api/quizlet/decks/{deck_id}/favorites/{card_id}")
+async def quizlet_toggle_favorite(deck_id: int, card_id: int, _: str = Depends(require_auth)):
+    favorited = toggle_quizlet_favorite(card_id, deck_id)
+    return {"favorited": favorited}
 
 
 @app.post("/api/quizlet/decks/{deck_id}/review")

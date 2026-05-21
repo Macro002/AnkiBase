@@ -227,15 +227,14 @@ export function QuizletStudy() {
   const current = queue[index];
 
   useEffect(() => {
-    Promise.all([quizlet.getDeck(deckId), quizlet.deckStats(deckId)]).then(([deck, stats]) => {
+    Promise.all([quizlet.getDeck(deckId), quizlet.deckStats(deckId), quizlet.getFavorites(deckId)]).then(([deck, stats, favs]) => {
       setTitle(deck.title);
       setCards(deck.cards);
       setQueue(deck.cards);
       setStudiedToday(stats.studied_today);
+      setFavorites(new Set(favs.card_ids));
       setLoading(false);
     });
-    const saved = localStorage.getItem(`quizlet-fav-${deckId}`);
-    if (saved) setFavorites(new Set(JSON.parse(saved)));
   }, [deckId]);
 
   const advance = useCallback((nextIndex: number) => {
@@ -254,11 +253,18 @@ export function QuizletStudy() {
   const goPrev = useCallback(() => { if (index > 0) advance(index - 1); }, [index, advance]);
 
   const starCard = (cardId: number) => {
+    const wasFaved = favorites.has(cardId);
     setFavorites(prev => {
       const next = new Set(prev);
-      next.has(cardId) ? next.delete(cardId) : next.add(cardId);
-      localStorage.setItem(`quizlet-fav-${deckId}`, JSON.stringify([...next]));
+      wasFaved ? next.delete(cardId) : next.add(cardId);
       return next;
+    });
+    quizlet.toggleFavorite(deckId, cardId).catch(() => {
+      setFavorites(prev => {
+        const next = new Set(prev);
+        wasFaved ? next.add(cardId) : next.delete(cardId);
+        return next;
+      });
     });
   };
 

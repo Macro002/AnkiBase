@@ -153,6 +153,16 @@ def init_global_db():
             )
         """)
 
+        # Quizlet favorites table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS quizlet_favorites (
+                card_id INTEGER NOT NULL,
+                deck_id INTEGER NOT NULL REFERENCES quizlet_decks(id) ON DELETE CASCADE,
+                created_at TEXT DEFAULT (datetime('now')),
+                UNIQUE(card_id, deck_id)
+            )
+        """)
+
         conn.commit()
 
 def init_account_db(container_name: str):
@@ -885,10 +895,15 @@ def get_quizlet_decks() -> list[dict]:
     container_id = active["id"] if active else None
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            "SELECT id, title, url, card_count, created_at FROM quizlet_decks WHERE container_id = ? ORDER BY created_at DESC",
-            (container_id,)
-        )
+        cursor.execute("""
+            SELECT qd.id, qd.title, qd.url, qd.card_count, qd.created_at,
+                   COUNT(qf.card_id) as favorites_count
+            FROM quizlet_decks qd
+            LEFT JOIN quizlet_favorites qf ON qf.deck_id = qd.id
+            WHERE qd.container_id = ?
+            GROUP BY qd.id
+            ORDER BY qd.created_at DESC
+        """, (container_id,))
         return [dict(zip([d[0] for d in cursor.description], row)) for row in cursor.fetchall()]
 
 def get_quizlet_deck(deck_id: int) -> Optional[dict]:
@@ -925,6 +940,25 @@ def record_quizlet_review(card_id: int, deck_id: int, ease: int):
             (card_id, deck_id, ease)
         )
         conn.commit()
+
+def get_quizlet_favorites(deck_id: int) -> list[int]:
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT card_id FROM quizlet_favorites WHERE deck_id = ?", (deck_id,))
+        return [row[0] for row in cursor.fetchall()]
+
+def toggle_quizlet_favorite(card_id: int, deck_id: int) -> bool:
+    """Returns True if now favorited, False if unfavorited."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM quizlet_favorites WHERE card_id = ? AND deck_id = ?", (card_id, deck_id))
+        if cursor.fetchone():
+            cursor.execute("DELETE FROM quizlet_favorites WHERE card_id = ? AND deck_id = ?", (card_id, deck_id))
+            conn.commit()
+            return False
+        cursor.execute("INSERT INTO quizlet_favorites (card_id, deck_id) VALUES (?, ?)", (card_id, deck_id))
+        conn.commit()
+        return True
 
 def get_quizlet_deck_stats(deck_id: int) -> dict:
     with get_db() as conn:

@@ -17,7 +17,9 @@ export function Heatmap({ className = '' }: HeatmapProps) {
   const [loading, setLoading] = useState(true);
   const [year, setYear] = useState(new Date().getFullYear());
   const [hoveredDay, setHoveredDay] = useState<{ date: string; count: number } | null>(null);
-  const [source, setSource] = useState<Source>('all');
+  const [source, setSource] = useState<Source>(() =>
+    (localStorage.getItem('heatmap-source') as Source) || 'all'
+  );
   const [slideDir, setSlideDir] = useState<'left' | 'right' | null>(null);
   const [prevYear, setPrevYear] = useState<number | null>(null);
   const [colorScheme, setColorScheme] = useState<ColorScheme>(() => {
@@ -44,6 +46,10 @@ export function Heatmap({ className = '' }: HeatmapProps) {
   useEffect(() => {
     localStorage.setItem('heatmap-color', colorScheme);
   }, [colorScheme]);
+
+  useEffect(() => {
+    localStorage.setItem('heatmap-source', source);
+  }, [source]);
 
   const currentYear = new Date().getFullYear();
 

@@ -518,6 +518,7 @@ export interface QuizletDeck {
   url: string;
   card_count: number;
   created_at: string;
+  favorites_count?: number;
 }
 
 export interface QuizletCard {
@@ -557,4 +558,8 @@ export const quizlet = {
       method: 'POST',
       body: JSON.stringify({ card_id: cardId, ease }),
     }),
+  getFavorites: (deckId: number) =>
+    fetchAPI<{ card_ids: number[] }>(`/quizlet/decks/${deckId}/favorites`),
+  toggleFavorite: (deckId: number, cardId: number) =>
+    fetchAPI<{ favorited: boolean }>(`/quizlet/decks/${deckId}/favorites/${cardId}`, { method: 'POST' }),
 };

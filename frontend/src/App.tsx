@@ -38,8 +38,13 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
         const res = await auth.check();
         setAuthenticated(res.authenticated);
         if (res.user?.language) i18n.changeLanguage(res.user.language);
-        if (res.user?.accent_color) saveAccentColor(res.user.accent_color, res.user.accent_hover ?? undefined);
-        if (res.user?.base_colors) saveBaseColors(res.user.base_colors);
+        // Only write to localStorage when the server has personal overrides.
+        // If there's no personal data, we leave localStorage alone so any
+        // locally-stored theme isn't wiped by the server default.
+        if (res.user?.has_personal_accent && res.user?.accent_color)
+          saveAccentColor(res.user.accent_color, res.user.accent_hover ?? undefined);
+        if (res.user?.has_personal_base_colors && res.user?.base_colors)
+          saveBaseColors(res.user.base_colors);
       } catch {
         setAuthenticated(false);
       } finally {

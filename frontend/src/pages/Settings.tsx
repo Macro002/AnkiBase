@@ -359,11 +359,10 @@ export function Settings() {
       <div className="relative group/card flex flex-col items-center gap-2">
         <button
           onClick={() => handleApplyTheme(th)}
-          className={`theme-card w-20 h-20 relative${active ? ' theme-card-active' : ''}`}
+          className={`theme-card relative rounded-xl overflow-hidden w-20 h-20${active ? ' theme-card-active' : ''}`}
           style={{ '--card-accent': th.accent } as React.CSSProperties}
         >
-          <span className="theme-card-corners absolute inset-0" aria-hidden />
-          <div className="absolute inset-0 rounded-xl overflow-hidden flex flex-col">
+          <div className="absolute inset-0 flex flex-col">
             <div className="flex-1" style={{ background: th.base.bg_primary }} />
             <div className="flex-1" style={{ background: th.base.bg_secondary }} />
             <div className="flex-1" style={{ background: th.base.bg_tertiary }} />

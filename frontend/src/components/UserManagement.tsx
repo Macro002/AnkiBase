@@ -22,6 +22,7 @@ export function UserManagement() {
     confirmPassword: '',
     is_admin: false,
     can_add_containers: false,
+    can_edit_server_accent: false,
   });
 
   const [selectedContainerIds, setSelectedContainerIds] = useState<number[]>([]);
@@ -66,7 +67,8 @@ export function UserManagement() {
         formData.username,
         formData.password,
         formData.is_admin,
-        formData.can_add_containers
+        formData.can_add_containers,
+        formData.can_edit_server_accent,
       );
       if (!formData.is_admin && selectedContainerIds.length > 0) {
         await users.setContainers(res.user_id, selectedContainerIds);
@@ -79,6 +81,7 @@ export function UserManagement() {
         confirmPassword: '',
         is_admin: false,
         can_add_containers: false,
+        can_edit_server_accent: false,
       });
       setSelectedContainerIds([]);
       loadData();
@@ -113,7 +116,8 @@ export function UserManagement() {
         formData.username !== selectedUser.username ? formData.username : undefined,
         formData.password || undefined,
         formData.is_admin,
-        formData.can_add_containers
+        formData.can_add_containers,
+        formData.can_edit_server_accent,
       );
 
       // Update container permissions
@@ -153,6 +157,7 @@ export function UserManagement() {
       confirmPassword: '',
       is_admin: user.is_admin,
       can_add_containers: user.can_add_containers,
+      can_edit_server_accent: user.can_edit_server_accent,
     });
 
     // Load container permissions
@@ -184,6 +189,7 @@ export function UserManagement() {
     let count = 0;
     if (user.is_admin) count++;
     if (user.can_add_containers) count++;
+    if (user.can_edit_server_accent) count++;
     return count;
   };
 
@@ -191,6 +197,7 @@ export function UserManagement() {
     const perms = [];
     if (user.is_admin) perms.push('Admin');
     if (user.can_add_containers) perms.push('Can add containers');
+    if (user.can_edit_server_accent) perms.push('Can edit server accent');
     return perms.join(', ');
   };
 
@@ -380,6 +387,15 @@ export function UserManagement() {
                   />
                   <span className="text-sm">Can add containers</span>
                 </label>
+
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.can_edit_server_accent}
+                    onChange={(e) => setFormData({ ...formData, can_edit_server_accent: e.target.checked })}
+                  />
+                  <span className="text-sm">Can edit server accent color</span>
+                </label>
               </div>
 
               {/* Container Access */}
@@ -509,6 +525,15 @@ export function UserManagement() {
                     onChange={(e) => setFormData({ ...formData, can_add_containers: e.target.checked })}
                   />
                   <span className="text-sm">Can add containers</span>
+                </label>
+
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.can_edit_server_accent}
+                    onChange={(e) => setFormData({ ...formData, can_edit_server_accent: e.target.checked })}
+                  />
+                  <span className="text-sm">Can edit server accent color</span>
                 </label>
               </div>
 

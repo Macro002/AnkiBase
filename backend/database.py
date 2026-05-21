@@ -84,11 +84,25 @@ def init_global_db():
             )
         """)
 
-        # Add language column if it doesn't exist
+        # Migrate users columns
         cursor.execute("PRAGMA table_info(users)")
         columns = [column[1] for column in cursor.fetchall()]
         if 'language' not in columns:
             cursor.execute("ALTER TABLE users ADD COLUMN language TEXT DEFAULT 'en'")
+        if 'accent_color' not in columns:
+            cursor.execute("ALTER TABLE users ADD COLUMN accent_color TEXT")
+        if 'accent_hover' not in columns:
+            cursor.execute("ALTER TABLE users ADD COLUMN accent_hover TEXT")
+        if 'can_edit_server_accent' not in columns:
+            cursor.execute("ALTER TABLE users ADD COLUMN can_edit_server_accent INTEGER DEFAULT 0")
+
+        # App-wide settings table (key-value)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+        """)
 
         # User container permissions table
         cursor.execute("""
@@ -673,14 +687,14 @@ def verify_password(password: str, password_hash: str) -> bool:
     return bcrypt.checkpw(password.encode('utf-8'), password_hash.encode('utf-8'))
 
 
-def create_user(username: str, password: str, is_admin: bool = False, can_add_containers: bool = False) -> int:
+def create_user(username: str, password: str, is_admin: bool = False, can_add_containers: bool = False, can_edit_server_accent: bool = False) -> int:
     """Create a new user."""
     password_hash = hash_password(password)
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO users (username, password_hash, is_admin, can_add_containers) VALUES (?, ?, ?, ?)",
-            (username, password_hash, 1 if is_admin else 0, 1 if can_add_containers else 0)
+            "INSERT INTO users (username, password_hash, is_admin, can_add_containers, can_edit_server_accent) VALUES (?, ?, ?, ?, ?)",
+            (username, password_hash, 1 if is_admin else 0, 1 if can_add_containers else 0, 1 if can_edit_server_accent else 0)
         )
         conn.commit()
         return cursor.lastrowid
@@ -708,11 +722,11 @@ def get_all_users() -> list[dict]:
     """Get all users."""
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT id, username, is_admin, can_add_containers, created_at FROM users ORDER BY username")
+        cursor.execute("SELECT id, username, is_admin, can_add_containers, can_edit_server_accent, created_at FROM users ORDER BY username")
         return [dict(row) for row in cursor.fetchall()]
 
 
-def update_user(user_id: int, is_admin: Optional[bool] = None, can_add_containers: Optional[bool] = None) -> bool:
+def update_user(user_id: int, is_admin: Optional[bool] = None, can_add_containers: Optional[bool] = None, can_edit_server_accent: Optional[bool] = None) -> bool:
     """Update user settings."""
     updates = []
     params = []
@@ -724,6 +738,10 @@ def update_user(user_id: int, is_admin: Optional[bool] = None, can_add_container
     if can_add_containers is not None:
         updates.append("can_add_containers = ?")
         params.append(1 if can_add_containers else 0)
+
+    if can_edit_server_accent is not None:
+        updates.append("can_edit_server_accent = ?")
+        params.append(1 if can_edit_server_accent else 0)
 
     if not updates:
         return False
@@ -982,6 +1000,41 @@ def get_quizlet_daily_counts() -> dict[str, int]:
             GROUP BY day
         """, (container_id,))
         return {row[0]: row[1] for row in cursor.fetchall()}
+
+
+def get_setting(key: str, default: Optional[str] = None) -> Optional[str]:
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT value FROM settings WHERE key = ?", (key,))
+        row = cursor.fetchone()
+        return row[0] if row else default
+
+def set_setting(key: str, value: str) -> None:
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, value))
+        conn.commit()
+
+def get_user_accent(user_id: int) -> Optional[dict]:
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT accent_color, accent_hover FROM users WHERE id = ?", (user_id,))
+        row = cursor.fetchone()
+        if row and row[0]:
+            return {"accent": row[0], "hover": row[1]}
+        return None
+
+def set_user_accent(user_id: int, accent: str, hover: str) -> None:
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE users SET accent_color = ?, accent_hover = ? WHERE id = ?", (accent, hover, user_id))
+        conn.commit()
+
+def clear_user_accent(user_id: int) -> None:
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE users SET accent_color = NULL, accent_hover = NULL WHERE id = ?", (user_id,))
+        conn.commit()
 
 
 # Initialize database on import

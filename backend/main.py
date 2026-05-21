@@ -20,6 +20,7 @@ from database import (
     create_quizlet_deck, get_quizlet_decks, get_quizlet_deck, delete_quizlet_deck,
     rename_quizlet_deck, record_quizlet_review, get_quizlet_daily_counts,
     get_quizlet_deck_stats, get_quizlet_favorites, toggle_quizlet_favorite,
+    get_setting, set_setting, get_user_accent, set_user_accent, clear_user_accent,
 )
 from ankiweb_credentials import AnkiWebCredentials
 from anki_config import AnkiConfigurator
@@ -134,6 +135,7 @@ class CreateUserRequest(BaseModel):
     password: str
     is_admin: bool = False
     can_add_containers: bool = False
+    can_edit_server_accent: bool = False
 
 
 class UpdateUserRequest(BaseModel):
@@ -141,6 +143,12 @@ class UpdateUserRequest(BaseModel):
     password: Optional[str] = None
     is_admin: Optional[bool] = None
     can_add_containers: Optional[bool] = None
+    can_edit_server_accent: Optional[bool] = None
+
+
+class SetAccentRequest(BaseModel):
+    accent: str
+    hover: Optional[str] = None
 
 
 class SetUserContainersRequest(BaseModel):
@@ -192,6 +200,25 @@ async def require_can_add_containers(user: dict = Depends(require_auth)) -> dict
     if not user.get('can_add_containers') and not user.get('is_admin'):
         raise HTTPException(status_code=403, detail="Permission to add containers required")
     return user
+
+
+_SERVER_ACCENT_DEFAULT = '#e94560'
+_SERVER_HOVER_DEFAULT  = '#ff6b6b'
+
+def _resolve_user_accent(user_id: int) -> dict:
+    """Return accent fields for a user: personal override if set, else server default."""
+    personal = get_user_accent(user_id)
+    if personal:
+        return {
+            'accent_color': personal['accent'],
+            'accent_hover': personal['hover'],
+            'has_personal_accent': True,
+        }
+    return {
+        'accent_color': get_setting('server_accent_color', _SERVER_ACCENT_DEFAULT),
+        'accent_hover': get_setting('server_accent_hover', _SERVER_HOVER_DEFAULT),
+        'has_personal_accent': False,
+    }
 
 
 # ============================================================================
@@ -352,6 +379,7 @@ async def login(request: LoginRequest, response: Response):
             'username': user['username'],
             'is_admin': bool(user['is_admin']),
             'can_add_containers': bool(user['can_add_containers']),
+            'can_edit_server_accent': bool(user.get('can_edit_server_accent', 0)),
             'language': user.get('language', 'en')
         }
         response.set_cookie(
@@ -395,7 +423,9 @@ async def check_auth(request: Request):
             'username': user['username'],
             'is_admin': user['is_admin'],
             'can_add_containers': user['can_add_containers'],
-            'language': user.get('language', 'en')
+            'can_edit_server_accent': user.get('can_edit_server_accent', False),
+            'language': user.get('language', 'en'),
+            **(_resolve_user_accent(user['user_id']))
         } if user else None
     }
 
@@ -407,8 +437,50 @@ async def get_current_user(user: dict = Depends(require_auth)):
         'username': user['username'],
         'is_admin': user['is_admin'],
         'can_add_containers': user['can_add_containers'],
-        'language': user.get('language', 'en')
+        'can_edit_server_accent': user.get('can_edit_server_accent', False),
+        'language': user.get('language', 'en'),
+        **_resolve_user_accent(user['user_id'])
     }
+
+
+@app.get("/api/theme")
+async def get_theme():
+    """Return the current server-default accent colors (no auth required)."""
+    return {
+        "accent": get_setting('server_accent_color', _SERVER_ACCENT_DEFAULT),
+        "hover":  get_setting('server_accent_hover',  _SERVER_HOVER_DEFAULT),
+    }
+
+
+@app.patch("/api/theme")
+async def set_theme(request: SetAccentRequest, user: dict = Depends(require_auth)):
+    """Set server-default accent (requires can_edit_server_accent or admin)."""
+    if not user.get('can_edit_server_accent') and not user.get('is_admin'):
+        raise HTTPException(status_code=403, detail="Permission to edit server accent required")
+    accent = request.accent.strip()
+    hover  = (request.hover or '').strip() or None
+    set_setting('server_accent_color', accent)
+    if hover:
+        set_setting('server_accent_hover', hover)
+    return {"success": True, "accent": accent, "hover": hover or get_setting('server_accent_hover', _SERVER_HOVER_DEFAULT)}
+
+
+@app.patch("/api/auth/accent")
+async def set_personal_accent(request: SetAccentRequest, user: dict = Depends(require_auth)):
+    """Save the current user's personal accent override."""
+    accent = request.accent.strip()
+    hover  = (request.hover or '').strip() or accent
+    set_user_accent(user['user_id'], accent, hover)
+    return {"success": True}
+
+
+@app.delete("/api/auth/accent")
+async def clear_personal_accent(user: dict = Depends(require_auth)):
+    """Remove the current user's personal accent override (revert to server default)."""
+    clear_user_accent(user['user_id'])
+    server = {"accent": get_setting('server_accent_color', _SERVER_ACCENT_DEFAULT),
+              "hover":  get_setting('server_accent_hover',  _SERVER_HOVER_DEFAULT)}
+    return {"success": True, **server}
 
 
 @app.post("/api/auth/change-password")
@@ -493,7 +565,8 @@ async def create_user_endpoint(request: CreateUserRequest, _: dict = Depends(req
             request.username,
             request.password,
             request.is_admin,
-            request.can_add_containers
+            request.can_add_containers,
+            request.can_edit_server_accent,
         )
         return {"success": True, "user_id": user_id, "message": "User created successfully"}
     except Exception as e:
@@ -525,8 +598,8 @@ async def update_user_endpoint(user_id: int, request: UpdateUserRequest, _: dict
             update_user_password(user_id, request.password)
 
         # Update permissions
-        if request.is_admin is not None or request.can_add_containers is not None:
-            update_user(user_id, request.is_admin, request.can_add_containers)
+        if any(v is not None for v in [request.is_admin, request.can_add_containers, request.can_edit_server_accent]):
+            update_user(user_id, request.is_admin, request.can_add_containers, request.can_edit_server_accent)
 
         return {"success": True, "message": "User updated successfully"}
     except HTTPException:

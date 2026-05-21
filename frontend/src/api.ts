@@ -39,7 +39,11 @@ export interface User {
   username: string;
   is_admin: boolean;
   can_add_containers: boolean;
+  can_edit_server_accent: boolean;
   language: string;
+  accent_color?: string | null;
+  accent_hover?: string | null;
+  has_personal_accent?: boolean;
 }
 
 export const auth = {
@@ -60,6 +64,21 @@ export const auth = {
     fetchAPI<{ success: boolean; message: string; language: string }>('/auth/change-language', {
       method: 'POST',
       body: JSON.stringify({ language }),
+    }),
+  setAccent: (accent: string, hover?: string) =>
+    fetchAPI<{ success: boolean }>('/auth/accent', {
+      method: 'PATCH',
+      body: JSON.stringify({ accent, hover }),
+    }),
+  clearAccent: () => fetchAPI<{ success: boolean; accent: string; hover: string }>('/auth/accent', { method: 'DELETE' }),
+};
+
+export const theme = {
+  get: () => fetchAPI<{ accent: string; hover: string }>('/theme'),
+  set: (accent: string, hover?: string) =>
+    fetchAPI<{ success: boolean; accent: string; hover: string }>('/theme', {
+      method: 'PATCH',
+      body: JSON.stringify({ accent, hover }),
     }),
 };
 
@@ -485,21 +504,22 @@ export interface UserInfo {
   username: string;
   is_admin: boolean;
   can_add_containers: boolean;
+  can_edit_server_accent: boolean;
   created_at: string;
 }
 
 export const users = {
   list: () =>
     fetchAPI<{ users: UserInfo[] }>('/users'),
-  create: (username: string, password: string, is_admin: boolean, can_add_containers: boolean) =>
+  create: (username: string, password: string, is_admin: boolean, can_add_containers: boolean, can_edit_server_accent: boolean = false) =>
     fetchAPI<{ success: boolean; user_id: number; message: string }>('/users', {
       method: 'POST',
-      body: JSON.stringify({ username, password, is_admin, can_add_containers }),
+      body: JSON.stringify({ username, password, is_admin, can_add_containers, can_edit_server_accent }),
     }),
-  update: (userId: number, username?: string, password?: string, is_admin?: boolean, can_add_containers?: boolean) =>
+  update: (userId: number, username?: string, password?: string, is_admin?: boolean, can_add_containers?: boolean, can_edit_server_accent?: boolean) =>
     fetchAPI<{ success: boolean; message: string }>(`/users/${userId}`, {
       method: 'PUT',
-      body: JSON.stringify({ username, password, is_admin, can_add_containers }),
+      body: JSON.stringify({ username, password, is_admin, can_add_containers, can_edit_server_accent }),
     }),
   delete: (userId: number) =>
     fetchAPI<{ success: boolean; message: string }>(`/users/${userId}`, { method: 'DELETE' }),

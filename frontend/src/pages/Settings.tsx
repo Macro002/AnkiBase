@@ -6,7 +6,7 @@ import { UserManagement } from '../components/UserManagement';
 import { Logo } from '../components/Logo';
 import { useTranslation } from 'react-i18next';
 import {
-  ACCENT_PRESETS, saveAccentColor, applyBaseColors,
+  ACCENT_PRESETS, saveAccentColor, applyAccentColor, applyBaseColors,
   BASE_COLORS_DEFAULT, saveBaseColors, type BaseColors,
 } from '../hooks/useAccentColor';
 
@@ -190,11 +190,8 @@ export function Settings() {
     setServerAccent(accent); setServerHover(h);
     try {
       await themeApi.set(accent, h);
-      // Mirror server changes to personal so the user's own view stays in sync
-      await auth.setAccent(accent, h);
-      setAccentColor(accent);
-      saveAccentColor(accent, h);
-      await loadAll();
+      applyAccentColor(accent, h); // live preview — CSS vars only, no localStorage
+      if (!currentUser?.has_personal_accent) saveAccentColor(accent, h); // seed localStorage for users with no personal
     } catch (err) { console.error(err); }
   };
 
@@ -220,13 +217,10 @@ export function Settings() {
 
   const handleSaveServerBase = async (colors: BaseColors) => {
     setServerBase(colors);
-    applyBaseColors(colors); // apply visually; don't write localStorage yet
+    applyBaseColors(colors); // live preview — CSS vars only, no localStorage
     try {
       await themeApi.setBase(colors);
-      // Mirror server changes to personal so the user's own view stays in sync
-      await auth.setBaseColors(colors);
-      saveBaseColors(colors);
-      await loadAll();
+      if (!currentUser?.has_personal_base_colors) saveBaseColors(colors); // seed localStorage for users with no personal
     } catch (err) { console.error(err); }
   };
 

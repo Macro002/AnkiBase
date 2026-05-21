@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, Request, Response, UploadFile, File, Body
+from fastapi import FastAPI, HTTPException, Depends, Request, Response, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse
@@ -152,6 +152,14 @@ class UpdateUserRequest(BaseModel):
 class SetAccentRequest(BaseModel):
     accent: str
     hover: Optional[str] = None
+
+
+class BaseColorsRequest(BaseModel):
+    bg_primary: str
+    bg_secondary: str
+    bg_tertiary: str
+    text_primary: str
+    text_secondary: str
 
 
 class SetUserContainersRequest(BaseModel):
@@ -508,19 +516,19 @@ async def get_theme_base():
 
 
 @app.patch("/api/theme/base")
-async def set_theme_base(request: dict = Body(...), user: dict = Depends(require_auth)):
+async def set_theme_base(request: BaseColorsRequest, user: dict = Depends(require_auth)):
     """Set server-default base colors (requires can_edit_server_accent or admin)."""
     db_user = get_user(user['user_id']) or {}
     if not db_user.get('can_edit_server_accent') and not user.get('is_admin'):
         raise HTTPException(status_code=403, detail="Permission to edit server theme required")
-    set_server_base_colors(request)
+    set_server_base_colors(request.model_dump())
     return {"success": True, **get_server_base_colors()}
 
 
 @app.patch("/api/auth/base-colors")
-async def set_personal_base_colors(request: dict = Body(...), user: dict = Depends(require_auth)):
+async def set_personal_base_colors(request: BaseColorsRequest, user: dict = Depends(require_auth)):
     """Save the current user's personal base color overrides."""
-    set_user_base_colors(user['user_id'], request)
+    set_user_base_colors(user['user_id'], request.model_dump())
     return {"success": True}
 
 

@@ -249,6 +249,7 @@ export function UserManagement() {
               confirmPassword: '',
               is_admin: false,
               can_add_containers: false,
+              can_edit_server_accent: false,
             });
             setSelectedContainerIds([]);
             setShowAddModal(true);

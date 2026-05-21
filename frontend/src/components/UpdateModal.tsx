@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { X, RefreshCw, Loader2 } from 'lucide-react';
+import { X, RefreshCw, Loader2, Copy, Check } from 'lucide-react';
 import { update } from '../api';
 
 interface UpdateModalProps {
@@ -19,6 +19,7 @@ export function UpdateModal({ isOpen, onClose }: UpdateModalProps) {
   const [logs, setLogs] = useState<string[]>([]);
   const [done, setDone] = useState(false);
   const [error, setError] = useState('');
+  const [copied, setCopied] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
   const esRef = useRef<EventSource | null>(null);
 
@@ -85,7 +86,7 @@ export function UpdateModal({ isOpen, onClose }: UpdateModalProps) {
             <RefreshCw className="w-5 h-5 text-(--accent)" />
             <h2 className="text-xl font-bold">Update AnkiBase</h2>
           </div>
-          {!started && (
+          {(!started || !!error) && (
             <button onClick={onClose} className="icon-btn">
               <X className="w-4 h-4" />
             </button>
@@ -117,20 +118,33 @@ export function UpdateModal({ isOpen, onClose }: UpdateModalProps) {
             </div>
             <p className="text-sm text-center text-(--text-secondary)">{progress}%</p>
 
-            <div
-              ref={logRef}
-              className="bg-(--bg-secondary) rounded-lg p-3 h-48 overflow-y-auto text-xs font-mono text-(--text-secondary) space-y-0.5"
-            >
-              {logs.map((l, i) => (
-                <div key={i} className={l.startsWith('✓') ? 'text-green-400' : l.startsWith('✗') ? 'text-(--error)' : ''}>
-                  {l}
-                </div>
-              ))}
-              {!done && !error && (
-                <div className="flex items-center gap-1 text-(--accent)">
-                  <Loader2 className="w-3 h-3 animate-spin" /> running...
-                </div>
-              )}
+            <div className="relative">
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(logs.join('\n'));
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                }}
+                className="absolute top-2 right-2 icon-btn z-10"
+                title="Copy logs"
+              >
+                {copied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
+              </button>
+              <div
+                ref={logRef}
+                className="bg-(--bg-secondary) rounded-lg p-3 pr-8 h-48 overflow-y-auto text-xs font-mono text-(--text-secondary) space-y-0.5"
+              >
+                {logs.map((l, i) => (
+                  <div key={i} className={l.startsWith('✓') ? 'text-green-400' : l.startsWith('✗') ? 'text-(--error)' : ''}>
+                    {l}
+                  </div>
+                ))}
+                {!done && !error && (
+                  <div className="flex items-center gap-1 text-(--accent)">
+                    <Loader2 className="w-3 h-3 animate-spin" /> running...
+                  </div>
+                )}
+              </div>
             </div>
 
             {done && (
@@ -139,7 +153,12 @@ export function UpdateModal({ isOpen, onClose }: UpdateModalProps) {
               </p>
             )}
             {error && (
-              <p className="text-sm text-(--error)">{error}</p>
+              <div className="space-y-1">
+                <p className="text-sm text-(--error)">{error}</p>
+                <p className="text-xs text-(--text-secondary)">
+                  If the update was partially applied, refreshing won't resume it — re-trigger the update from settings.
+                </p>
+              </div>
             )}
           </div>
         )}

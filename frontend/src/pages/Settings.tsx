@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Key, Globe, Palette, RotateCcw, Upload, Download, X } from 'lucide-react';
+import { Key, Globe, Palette, RotateCcw, X } from 'lucide-react';
 import { auth, theme as themeApi, type User } from '../api';
 import { useNavigate } from 'react-router-dom';
 import { UserManagement } from '../components/UserManagement';
@@ -44,15 +44,39 @@ const THEMES = [
     base: BASE_COLORS_DEFAULT,
   },
   {
-    name: 'Quizlet',
-    accent: '#423ed8',
-    hover: '#605cf6',
+    name: 'Midnight',
+    accent: '#e94560',
+    hover: '#ff6b6b',
     base: {
-      bg_primary:   '#0a092d',
-      bg_secondary: '#2e3856',
-      bg_tertiary:  '#3d4f7c',
-      text_primary:   '#ffffff',
-      text_secondary: '#8b95b5',
+      bg_primary:     '#0d0d0d',
+      bg_secondary:   '#141414',
+      bg_tertiary:    '#1f1f1f',
+      text_primary:   '#f2f2f2',
+      text_secondary: '#888888',
+    } as BaseColors,
+  },
+  {
+    name: 'Chalk',
+    accent: '#e94560',
+    hover: '#ff6b6b',
+    base: {
+      bg_primary:     '#f0f2f5',
+      bg_secondary:   '#ffffff',
+      bg_tertiary:    '#d1d9e6',
+      text_primary:   '#1e2330',
+      text_secondary: '#64748b',
+    } as BaseColors,
+  },
+  {
+    name: 'Nord',
+    accent: '#88c0d0',
+    hover: '#81a1c1',
+    base: {
+      bg_primary:     '#2e3440',
+      bg_secondary:   '#3b4252',
+      bg_tertiary:    '#4c566a',
+      text_primary:   '#eceff4',
+      text_secondary: '#d8dee9',
     } as BaseColors,
   },
 ];
@@ -297,12 +321,12 @@ export function Settings() {
               <Palette className="w-5 h-5 text-(--accent)" />
               <h2 className="text-xl font-semibold">Theme</h2>
             </div>
-            <div className="flex items-center gap-2">
-              <button onClick={handleExport} className="icon-btn" title="Export theme">
-                <Download className="w-4 h-4" />
+            <div className="flex items-center gap-3">
+              <button onClick={handleExport} className="text-sm text-(--text-secondary) hover:text-(--text-primary) transition-colors">
+                Export
               </button>
-              <button onClick={() => fileInputRef.current?.click()} className="icon-btn" title="Import theme">
-                <Upload className="w-4 h-4" />
+              <button onClick={() => fileInputRef.current?.click()} className="text-sm text-(--text-secondary) hover:text-(--text-primary) transition-colors">
+                Import
               </button>
               <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={handleImportFile} />
               {canEditServer && (

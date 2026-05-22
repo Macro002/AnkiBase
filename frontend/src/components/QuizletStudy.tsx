@@ -668,13 +668,13 @@ export function QuizletStudy() {
                   placeholder="Search terms..."
                   value={listSearch}
                   onChange={e => setListSearch(e.target.value)}
-                  className="w-full bg-(--bg-secondary) border border-(--bg-tertiary) rounded-lg pl-8 pr-4 py-2 text-sm placeholder:text-(--text-secondary) focus:outline-none focus:border-(--accent)"
+                  className="w-full bg-(--bg-secondary) border border-(--bg-tertiary) rounded-lg pl-8 pr-4 py-2 text-sm placeholder:text-(--text-secondary) focus:outline-none focus:border-(--accent) transition-colors hover-border-secondary"
                 />
               </div>
               <select
                 value={listFilter}
                 onChange={e => setListFilter(e.target.value as typeof listFilter)}
-                className="text-xs bg-(--bg-secondary) border border-(--bg-tertiary) rounded-lg px-3 py-1.5 text-(--text-secondary) cursor-pointer focus:outline-none focus:border-(--accent) shrink-0"
+                className="text-xs bg-(--bg-secondary) border border-(--bg-tertiary) rounded-lg px-3 py-1.5 text-(--text-secondary) cursor-pointer focus:outline-none focus:border-(--accent) shrink-0 transition-colors hover-border-secondary"
               >
                 <option value="all">All</option>
                 <option value="favorites">Favorites</option>

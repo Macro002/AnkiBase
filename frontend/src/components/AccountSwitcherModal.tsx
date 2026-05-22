@@ -233,13 +233,11 @@ export function AccountSwitcherModal({ isOpen, onClose, onSwitch }: AccountSwitc
                 return (
                   <div
                     key={account.id}
-                    className={`p-4 rounded-lg border transition-all relative ${
-                      isActive ? '' : 'border-(--bg-tertiary) hover-border-accent'
+                    className={`p-4 rounded-lg transition-all relative ${
+                      isActive
+                        ? 'bg-(--accent)/10'
+                        : 'border border-(--bg-tertiary) hover-border-accent'
                     }`}
-                    style={isActive ? {
-                      borderColor: 'color-mix(in srgb, var(--accent) 40%, transparent)',
-                      backgroundColor: 'color-mix(in srgb, var(--accent) 8%, transparent)',
-                    } : undefined}
                   >
                     {/* Action buttons - top right */}
                     <div className="absolute top-3 right-3 flex items-center gap-1">

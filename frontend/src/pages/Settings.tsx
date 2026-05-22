@@ -100,7 +100,7 @@ const BUILTIN_THEMES: ThemeEntry[] = [
     } as BaseColors,
   },
   {
-    name: 'Starbloom',
+    name: 'Starlake',
     accent: '#cba6f7',
     hover: '#d4b2f8',
     base: {
@@ -113,26 +113,26 @@ const BUILTIN_THEMES: ThemeEntry[] = [
   },
   {
     name: 'Sakura',
-    accent: '#e879a0',
-    hover: '#f090b8',
+    accent: '#c2556f',
+    hover: '#d4697f',
     base: {
-      bg_primary:     '#fdf2f6',
-      bg_secondary:   '#fce4ef',
-      bg_tertiary:    '#f9c8dc',
-      text_primary:   '#3d0a1e',
-      text_secondary: '#8a5068',
+      bg_primary:     '#faf5f7',
+      bg_secondary:   '#f2e8ec',
+      bg_tertiary:    '#e8d5dc',
+      text_primary:   '#2a1520',
+      text_secondary: '#7a5868',
     } as BaseColors,
   },
   {
-    name: 'Ember',
-    accent: '#f97316',
-    hover: '#fb923c',
+    name: 'Ocean',
+    accent: '#0ea5e9',
+    hover: '#38bdf8',
     base: {
-      bg_primary:     '#130700',
-      bg_secondary:   '#1e0e00',
-      bg_tertiary:    '#301800',
-      text_primary:   '#fff3e0',
-      text_secondary: '#b07040',
+      bg_primary:     '#020c1a',
+      bg_secondary:   '#051828',
+      bg_tertiary:    '#0a2d48',
+      text_primary:   '#e0f2fe',
+      text_secondary: '#4a8fa8',
     } as BaseColors,
   },
   {
@@ -149,8 +149,8 @@ const BUILTIN_THEMES: ThemeEntry[] = [
   },
   {
     name: 'Phantom',
-    accent: '#8892b0',
-    hover: '#a8b2d8',
+    accent: '#10b981',
+    hover: '#34d399',
     base: {
       bg_primary:     '#09091a',
       bg_secondary:   '#0f0f22',

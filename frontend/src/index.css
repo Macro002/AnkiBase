@@ -53,8 +53,8 @@ body {
 }
 
 .btn-secondary:hover {
-  background: color-mix(in srgb, var(--accent) 25%, var(--bg-tertiary));
-  border-color: var(--accent);
+  background: color-mix(in srgb, var(--text-primary) 10%, var(--bg-tertiary));
+  border-color: color-mix(in srgb, var(--text-primary) 10%, var(--bg-tertiary));
 }
 
 .btn-success {
@@ -191,6 +191,10 @@ input[type="checkbox"]:checked::after {
   background: var(--bg-tertiary);
   border: 1px solid var(--bg-tertiary);
   transition: border-color 0.15s ease;
+}
+
+.input:hover {
+  border-color: var(--text-secondary);
 }
 
 .input:focus {

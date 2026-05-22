@@ -113,14 +113,14 @@ const BUILTIN_THEMES: ThemeEntry[] = [
   },
   {
     name: 'Sakura',
-    accent: '#c2556f',
-    hover: '#d4697f',
+    accent: '#e879a0',
+    hover: '#f090b8',
     base: {
-      bg_primary:     '#faf5f7',
-      bg_secondary:   '#f2e8ec',
-      bg_tertiary:    '#e8d5dc',
-      text_primary:   '#2a1520',
-      text_secondary: '#7a5868',
+      bg_primary:     '#fdf2f6',
+      bg_secondary:   '#fce4ef',
+      bg_tertiary:    '#f9c8dc',
+      text_primary:   '#3d0a1e',
+      text_secondary: '#8a5068',
     } as BaseColors,
   },
   {
@@ -463,7 +463,7 @@ export function Settings() {
               <Palette className="w-5 h-5 text-(--accent)" />
               <h2 className="text-xl font-semibold">Theme</h2>
             </div>
-            <div className="flex flex-col items-stretch gap-2">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
               <div className="flex gap-2">
                 <button onClick={handleExport} className="btn btn-secondary flex items-center gap-1.5 text-sm py-1.5 px-3">
                   <Download className="w-3.5 h-3.5" />
@@ -479,7 +479,7 @@ export function Settings() {
                 <select
                   value={mode}
                   onChange={e => setMode(e.target.value as ThemeMode)}
-                  className="input text-sm py-1 px-2 h-auto w-full"
+                  className="input text-sm py-1 px-2 h-auto w-full sm:w-auto"
                 >
                   <option value="personal">Personal</option>
                   <option value="server">Server default</option>

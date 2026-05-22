@@ -14,6 +14,26 @@
   --error: #f87171;
 }
 
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--bg-tertiary);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg-tertiary) transparent;
+}
+
 ::selection {
   background: rgba(var(--accent-rgb), 0.35);
   color: #fff;
@@ -187,10 +207,16 @@ input[type="checkbox"]:checked::after {
 
 /* Input */
 .input {
-  @apply rounded-lg px-4 py-2 text-white placeholder-gray-400 focus:outline-none;
+  @apply rounded-lg px-4 py-2 focus:outline-none;
   background: var(--bg-tertiary);
   border: 1px solid var(--bg-tertiary);
+  color: var(--text-primary);
   transition: border-color 0.15s ease;
+}
+
+.input::placeholder {
+  color: var(--text-secondary);
+  opacity: 1;
 }
 
 .input:hover {

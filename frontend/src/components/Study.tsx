@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Eye, RotateCcw, ThumbsDown, ThumbsUp, Check, Volume2, Undo2, X } from 'lucide-react';
 import { decks, cards, media, type Card } from '../api';
@@ -94,8 +94,8 @@ function getCardSounds(card: Card, side: 'question' | 'answer'): string[] {
 
 export function Study() {
   const { t } = useTranslation();
-  const [searchParams] = useSearchParams();
-  const deckName = searchParams.get('deck') || '';
+  const { id } = useParams<{ id: string }>();
+  const [deckName, setDeckName] = useState('');
 
   const [currentCard, setCurrentCard] = useState<Card | null>(null);
   const [remaining, setRemaining] = useState(0);
@@ -260,6 +260,14 @@ export function Study() {
       setInitialLoad(false);
     }
   }, [deckName, loadCardMedia]);
+
+  useEffect(() => {
+    if (!id) return;
+    decks.list().then(data => {
+      const entry = Object.entries(data.decks).find(([, v]) => v === Number(id));
+      if (entry) setDeckName(entry[0]);
+    });
+  }, [id]);
 
   useEffect(() => {
     setInitialLoad(true);

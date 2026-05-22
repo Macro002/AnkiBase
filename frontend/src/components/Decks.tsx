@@ -90,8 +90,8 @@ export function Decks() {
     }
   };
 
-  const handleStudy = (deckName: string) => {
-    navigate(`/study?deck=${encodeURIComponent(deckName)}`);
+  const handleStudy = (deck: DeckInfo) => {
+    navigate(`/deck/${deck.id}/study`);
   };
 
   const handleViewDeck = (deckName: string) => {
@@ -274,7 +274,7 @@ export function Decks() {
           <div
             key={deck.id}
             className="card border border-(--bg-tertiary) hover-border-accent transition-all cursor-pointer flex flex-col relative group"
-            onClick={() => handleStudy(deck.name)}
+            onClick={() => handleStudy(deck)}
           >
             {/* Edit/Delete buttons - always visible */}
             <div className="absolute top-3 right-3 flex items-center gap-1">
@@ -336,7 +336,7 @@ export function Decks() {
                     {t('common.view', 'View')}
                   </button>
                   <button
-                    onClick={(e) => { e.stopPropagation(); handleStudy(deck.name); }}
+                    onClick={(e) => { e.stopPropagation(); handleStudy(deck); }}
                     className="btn btn-primary"
                     title={t('decks.studyNow')}
                   >
@@ -345,7 +345,7 @@ export function Decks() {
                 </>
               ) : (
                 <button
-                  onClick={(e) => { e.stopPropagation(); handleStudy(deck.name); }}
+                  onClick={(e) => { e.stopPropagation(); handleStudy(deck); }}
                   className="btn btn-primary flex-1"
                 >
                   {t('nav.study')}

@@ -826,7 +826,7 @@ export function Reading() {
 
   // Story list view
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
+    <div className="space-y-6">
       <h2 className="text-xl font-bold">{t('reading.title')}</h2>
 
       <p style={{ color: 'var(--text-secondary)' }}>

@@ -145,7 +145,7 @@ export function Search() {
   };
 
   return (
-    <div className="space-y-4 max-w-3xl mx-auto">
+    <div className="space-y-4">
       {/* Search Form */}
       <form onSubmit={handleSearch} className="space-y-3">
         <div className="flex gap-2">

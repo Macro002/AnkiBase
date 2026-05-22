@@ -401,7 +401,7 @@ export function Study() {
 
   if (!deckName) {
     return (
-      <div className="max-w-2xl mx-auto w-full card text-center">
+      <div className="card text-center">
         <p className="text-(--text-secondary)">
           Select an Anki or Quizlet deck from the{' '}
           <Link to="/" className="text-(--accent) hover-underline">Decks</Link>{' '}
@@ -413,7 +413,7 @@ export function Study() {
 
   if (error) {
     return (
-      <div className="max-w-2xl mx-auto w-full card text-center">
+      <div className="card text-center">
         <p className="text-(--error)">{error}</p>
         <button onClick={() => loadNextCard()} className="btn btn-primary mt-4">
           Retry
@@ -429,7 +429,7 @@ export function Study() {
     }
 
     return (
-      <div className="max-w-2xl mx-auto w-full card text-center">
+      <div className="card text-center">
         <h2 className="text-2xl font-bold mb-4">Session Complete!</h2>
         <p className="text-(--text-secondary) mb-4">
           You've reviewed all due cards in <strong>{deckName}</strong>

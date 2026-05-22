@@ -100,31 +100,7 @@ const BUILTIN_THEMES: ThemeEntry[] = [
     } as BaseColors,
   },
   {
-    name: 'Dracula',
-    accent: '#ff79c6',
-    hover: '#ff92d0',
-    base: {
-      bg_primary:     '#282a36',
-      bg_secondary:   '#1e1f29',
-      bg_tertiary:    '#44475a',
-      text_primary:   '#f8f8f2',
-      text_secondary: '#6272a4',
-    } as BaseColors,
-  },
-  {
-    name: 'Tokyo',
-    accent: '#7aa2f7',
-    hover: '#89b4fa',
-    base: {
-      bg_primary:     '#1a1b26',
-      bg_secondary:   '#16161e',
-      bg_tertiary:    '#292e42',
-      text_primary:   '#c0caf5',
-      text_secondary: '#565f89',
-    } as BaseColors,
-  },
-  {
-    name: 'Catppuccin',
+    name: 'Starbloom',
     accent: '#cba6f7',
     hover: '#d4b2f8',
     base: {
@@ -136,27 +112,51 @@ const BUILTIN_THEMES: ThemeEntry[] = [
     } as BaseColors,
   },
   {
-    name: 'Claude',
-    accent: '#d97757',
-    hover: '#e8895e',
+    name: 'Sakura',
+    accent: '#e879a0',
+    hover: '#f090b8',
     base: {
-      bg_primary:     '#1c1510',
-      bg_secondary:   '#241d14',
-      bg_tertiary:    '#2e261a',
-      text_primary:   '#f5ede4',
-      text_secondary: '#a0907e',
+      bg_primary:     '#fdf2f6',
+      bg_secondary:   '#fce4ef',
+      bg_tertiary:    '#f9c8dc',
+      text_primary:   '#3d0a1e',
+      text_secondary: '#8a5068',
+    } as BaseColors,
+  },
+  {
+    name: 'Ember',
+    accent: '#f97316',
+    hover: '#fb923c',
+    base: {
+      bg_primary:     '#130700',
+      bg_secondary:   '#1e0e00',
+      bg_tertiary:    '#301800',
+      text_primary:   '#fff3e0',
+      text_secondary: '#b07040',
+    } as BaseColors,
+  },
+  {
+    name: 'Claude',
+    accent: '#c4704f',
+    hover: '#d4845f',
+    base: {
+      bg_primary:     '#1c1917',
+      bg_secondary:   '#292524',
+      bg_tertiary:    '#3d3834',
+      text_primary:   '#f5f0eb',
+      text_secondary: '#a09888',
     } as BaseColors,
   },
   {
     name: 'Phantom',
-    accent: '#50fa7b',
-    hover: '#69ff8f',
+    accent: '#8892b0',
+    hover: '#a8b2d8',
     base: {
-      bg_primary:     '#0a0f0a',
-      bg_secondary:   '#0f1a0f',
-      bg_tertiary:    '#1a2e1a',
-      text_primary:   '#e8ffe8',
-      text_secondary: '#4a8a5a',
+      bg_primary:     '#09091a',
+      bg_secondary:   '#0f0f22',
+      bg_tertiary:    '#1a1a35',
+      text_primary:   '#ccd6f6',
+      text_secondary: '#495670',
     } as BaseColors,
   },
 ];
@@ -458,26 +458,28 @@ export function Settings() {
 
         {/* ── Theme card ─────────────────────────────────────────────────── */}
         <div className="card space-y-8">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex items-start justify-between">
             <div className="flex items-center gap-2">
               <Palette className="w-5 h-5 text-(--accent)" />
               <h2 className="text-xl font-semibold">Theme</h2>
             </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <button onClick={handleExport} className="btn btn-secondary flex items-center gap-1.5 text-sm py-1.5 px-3">
-                <Download className="w-3.5 h-3.5" />
-                Export
-              </button>
-              <button onClick={() => fileInputRef.current?.click()} className="btn btn-secondary flex items-center gap-1.5 text-sm py-1.5 px-3">
-                <Upload className="w-3.5 h-3.5" />
-                Import
-              </button>
-              <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={handleImportFile} />
+            <div className="flex flex-col items-stretch gap-2">
+              <div className="flex gap-2">
+                <button onClick={handleExport} className="btn btn-secondary flex items-center gap-1.5 text-sm py-1.5 px-3">
+                  <Download className="w-3.5 h-3.5" />
+                  Export
+                </button>
+                <button onClick={() => fileInputRef.current?.click()} className="btn btn-secondary flex items-center gap-1.5 text-sm py-1.5 px-3">
+                  <Upload className="w-3.5 h-3.5" />
+                  Import
+                </button>
+                <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={handleImportFile} />
+              </div>
               {canEditServer && (
                 <select
                   value={mode}
                   onChange={e => setMode(e.target.value as ThemeMode)}
-                  className="input text-sm py-1 px-2 h-auto"
+                  className="input text-sm py-1 px-2 h-auto w-full"
                 >
                   <option value="personal">Personal</option>
                   <option value="server">Server default</option>

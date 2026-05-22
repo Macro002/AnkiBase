@@ -119,7 +119,7 @@ export function Heatmap({ className = '' }: HeatmapProps) {
   const prevYearData = useMemo(() => prevYear !== null ? buildWeeksForYear(prevYear) : null, [prevYear, data]);
 
   const getColorStyle = (count: number, isCurrentYear: boolean): React.CSSProperties => {
-    if (!isCurrentYear) return { backgroundColor: 'rgba(15, 52, 96, 0.3)' };
+    if (!isCurrentYear) return { backgroundColor: 'var(--bg-tertiary)', opacity: 0.4 };
     if (count === 0) return { backgroundColor: 'var(--bg-tertiary)' };
 
     if (colorScheme === 'accent') {

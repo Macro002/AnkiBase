@@ -135,6 +135,30 @@ const BUILTIN_THEMES: ThemeEntry[] = [
       text_secondary: '#6c7086',
     } as BaseColors,
   },
+  {
+    name: 'Claude',
+    accent: '#d97757',
+    hover: '#e8895e',
+    base: {
+      bg_primary:     '#1c1510',
+      bg_secondary:   '#241d14',
+      bg_tertiary:    '#2e261a',
+      text_primary:   '#f5ede4',
+      text_secondary: '#a0907e',
+    } as BaseColors,
+  },
+  {
+    name: 'Phantom',
+    accent: '#50fa7b',
+    hover: '#69ff8f',
+    base: {
+      bg_primary:     '#0a0f0a',
+      bg_secondary:   '#0f1a0f',
+      bg_tertiary:    '#1a2e1a',
+      text_primary:   '#e8ffe8',
+      text_secondary: '#4a8a5a',
+    } as BaseColors,
+  },
 ];
 
 function isValidThemeFile(data: unknown): data is ThemeFile {
@@ -434,12 +458,12 @@ export function Settings() {
 
         {/* ── Theme card ─────────────────────────────────────────────────── */}
         <div className="card space-y-8">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex items-center gap-2">
               <Palette className="w-5 h-5 text-(--accent)" />
               <h2 className="text-xl font-semibold">Theme</h2>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <button onClick={handleExport} className="btn btn-secondary flex items-center gap-1.5 text-sm py-1.5 px-3">
                 <Download className="w-3.5 h-3.5" />
                 Export

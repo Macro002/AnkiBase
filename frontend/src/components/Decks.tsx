@@ -269,7 +269,7 @@ export function Decks() {
         {currentPath.length > 0 ? currentPath[currentPath.length - 1] : 'My Anki Decks'}
       </h2>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
         {visibleDecks.map((deck) => (
           <div
             key={deck.id}
@@ -376,7 +376,7 @@ export function Decks() {
               </button>
             </div>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
               {quizletDecks.map(deck => (
                 <div
                   key={deck.id}

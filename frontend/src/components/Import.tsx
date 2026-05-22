@@ -275,7 +275,7 @@ export function Import() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-2xl mx-auto">
       <h2 className="text-xl font-bold">{t('import.title')}</h2>
 
       <p className="text-(--text-secondary)">

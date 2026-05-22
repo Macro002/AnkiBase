@@ -453,7 +453,7 @@ export function Settings() {
   };
 
   return (
-    <div className={currentUser?.is_admin ? "max-w-7xl mx-auto" : "max-w-2xl mx-auto"}>
+    <div className={currentUser?.is_admin ? "max-w-5xl mx-auto" : "max-w-2xl mx-auto"}>
       <div className="space-y-6">
 
         {/* ── Theme card ─────────────────────────────────────────────────── */}

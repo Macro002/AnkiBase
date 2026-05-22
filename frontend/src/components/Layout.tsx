@@ -96,7 +96,7 @@ export function Layout() {
     <div className="min-h-screen flex flex-col bg-(--bg-primary)">
       {/* Header */}
       <header className="bg-(--bg-secondary)" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
-        <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 h-14 flex items-center justify-between w-full gap-2">
+        <div className="max-w-screen-2xl mx-auto px-2 sm:px-4 lg:px-8 h-14 flex items-center justify-between w-full gap-2">
           <Link to="/" className="flex items-center gap-2 hover-opacity-80 transition-opacity shrink-0">
             <Logo className="w-7 h-7" />
             <h1 className="text-lg sm:text-xl font-bold text-(--accent) hidden sm:block">AnkiBase</h1>
@@ -183,7 +183,7 @@ export function Layout() {
 
       {/* Desktop Navigation - hidden on mobile */}
       <nav className="hidden md:block bg-(--bg-secondary) border-b border-(--bg-tertiary)">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
+        <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
           <div className="flex gap-1">
             {navItems.map(({ to, icon: Icon, label }) => (
               <NavLink
@@ -216,7 +216,7 @@ export function Layout() {
       </nav>
 
       {/* Main Content */}
-      <main className="safe-pb-main flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-4">
+      <main className="safe-pb-main flex-1 max-w-screen-2xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-4">
         <Outlet />
       </main>
 

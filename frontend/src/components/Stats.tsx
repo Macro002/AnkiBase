@@ -307,6 +307,7 @@ export function Stats() {
             ))}
           </div>
 
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           {/* Review Count Chart */}
           <div className="card">
             <h2 className="text-lg font-semibold mb-4">{t('stats.reviewCount', 'Review Count')}</h2>
@@ -374,6 +375,7 @@ export function Stats() {
                 <Bar dataKey="time" fill="#3b82f6" name="Time (seconds)" />
               </BarChart>
             </ResponsiveContainer>
+          </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

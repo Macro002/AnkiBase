@@ -113,14 +113,14 @@ const BUILTIN_THEMES: ThemeEntry[] = [
   },
   {
     name: 'Sakura',
-    accent: '#e879a0',
-    hover: '#f090b8',
+    accent: '#f4a7c3',
+    hover: '#e090ae',
     base: {
-      bg_primary:     '#fdf2f6',
-      bg_secondary:   '#fce4ef',
-      bg_tertiary:    '#f9c8dc',
-      text_primary:   '#3d0a1e',
-      text_secondary: '#8a5068',
+      bg_primary:     '#fefcfd',
+      bg_secondary:   '#f8eef2',
+      bg_tertiary:    '#efd8e4',
+      text_primary:   '#1c0a12',
+      text_secondary: '#7a5868',
     } as BaseColors,
   },
   {

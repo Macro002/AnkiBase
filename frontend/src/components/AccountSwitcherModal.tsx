@@ -234,10 +234,12 @@ export function AccountSwitcherModal({ isOpen, onClose, onSwitch }: AccountSwitc
                   <div
                     key={account.id}
                     className={`p-4 rounded-lg border transition-all relative ${
-                      isActive
-                        ? 'border-green-500/30 bg-green-500/5'
-                        : 'border-(--bg-tertiary) hover-border-accent'
+                      isActive ? '' : 'border-(--bg-tertiary) hover-border-accent'
                     }`}
+                    style={isActive ? {
+                      borderColor: 'color-mix(in srgb, var(--accent) 40%, transparent)',
+                      backgroundColor: 'color-mix(in srgb, var(--accent) 8%, transparent)',
+                    } : undefined}
                   >
                     {/* Action buttons - top right */}
                     <div className="absolute top-3 right-3 flex items-center gap-1">
@@ -281,8 +283,8 @@ export function AccountSwitcherModal({ isOpen, onClose, onSwitch }: AccountSwitc
                           {t('accounts.restarting', 'Restarting')}
                         </span>
                       ) : (
-                        <span className="text-xs px-2 py-0.5 bg-green-500/20 text-green-400 rounded whitespace-nowrap flex items-center gap-1">
-                          <Circle className="w-2 h-2 fill-green-400 text-green-400" />
+                        <span className="text-xs px-2 py-0.5 rounded whitespace-nowrap flex items-center gap-1" style={{ backgroundColor: 'color-mix(in srgb, var(--accent) 20%, transparent)', color: 'var(--accent)' }}>
+                          <Circle className="w-2 h-2" style={{ fill: 'var(--accent)' }} />
                           {t('accounts.running', 'Running')}
                         </span>
                       )}
@@ -291,7 +293,7 @@ export function AccountSwitcherModal({ isOpen, onClose, onSwitch }: AccountSwitc
                     {/* AnkiWeb status - show for all accounts */}
                     {hasAnkiweb ? (
                       <p className="text-sm mb-2">
-                        AnkiWeb: <span className="font-mono text-green-400">{ankiwebEmail}</span>
+                        AnkiWeb: <span className="font-mono text-(--accent)">{ankiwebEmail}</span>
                       </p>
                     ) : (
                       <p className="text-sm text-yellow-400 mb-2">{t('accounts.notLoggedIntoAnkiWeb', 'Not logged into AnkiWeb')}</p>

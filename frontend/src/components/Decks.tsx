@@ -311,15 +311,15 @@ export function Decks() {
             {/* Stats row */}
             <div className="flex items-center gap-3 mb-4 text-sm text-(--text-secondary) flex-wrap">
               <span className="flex items-center gap-1">
-                <Plus className="w-3.5 h-3.5 text-blue-400" />
+                <Plus className="w-3.5 h-3.5 text-(--accent)" />
                 {deck.stats?.new_count ?? 0} new
               </span>
               <span className="flex items-center gap-1">
-                <Clock className="w-3.5 h-3.5 text-orange-400" />
+                <Clock className="w-3.5 h-3.5 text-(--accent)" />
                 {deck.stats?.learn_count ?? 0} learning
               </span>
               <span className="flex items-center gap-1">
-                <BookOpen className="w-3.5 h-3.5 text-green-400" />
+                <BookOpen className="w-3.5 h-3.5 text-(--accent)" />
                 {deck.stats?.review_count ?? 0} review
               </span>
             </div>

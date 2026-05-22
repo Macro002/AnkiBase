@@ -122,7 +122,7 @@ export function Layout() {
             {hasUpdate && (
               <button
                 onClick={() => setShowUpdateModal(true)}
-                className="btn flex items-center gap-2 px-2 sm:px-4 bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30"
+                className="btn btn-primary flex items-center gap-2 px-2 sm:px-4"
                 title="Update available"
               >
                 <RefreshCw className="w-4 h-4" />

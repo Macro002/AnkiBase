@@ -202,9 +202,9 @@ export function AnkiWebLoginModal({ isOpen, onClose, onSuccess }: AnkiWebLoginMo
               /* Show logged in state with logout button */
               <div className="space-y-4">
                 {/* Current Email */}
-                <div className="p-4 bg-(--card) rounded-lg border border-(--border)">
+                <div className="p-4 bg-(--bg-tertiary) rounded-lg border border-(--bg-tertiary)">
                   <label className="block text-sm font-medium mb-1 text-(--text-secondary)">{t('ankiweb.loggedInAs')}</label>
-                  <p className="text-lg font-mono">{currentEmail}</p>
+                  <p className="text-lg font-mono text-(--accent)">{currentEmail}</p>
                 </div>
 
                 {/* Logout Button */}

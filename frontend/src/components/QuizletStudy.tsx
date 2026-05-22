@@ -659,18 +659,13 @@ export function QuizletStudy() {
 
             {/* Search + filter row */}
             <div className="flex gap-2">
-              <div className="relative flex-1">
-                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-(--text-secondary) pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
-                </svg>
-                <input
-                  type="text"
-                  placeholder="Search terms..."
-                  value={listSearch}
-                  onChange={e => setListSearch(e.target.value)}
-                  className="input w-full pl-8"
-                />
-              </div>
+              <input
+                type="text"
+                placeholder="Search terms..."
+                value={listSearch}
+                onChange={e => setListSearch(e.target.value)}
+                className="input flex-1"
+              />
               <select
                 value={listFilter}
                 onChange={e => setListFilter(e.target.value as typeof listFilter)}

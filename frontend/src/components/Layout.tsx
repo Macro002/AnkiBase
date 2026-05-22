@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useNavigate, Link } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate, Link, useLocation } from 'react-router-dom';
 import { BookOpen, Search, Sparkles, RefreshCw, LogOut, Layers, Check, X, Upload, BarChart3, Library, Menu, LogIn, Server, Settings } from 'lucide-react';
 import { auth, sync, update } from '../api';
 import { useState, useEffect } from 'react';
@@ -13,7 +13,9 @@ type SyncStatus = 'idle' | 'syncing' | 'success' | 'error';
 
 export function Layout() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { t } = useTranslation();
+  const onStudyPath = location.pathname.startsWith('/anki/') || location.pathname.startsWith('/quizlet/');
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
   const [syncMessage, setSyncMessage] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -188,23 +190,25 @@ export function Layout() {
                 key={to}
                 to={to}
                 end={to === '/'}
-                className={({ isActive }) =>
-                  `relative group flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${
-                    isActive
-                      ? 'text-(--accent)'
-                      : 'text-(--text-secondary) hover-white'
-                  }`
-                }
+                className={({ isActive }) => {
+                  const active = isActive || (to === '/study' && onStudyPath);
+                  return `relative group flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${
+                    active ? 'text-(--accent)' : 'text-(--text-secondary) hover-white'
+                  }`;
+                }}
               >
-                {({ isActive }) => (
-                  <>
-                    <Icon className="w-4 h-4" />
-                    <span>{label}</span>
-                    <span className={`absolute bottom-0 left-0 right-0 h-0.5 bg-(--accent) transition-transform duration-200 origin-center ${
-                      isActive ? 'scale-x-100' : 'scale-x-0 group-hover:scale-x-100'
-                    }`} />
-                  </>
-                )}
+                {({ isActive }) => {
+                  const active = isActive || (to === '/study' && onStudyPath);
+                  return (
+                    <>
+                      <Icon className="w-4 h-4" />
+                      <span>{label}</span>
+                      <span className={`absolute bottom-0 left-0 right-0 h-0.5 bg-(--accent) transition-transform duration-200 origin-center ${
+                        active ? 'scale-x-100' : 'scale-x-0 group-hover:scale-x-100'
+                      }`} />
+                    </>
+                  );
+                }}
               </NavLink>
             ))}
           </div>
@@ -224,11 +228,12 @@ export function Layout() {
               key={to}
               to={to}
               end={to === '/'}
-              className={({ isActive }) =>
-                `flex flex-col items-center justify-center px-2 py-1 min-w-[60px] ${
-                  isActive ? 'text-(--accent)' : 'text-(--text-secondary)'
-                }`
-              }
+              className={({ isActive }) => {
+                const active = isActive || (to === '/study' && onStudyPath);
+                return `flex flex-col items-center justify-center px-2 py-1 min-w-[60px] ${
+                  active ? 'text-(--accent)' : 'text-(--text-secondary)'
+                }`;
+              }}
             >
               <Icon className="w-5 h-5" />
               <span className="text-xs mt-1">{label}</span>

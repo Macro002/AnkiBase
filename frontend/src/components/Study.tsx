@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Eye, RotateCcw, ThumbsDown, ThumbsUp, Check, Volume2, Undo2, X } from 'lucide-react';
 import { decks, cards, media, type Card } from '../api';
@@ -94,7 +94,7 @@ function getCardSounds(card: Card, side: 'question' | 'answer'): string[] {
 
 export function Study() {
   const { t } = useTranslation();
-  const { id } = useParams<{ id: string }>();
+  const { id } = useParams<{ id?: string }>();
   const [deckName, setDeckName] = useState('');
 
   const [currentCard, setCurrentCard] = useState<Card | null>(null);
@@ -402,7 +402,11 @@ export function Study() {
   if (!deckName) {
     return (
       <div className="card text-center">
-        <p className="text-(--text-secondary)">{t('study.selectDeck')}</p>
+        <p className="text-(--text-secondary)">
+          Select an Anki or Quizlet deck from the{' '}
+          <Link to="/" className="text-(--accent) hover-underline">Decks</Link>{' '}
+          tab to start studying.
+        </p>
       </div>
     );
   }

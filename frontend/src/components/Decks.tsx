@@ -91,7 +91,7 @@ export function Decks() {
   };
 
   const handleStudy = (deck: DeckInfo) => {
-    navigate(`/deck/${deck.id}/study`);
+    navigate(`/anki/${deck.id}/study`);
   };
 
   const handleViewDeck = (deckName: string) => {

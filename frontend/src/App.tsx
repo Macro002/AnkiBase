@@ -82,7 +82,8 @@ function App() {
           }
         >
           <Route index element={<Decks />} />
-          <Route path="deck/:id/study" element={<Study />} />
+          <Route path="study" element={<Study />} />
+          <Route path="anki/:id/study" element={<Study />} />
           <Route path="search" element={<Search />} />
           <Route path="stats" element={<Stats />} />
           <Route path="import" element={<Import />} />

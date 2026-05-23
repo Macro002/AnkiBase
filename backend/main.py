@@ -20,6 +20,7 @@ from database import (
     create_quizlet_deck, get_quizlet_decks, get_quizlet_deck, delete_quizlet_deck,
     rename_quizlet_deck, record_quizlet_review, get_quizlet_daily_counts,
     get_quizlet_deck_stats, get_quizlet_favorites, toggle_quizlet_favorite,
+    update_quizlet_card,
     get_setting, set_setting, get_user_accent, set_user_accent, clear_user_accent,
     get_server_base_colors, set_server_base_colors,
     get_user_base_colors, set_user_base_colors, clear_user_base_colors,
@@ -2121,6 +2122,19 @@ async def quizlet_get_favorites(deck_id: int, _: str = Depends(require_auth)):
 async def quizlet_toggle_favorite(deck_id: int, card_id: int, _: str = Depends(require_auth)):
     favorited = toggle_quizlet_favorite(card_id, deck_id)
     return {"favorited": favorited}
+
+
+class QuizletCardUpdateRequest(BaseModel):
+    front: str
+    back: str
+    image: Optional[str] = None
+
+
+@app.patch("/api/quizlet/decks/{deck_id}/cards/{card_id}")
+async def quizlet_update_card(deck_id: int, card_id: int, request: QuizletCardUpdateRequest, _: str = Depends(require_auth)):
+    if not update_quizlet_card(card_id, deck_id, request.front, request.back, request.image):
+        raise HTTPException(status_code=404, detail="Card not found")
+    return {"success": True}
 
 
 @app.post("/api/quizlet/decks/{deck_id}/review")

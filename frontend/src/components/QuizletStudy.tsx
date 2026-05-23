@@ -4,7 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Star, ChevronLeft, ChevronRight, ChevronDown,
   Play, Undo2, Shuffle, Settings, Maximize2, X, Check,
-  TrendingUp, Lightbulb, BookOpen,
+  TrendingUp, Lightbulb, BookOpen, Pencil,
 } from 'lucide-react';
 import { Flashcard, useFlashcard } from 'react-quizlet-flashcard';
 import 'react-quizlet-flashcard/dist/index.css';
@@ -15,6 +15,31 @@ import BlocksIcon     from '../assets/icons/brand-blocks.svg?react';
 import BlastIcon      from '../assets/icons/brand-blast.svg?react';
 import MatchIcon      from '../assets/icons/brand-match.svg?react';
 import { quizlet, type QuizletCard } from '../api';
+
+const PALETTE = ['#f87171','#fb923c','#fbbf24','#4ade80','#60a5fa','#c084fc','#f472b6','#ffffff'];
+
+function FormatToolbar() {
+  const exec = (cmd: string, val?: string) => document.execCommand(cmd, false, val);
+  return (
+    <div className="flex items-center gap-1 mb-1.5 flex-wrap">
+      <button onMouseDown={e => { e.preventDefault(); exec('bold'); }}
+        className="w-7 h-7 rounded flex items-center justify-center bg-(--bg-tertiary) hover-bg-accent transition-colors font-bold text-sm">B</button>
+      <button onMouseDown={e => { e.preventDefault(); exec('italic'); }}
+        className="w-7 h-7 rounded flex items-center justify-center bg-(--bg-tertiary) hover-bg-accent transition-colors italic text-sm">I</button>
+      <button onMouseDown={e => { e.preventDefault(); exec('underline'); }}
+        className="w-7 h-7 rounded flex items-center justify-center bg-(--bg-tertiary) hover-bg-accent transition-colors underline text-sm">U</button>
+      <div className="w-px h-5 bg-(--bg-tertiary) mx-0.5" />
+      {PALETTE.map(color => (
+        <button key={color} onMouseDown={e => { e.preventDefault(); exec('foreColor', color); }}
+          className="w-5 h-5 rounded-full border-2 border-transparent hover:scale-110 transition-transform"
+          style={{ background: color, boxShadow: color === '#ffffff' ? 'inset 0 0 0 1px #666' : undefined }} />
+      ))}
+      <div className="w-px h-5 bg-(--bg-tertiary) mx-0.5" />
+      <button onMouseDown={e => { e.preventDefault(); exec('removeFormat'); }}
+        className="px-2 h-7 rounded bg-(--bg-tertiary) hover-bg-accent transition-colors text-xs text-(--text-secondary)">Clear</button>
+    </div>
+  );
+}
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -224,6 +249,12 @@ export function QuizletStudy() {
   const keyHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {});
   const trackProgressIndexRef = useRef(0);
 
+  const [editingCard, setEditingCard] = useState<QuizletCard | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editImageUrl, setEditImageUrl] = useState('');
+  const frontEditRef = useRef<HTMLDivElement>(null);
+  const backEditRef = useRef<HTMLDivElement>(null);
+
   const current = queue[index];
 
   useEffect(() => {
@@ -384,11 +415,47 @@ export function QuizletStudy() {
     setTimeout(() => { setShowOptions(false); setClosingOptions(false); }, 210);
   };
 
+  const openEdit = useCallback((card: QuizletCard) => {
+    setEditingCard(card);
+  }, []);
+
+  useEffect(() => {
+    if (!editingCard) return;
+    if (frontEditRef.current) frontEditRef.current.innerHTML = editingCard.front;
+    if (backEditRef.current) backEditRef.current.innerHTML = editingCard.back;
+    setEditImageUrl(editingCard.image ?? '');
+    setTimeout(() => frontEditRef.current?.focus(), 50);
+  }, [editingCard?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleEditSave = async () => {
+    if (!editingCard) return;
+    const front = frontEditRef.current?.innerHTML ?? '';
+    const back = backEditRef.current?.innerHTML ?? '';
+    const image = editImageUrl.trim() || null;
+    setEditSaving(true);
+    try {
+      await quizlet.updateCard(deckId, editingCard.id, front, back, image);
+      const updated = { ...editingCard, front, back, image };
+      setCards(prev => prev.map(c => c.id === editingCard.id ? updated : c));
+      setQueue(prev => prev.map(c => c.id === editingCard.id ? updated : c));
+      setEditingCard(null);
+    } catch (err) {
+      console.error('Failed to save card:', err);
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
   // Keyboard shortcuts — ref keeps handler fresh without re-registering the listener
   keyHandlerRef.current = (e: KeyboardEvent) => {
     if (showOptions) return;
-    const tag = (e.target as HTMLElement).tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    if (editingCard) {
+      if (e.key === 'Escape') { setEditingCard(null); e.preventDefault(); }
+      return;
+    }
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') return;
+    if (target.isContentEditable) return;
     switch (e.key) {
       case 'ArrowRight': e.preventDefault(); trackProgress ? markCard(true)  : goNext(); break;
       case 'ArrowLeft':  e.preventDefault(); trackProgress ? markCard(false) : goPrev(); break;
@@ -397,6 +464,7 @@ export function QuizletStudy() {
       case 'h': case 'H': toggleShuffle(); break;
       case 'd': case 'D': setFrontSide('definition'); break;
       case 't': case 'T': setFrontSide('term'); break;
+      case 'e': case 'E': if (current) openEdit(current); break;
     }
   };
 
@@ -482,8 +550,11 @@ export function QuizletStudy() {
           ) : (
             <span className="text-xs text-(--text-secondary) uppercase tracking-wide">{backLabel}</span>
           )}
-          <div className="flex items-center gap-2">
-            <button className="p-1 transition-colors" onClick={e => current && toggleFavorite(current.id, e)} title="Favorite">
+          <div className="flex items-center gap-1">
+            <button className="p-1 transition-colors" onClick={e => { e.stopPropagation(); current && openEdit(current); }} title="Edit (E)">
+              <Pencil className="w-4 h-4 text-(--text-secondary) hover:text-(--accent) transition-colors" />
+            </button>
+            <button className="p-1 transition-colors" onClick={e => current && toggleFavorite(current.id, e)} title="Favorite (S)">
               <Star className={`w-4 h-4 transition-colors ${isFaved ? 'fill-(--accent) text-(--accent)' : 'text-(--text-secondary) hover:text-(--accent)'}`} />
             </button>
           </div>
@@ -493,7 +564,7 @@ export function QuizletStudy() {
         {hasImage ? (
           <div className="flex-1 flex min-h-0">
             <div className="flex-1 flex items-center justify-center px-6 py-4 border-r border-(--bg-tertiary)">
-              <p className="text-2xl font-medium leading-snug text-center">{text}</p>
+              <div className="text-2xl font-medium leading-snug text-center" dangerouslySetInnerHTML={{ __html: text ?? '' }} />
             </div>
             <div className="flex-1 p-4">
               <img src={current!.image!} alt="" className="w-full h-full object-contain rounded-lg" />
@@ -501,7 +572,7 @@ export function QuizletStudy() {
           </div>
         ) : (
           <div className="flex-1 flex items-center justify-center px-6 py-4 min-h-0">
-            <p className="text-2xl font-medium leading-snug text-center w-full">{text}</p>
+            <div className="text-2xl font-medium leading-snug text-center w-full" dangerouslySetInnerHTML={{ __html: text ?? '' }} />
           </div>
         )}
 
@@ -692,30 +763,32 @@ export function QuizletStudy() {
                     key={card.id}
                     className="relative bg-(--bg-secondary) rounded-xl overflow-hidden"
                   >
-                    {/* Star top-right */}
-                    <button
-                      onClick={e => toggleFavorite(card.id, e)}
-                      className="absolute top-2 right-2 z-10 p-1"
-                    >
-                      <Star className={`w-3.5 h-3.5 transition-colors ${isFavedCard ? 'fill-(--accent) text-(--accent)' : 'text-(--text-secondary) hover:text-(--accent)'}`} />
-                    </button>
+                    {/* Edit + Star top-right */}
+                    <div className="absolute top-2 right-2 z-10 flex items-center gap-0.5">
+                      <button onClick={e => { e.stopPropagation(); openEdit(card); }} className="p-1" title="Edit">
+                        <Pencil className="w-3.5 h-3.5 text-(--text-secondary) hover:text-(--accent) transition-colors" />
+                      </button>
+                      <button onClick={e => toggleFavorite(card.id, e)} className="p-1">
+                        <Star className={`w-3.5 h-3.5 transition-colors ${isFavedCard ? 'fill-(--accent) text-(--accent)' : 'text-(--text-secondary) hover:text-(--accent)'}`} />
+                      </button>
+                    </div>
 
                     {/* Two-half split */}
                     <div className="flex" style={{ minHeight: '88px' }}>
                       {/* Left: TERM */}
                       <div className="flex-1 flex flex-col p-3 border-r border-(--bg-tertiary)">
                         <span className="text-[10px] font-semibold uppercase tracking-wider text-(--text-secondary) mb-1.5">Term</span>
-                        <p className="text-sm font-medium leading-snug flex-1 flex items-center">{card.front}</p>
+                        <div className="text-sm font-medium leading-snug flex-1 flex items-center" dangerouslySetInnerHTML={{ __html: card.front }} />
                       </div>
                       {/* Right: DEFINITION + image */}
-                      <div className="flex-1 flex flex-col p-3 pr-8">
+                      <div className="flex-1 flex flex-col p-3 pr-12">
                         <div className="flex items-center gap-2 mb-1.5">
                           <span className="text-[10px] font-semibold uppercase tracking-wider text-(--text-secondary)">Definition</span>
                           {isKnownCard && <span className="text-[10px] font-semibold text-green-400 ml-auto">Mastered</span>}
                           {isUnknownCard && <span className="text-[10px] font-semibold text-orange-400 ml-auto">Learning</span>}
                         </div>
                         <div className="flex-1 flex gap-2 min-h-0 items-center">
-                          <p className="text-sm text-white leading-snug flex-1">{card.back}</p>
+                          <div className="text-sm leading-snug flex-1" dangerouslySetInnerHTML={{ __html: card.back }} />
                           {card.image && (
                             <img
                               src={card.image} alt=""
@@ -836,6 +909,76 @@ export function QuizletStudy() {
               >
                 Restart Flashcards
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Card Modal */}
+      {editingCard && (
+        <div className="fixed inset-0 z-[110] bg-black/60 flex items-center justify-center p-4" onClick={() => setEditingCard(null)}>
+          <div className="bg-(--bg-secondary) rounded-xl max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="p-6 space-y-4">
+              {/* Header */}
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold text-lg">Edit Card</h3>
+                <button onClick={() => setEditingCard(null)} className="icon-btn"><X className="w-4 h-4" /></button>
+              </div>
+
+              {/* Term */}
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-(--text-secondary) mb-1.5">Term</label>
+                <FormatToolbar />
+                <div
+                  ref={frontEditRef}
+                  contentEditable
+                  suppressContentEditableWarning
+                  className="w-full min-h-[80px] rounded-lg p-3 bg-(--bg-tertiary) border border-(--bg-tertiary) focus:border-(--accent) focus:outline-none text-sm leading-relaxed"
+                  style={{ transition: 'border-color 0.15s' }}
+                />
+              </div>
+
+              {/* Definition */}
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-(--text-secondary) mb-1.5">Definition</label>
+                <FormatToolbar />
+                <div
+                  ref={backEditRef}
+                  contentEditable
+                  suppressContentEditableWarning
+                  className="w-full min-h-[80px] rounded-lg p-3 bg-(--bg-tertiary) border border-(--bg-tertiary) focus:border-(--accent) focus:outline-none text-sm leading-relaxed"
+                  style={{ transition: 'border-color 0.15s' }}
+                />
+              </div>
+
+              {/* Image */}
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-(--text-secondary) mb-1.5">Image</label>
+                {editImageUrl && (
+                  <div className="flex items-center gap-3 mb-2 p-2 bg-(--bg-tertiary) rounded-lg">
+                    <img src={editImageUrl} alt="" className="w-14 h-14 object-contain rounded shrink-0" onError={e => (e.currentTarget.style.display = 'none')} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-(--text-secondary) truncate">{editImageUrl}</p>
+                    </div>
+                    <button onClick={() => setEditImageUrl('')} className="icon-btn icon-btn-danger shrink-0"><X className="w-3.5 h-3.5" /></button>
+                  </div>
+                )}
+                <input
+                  type="url"
+                  placeholder="Image URL (leave empty for no image)"
+                  value={editImageUrl}
+                  onChange={e => setEditImageUrl(e.target.value)}
+                  className="input w-full text-sm"
+                />
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-2 justify-end pt-2">
+                <button onClick={() => setEditingCard(null)} className="btn btn-secondary" disabled={editSaving}>Cancel</button>
+                <button onClick={handleEditSave} className="btn btn-primary" disabled={editSaving}>
+                  {editSaving ? 'Saving…' : 'Save'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

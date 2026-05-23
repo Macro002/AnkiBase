@@ -596,4 +596,9 @@ export const quizlet = {
     fetchAPI<{ card_ids: number[] }>(`/quizlet/decks/${deckId}/favorites`),
   toggleFavorite: (deckId: number, cardId: number) =>
     fetchAPI<{ favorited: boolean }>(`/quizlet/decks/${deckId}/favorites/${cardId}`, { method: 'POST' }),
+  updateCard: (deckId: number, cardId: number, front: string, back: string, image: string | null) =>
+    fetchAPI<{ success: boolean }>(`/quizlet/decks/${deckId}/cards/${cardId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ front, back, image }),
+    }),
 };

@@ -989,6 +989,17 @@ def get_quizlet_deck_stats(deck_id: int) -> dict:
         """, (deck_id,))
         return {"studied_today": cursor.fetchone()[0]}
 
+def update_quizlet_card(card_id: int, deck_id: int, front: str, back: str, image) -> bool:
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE quizlet_cards SET front = ?, back = ?, image = ? WHERE id = ? AND deck_id = ?",
+            (front, back, image, card_id, deck_id)
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+
+
 def get_quizlet_daily_counts() -> dict[str, int]:
     active = get_active_account()
     container_id = active["id"] if active else None

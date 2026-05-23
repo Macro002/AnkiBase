@@ -6,6 +6,7 @@ import { loadAccentColor, saveAccentColor, loadBaseColors, saveBaseColors } from
 
 loadAccentColor();
 loadBaseColors();
+import { Logo } from './components/Logo';
 import { Login } from './components/Login';
 import { Layout } from './components/Layout';
 import { Decks } from './components/Decks';
@@ -58,8 +59,8 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   if (checking) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="skeleton h-8 w-32 rounded-full" />
+      <div className="min-h-screen flex items-center justify-center bg-(--bg-secondary)">
+        <Logo className="w-16 h-16 animate-pulse" />
       </div>
     );
   }

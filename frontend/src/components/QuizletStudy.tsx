@@ -3,7 +3,7 @@ import confetti from 'canvas-confetti';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Star, ChevronLeft, ChevronRight, ChevronDown,
-  Play, Undo2, Shuffle, Settings, Maximize2, X, Check,
+  Undo2, Settings, X, Check,
   TrendingUp, Lightbulb, BookOpen, Pencil, RotateCcw,
 } from 'lucide-react';
 import { Flashcard, useFlashcard } from 'react-quizlet-flashcard';
@@ -71,7 +71,7 @@ function DonutChart({ percent }: { percent: number }) {
 
 // --- Learn mode types & helpers ---
 type LearnQtype = 'mc' | 'written' | 'flashcard';
-type LearnPhase = 'off' | 'setup' | 'session' | 'end';
+type LearnPhase = 'off' | 'goal-pick' | 'session' | 'end';
 
 interface LearnConfig {
   mc: boolean;
@@ -156,7 +156,7 @@ function ModeGrid({ mobile = false, activeMode = 'flashcards', onLearnClick }: {
               !active
                 ? 'bg-(--bg-secondary) text-(--text-secondary) opacity-40 cursor-not-allowed'
                 : isCurrent
-                ? 'bg-(--accent)/10 text-(--accent) ring-1 ring-(--accent)/30'
+                ? 'bg-(--accent)/10 text-(--accent)'
                 : 'bg-(--bg-secondary) text-(--text-secondary) hover:bg-(--bg-tertiary) hover:text-white'
             }`}
           >
@@ -335,6 +335,7 @@ export function QuizletStudy() {
   const [learnRetypeText, setLearnRetypeText] = useState('');
   const [learnFlipped, setLearnFlipped] = useState(false);
   const [showRestartLearnConfirm, setShowRestartLearnConfirm] = useState(false);
+  const [showLearnOptions, setShowLearnOptions] = useState(false);
   const learnAdvanceRef = useRef<(wasCorrect: boolean) => void>(() => {});
   const learnWrittenRef = useRef<HTMLInputElement>(null);
 
@@ -653,104 +654,34 @@ export function QuizletStudy() {
       : Math.round((index / queue.length) * 100)
     : 0;
 
-  // --- Learn setup screen ---
-  if (learnPhase === 'setup') {
+  // --- Learn goal-pick screen ---
+  if (learnPhase === 'goal-pick') {
     return (
-      <div className="max-w-2xl mx-auto space-y-6 pb-8">
+      <div className="max-w-3xl mx-auto space-y-4 pb-8">
         <button onClick={() => setLearnPhase('off')} className="flex items-center gap-2 text-(--text-secondary) hover-accent text-sm">
           <ArrowLeft className="w-4 h-4" /> Back
         </button>
-        <div>
-          <h1 className="text-2xl font-bold">{title}</h1>
-          <p className="text-sm text-(--text-secondary) mt-1">Configure your Learn session</p>
-        </div>
-
-        <div className="card space-y-6">
-          {/* Goal */}
+        <h1 className="text-2xl font-bold">{title}</h1>
+        <ModeGrid activeMode="learn" />
+        <div className="card max-w-lg mx-auto text-center space-y-6 py-8">
           <div>
-            <p className="text-sm font-semibold mb-3">Choose a goal for this session</p>
-            <div className="grid grid-cols-2 gap-3">
-              {(['cram', 'memorize'] as const).map(g => (
-                <button key={g} onClick={() => setLearnConfig(prev => ({ ...prev, goal: g }))}
-                  className={`rounded-lg p-4 text-left border-2 transition-colors ${learnConfig.goal === g ? 'border-(--accent) bg-(--accent)/10' : 'border-(--bg-tertiary) bg-(--bg-tertiary) hover:border-(--accent)/40'}`}>
-                  <p className="font-semibold text-sm">{g === 'cram' ? 'Cram for a test' : 'Memorize it all'}</p>
-                  <p className="text-xs text-(--text-secondary) mt-1">{g === 'cram' ? 'Go through each term once. Best for quick review.' : 'Repeat cards until all mastered. Best for long-term retention.'}</p>
-                </button>
-              ))}
-            </div>
+            <h2 className="text-xl font-bold mb-1">Choose a goal for this session</h2>
+            <p className="text-sm text-(--text-secondary)">This will shape how your session works.</p>
           </div>
-
-          {/* Question types */}
-          <div>
-            <p className="text-sm font-semibold mb-3">Question types</p>
-            <div className="space-y-2">
-              {([{ key: 'mc' as const, label: 'Multiple choice' }, { key: 'written' as const, label: 'Written' }]).map(({ key, label }) => (
-                <div key={key} className="flex items-center justify-between py-1.5">
-                  <span className="text-sm">{label}</span>
-                  <button onClick={() => setLearnConfig(prev => ({ ...prev, [key]: !prev[key] }))}
-                    className={`relative w-9 h-5 rounded-full transition-colors ${learnConfig[key] ? 'bg-(--accent)' : 'bg-(--bg-tertiary)'}`}>
-                    <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${learnConfig[key] ? 'translate-x-4' : 'translate-x-0.5'}`} />
-                  </button>
-                </div>
-              ))}
-              <p className="text-xs text-(--text-secondary)">Flashcards are always included as the final stage.</p>
-            </div>
-          </div>
-
-          {/* Answer with */}
-          <div>
-            <p className="text-sm font-semibold mb-3">Answer with</p>
-            <div className="flex gap-2">
-              {(['term', 'definition'] as const).map(side => (
-                <button key={side} onClick={() => setLearnConfig(prev => ({ ...prev, answerWith: side }))}
-                  className={`flex-1 py-2 rounded-lg text-sm font-medium border-2 transition-colors ${learnConfig.answerWith === side ? 'border-(--accent) text-(--accent) bg-(--accent)/10' : 'border-(--bg-tertiary) bg-(--bg-tertiary) text-(--text-secondary) hover:border-(--accent)/40'}`}>
-                  {side === 'term' ? 'Term' : 'Definition'}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Grading */}
-          <div>
-            <p className="text-sm font-semibold mb-3">Grading options</p>
-            <div className="space-y-1">
-              {([
-                { key: 'relaxed' as const, label: 'Relaxed', desc: 'Synonyms, rephrasing, and typos are accepted.' },
-                { key: 'moderate' as const, label: 'Moderate', desc: 'Exact match required, but misspellings are accepted.' },
-                { key: 'strict' as const, label: 'Strict', desc: 'Exact match required. Only small stylistic mistakes accepted.' },
-              ]).map(({ key, label, desc }) => (
-                <div key={key} onClick={() => setLearnConfig(prev => ({ ...prev, grading: key }))}
-                  className="flex items-start gap-3 cursor-pointer py-2 rounded-lg px-1 hover:bg-(--bg-tertiary)/50 transition-colors">
-                  <div className={`mt-0.5 w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center transition-colors ${learnConfig.grading === key ? 'border-(--accent) bg-(--accent)' : 'border-(--bg-tertiary)'}`}>
-                    {learnConfig.grading === key && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">{label}</p>
-                    <p className="text-xs text-(--text-secondary)">{desc}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Retype wrong */}
-          {learnConfig.written && (
-            <div className="flex items-start gap-4 justify-between">
-              <div>
-                <p className="text-sm font-semibold">Retype correct answers</p>
-                <p className="text-xs text-(--text-secondary) mt-0.5">If you get a written question wrong, type the correct answer before continuing.</p>
-              </div>
-              <button onClick={() => setLearnConfig(prev => ({ ...prev, retypeWrong: !prev.retypeWrong }))}
-                className={`relative w-9 h-5 rounded-full transition-colors shrink-0 ${learnConfig.retypeWrong ? 'bg-(--accent)' : 'bg-(--bg-tertiary)'}`}>
-                <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${learnConfig.retypeWrong ? 'translate-x-4' : 'translate-x-0.5'}`} />
+          <div className="grid grid-cols-2 gap-3 text-left">
+            {([
+              { g: 'cram' as const, title: 'Cram for a test', desc: 'Go through each term once — best for quick review.' },
+              { g: 'memorize' as const, title: 'Memorize it all', desc: 'Repeat cards until all are mastered — best for retention.' },
+            ]).map(({ g, title: t, desc }) => (
+              <button key={g}
+                onClick={() => startLearn({ ...learnConfig, goal: g })}
+                className="rounded-xl p-4 bg-(--bg-tertiary) hover:bg-(--accent)/10 hover:text-(--accent) transition-colors text-left">
+                <p className="font-semibold text-sm mb-1">{t}</p>
+                <p className="text-xs text-(--text-secondary)">{desc}</p>
               </button>
-            </div>
-          )}
+            ))}
+          </div>
         </div>
-
-        <button onClick={() => startLearn(learnConfig)} className="btn btn-primary w-full py-3 text-base">
-          Start Learning
-        </button>
       </div>
     );
   }
@@ -760,71 +691,80 @@ export function QuizletStudy() {
     const item = learnQueue[learnQIdx];
     if (!item) return null;
 
-    const prompt = learnConfig.answerWith === 'definition' ? item.card.front : item.card.back;
-    const correctHtml = learnConfig.answerWith === 'definition' ? item.card.back : item.card.front;
-    const totalCards = cards.length;
-    const masteredCount = learnConfig.goal === 'memorize' ? learnMastered.size : Math.round((learnQIdx / learnQueue.length) * totalCards);
-    const progressPct = totalCards > 0 ? Math.round((masteredCount / totalCards) * 100) : 0;
-    const qtypeLabel = item.qtype === 'mc' ? 'Multiple Choice' : item.qtype === 'written' ? 'Written' : 'Flashcard';
+    const prompt      = learnConfig.answerWith === 'definition' ? item.card.front : item.card.back;
+    const correctHtml = learnConfig.answerWith === 'definition' ? item.card.back  : item.card.front;
+    const totalItems  = learnQueue.length;
+    const doneCount   = learnQIdx;
+    const promptLabel = learnConfig.answerWith === 'definition' ? 'Term' : 'Definition';
+    const mcFlat = learnMCOptions;
 
     return (
-      <div className="max-w-2xl mx-auto space-y-4 pb-8">
+      <div className="max-w-3xl mx-auto space-y-4 pb-8">
+        {/* Header */}
         <div className="flex items-center justify-between">
           <button onClick={() => setLearnPhase('off')} className="flex items-center gap-2 text-(--text-secondary) hover-accent text-sm">
             <ArrowLeft className="w-4 h-4" /> Back to Flashcards
           </button>
-          <button onClick={() => setShowRestartLearnConfirm(true)} className="flex items-center gap-1.5 text-xs text-(--text-secondary) hover-accent">
-            <RotateCcw className="w-3.5 h-3.5" /> Restart
+          <button onClick={() => setShowLearnOptions(true)} className="icon-btn" title="Settings">
+            <Settings className="w-4 h-4" />
           </button>
         </div>
 
-        <h1 className="text-xl font-bold">{title}</h1>
-
-        {/* Progress */}
-        <div className="space-y-1.5">
-          <div className="flex justify-between text-xs text-(--text-secondary)">
-            <span>{learnConfig.goal === 'memorize' ? `${learnMastered.size} / ${totalCards} mastered` : `${learnQIdx + 1} / ${learnQueue.length} done`}</span>
-            <span className="uppercase tracking-wide font-semibold">{qtypeLabel}</span>
+        {/* Segmented progress bar */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs tabular-nums text-(--text-secondary) shrink-0">{doneCount}</span>
+          <div className="flex-1 flex gap-0.5 h-2">
+            {Array.from({ length: Math.min(totalItems, 60) }).map((_, i) => {
+              const segIdx = Math.floor((i / Math.min(totalItems, 60)) * totalItems);
+              return (
+                <div key={i} className="flex-1 rounded-full transition-colors duration-300"
+                  style={{ background: segIdx < doneCount ? 'var(--accent)' : 'var(--bg-tertiary)' }} />
+              );
+            })}
           </div>
-          <div className="w-full bg-(--bg-tertiary) rounded-full h-1.5 overflow-hidden">
-            <div className="h-full rounded-full transition-all duration-500" style={{ width: `${learnConfig.goal === 'memorize' ? progressPct : Math.round(((learnQIdx) / learnQueue.length) * 100)}%`, background: 'var(--accent)' }} />
-          </div>
+          <span className="text-xs tabular-nums text-(--text-secondary) shrink-0">{totalItems}</span>
         </div>
 
-        {/* Prompt card */}
-        <div className="card min-h-[120px] flex items-center justify-center text-center p-6">
-          <div className="text-xl font-medium leading-snug" dangerouslySetInnerHTML={{ __html: prompt }} />
+        {/* Prompt card — tall like flashcard */}
+        <div className="card flex flex-col" style={{ minHeight: 'clamp(12rem, 50vw, 22rem)' }}>
+          <div className="px-5 pt-4 shrink-0">
+            <span className="text-xs text-(--text-secondary) uppercase tracking-wide">{promptLabel}</span>
+          </div>
+          <div className="flex-1 flex items-center justify-center p-6 text-center">
+            <div className="text-2xl font-medium leading-snug" dangerouslySetInnerHTML={{ __html: prompt }} />
+          </div>
         </div>
 
         {/* Multiple choice */}
         {item.qtype === 'mc' && (
-          <div className="space-y-2">
-            {learnMCOptions.map((opt, i) => {
-              const optHtml = learnConfig.answerWith === 'definition' ? opt.back : opt.front;
-              const isCorrect = opt.id === item.card.id;
-              const isSelected = learnMCSelected === opt.id;
-              let cls = 'card text-left p-4 w-full text-sm font-medium transition-colors';
-              if (learnShowResult) {
-                if (isCorrect) cls += ' !border-green-500 bg-green-500/10';
-                else if (isSelected) cls += ' !border-red-500 bg-red-500/10';
-                else cls += ' opacity-40';
-              }
-              return (
-                <button key={opt.id} disabled={learnShowResult} className={cls}
-                  onClick={() => {
-                    if (learnShowResult) return;
-                    setLearnMCSelected(opt.id);
-                    setLearnShowResult(true);
-                    setTimeout(() => learnAdvance(isCorrect), isCorrect ? 700 : 1300);
-                  }}
-                >
-                  <div className="flex items-start gap-3">
-                    <span className="shrink-0 w-6 h-6 rounded-full border-2 border-current flex items-center justify-center text-xs font-bold">{String.fromCharCode(65 + i)}</span>
+          <div className="space-y-3">
+            <p className="text-sm text-(--text-secondary) font-medium">Choose an answer</p>
+            <div className="grid grid-cols-2 gap-2">
+              {mcFlat.map((opt, i) => {
+                const optHtml   = learnConfig.answerWith === 'definition' ? opt.back : opt.front;
+                const isCorrect = opt.id === item.card.id;
+                const isSelected = learnMCSelected === opt.id;
+                let cls = 'card text-left p-4 w-full text-sm font-medium transition-colors flex items-start gap-3';
+                if (learnShowResult) {
+                  if (isCorrect)       cls += ' !border-green-500 bg-green-500/10';
+                  else if (isSelected) cls += ' !border-red-500 bg-red-500/10';
+                  else                 cls += ' opacity-40';
+                }
+                return (
+                  <button key={opt.id} disabled={learnShowResult} className={cls}
+                    onClick={() => {
+                      if (learnShowResult) return;
+                      setLearnMCSelected(opt.id);
+                      setLearnShowResult(true);
+                      setTimeout(() => learnAdvance(isCorrect), isCorrect ? 700 : 1300);
+                    }}
+                  >
+                    <span className="shrink-0 w-6 h-6 rounded-md bg-(--bg-tertiary) flex items-center justify-center text-xs font-bold text-(--text-secondary)">{i + 1}</span>
                     <div dangerouslySetInnerHTML={{ __html: optHtml }} />
-                  </div>
-                </button>
-              );
-            })}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
 
@@ -873,19 +813,10 @@ export function QuizletStudy() {
         {item.qtype === 'written' && learnNeedRetype && (
           <div className="space-y-3">
             <p className="text-sm text-(--text-secondary)">Type the correct answer to continue:</p>
-            <input
-              type="text"
-              placeholder="Retype the correct answer…"
-              value={learnRetypeText}
-              onChange={e => setLearnRetypeText(e.target.value)}
-              autoFocus
-              onKeyDown={e => {
-                if (e.key === 'Enter') {
-                  if (gradeAnswer(learnRetypeText, correctHtml, 'moderate')) { setLearnNeedRetype(false); learnAdvance(false); }
-                }
-              }}
-              className="input w-full text-base py-3"
-            />
+            <input type="text" placeholder="Retype the correct answer…" value={learnRetypeText}
+              onChange={e => setLearnRetypeText(e.target.value)} autoFocus
+              onKeyDown={e => { if (e.key === 'Enter' && gradeAnswer(learnRetypeText, correctHtml, 'moderate')) { setLearnNeedRetype(false); learnAdvance(false); } }}
+              className="input w-full text-base py-3" />
             <button onClick={() => { if (gradeAnswer(learnRetypeText, correctHtml, 'moderate')) { setLearnNeedRetype(false); learnAdvance(false); } }} className="btn btn-primary w-full">Submit</button>
           </div>
         )}
@@ -893,20 +824,21 @@ export function QuizletStudy() {
         {/* Flashcard confirmation */}
         {item.qtype === 'flashcard' && (
           <div className="space-y-3">
-            <div className="card cursor-pointer min-h-[120px] flex items-center justify-center text-center p-6 select-none"
+            <div className="card cursor-pointer flex flex-col items-center justify-center text-center p-6 select-none"
+              style={{ minHeight: 'clamp(10rem, 40vw, 18rem)' }}
               onClick={() => setLearnFlipped(f => !f)}>
               {!learnFlipped
                 ? <div className="space-y-2">
-                    <div className="text-xl font-medium leading-snug" dangerouslySetInnerHTML={{ __html: prompt }} />
-                    <p className="text-xs text-(--text-secondary)">Tap to reveal answer</p>
+                    <div className="text-2xl font-medium leading-snug" dangerouslySetInnerHTML={{ __html: prompt }} />
+                    <p className="text-xs text-(--text-secondary) mt-3">Tap to reveal answer</p>
                   </div>
-                : <div className="text-xl font-medium leading-snug" dangerouslySetInnerHTML={{ __html: correctHtml }} />
+                : <div className="text-2xl font-medium leading-snug" dangerouslySetInnerHTML={{ __html: correctHtml }} />
               }
             </div>
             {learnFlipped && (
               <div className="flex gap-2">
                 <button onClick={() => { setLearnFlipped(false); learnAdvance(false); }}
-                  className="flex-1 py-3 rounded-lg border-2 border-orange-500/40 bg-orange-500/10 text-orange-400 hover:bg-orange-500/20 font-medium text-sm flex items-center justify-center gap-2 transition-colors">
+                  className="flex-1 py-3 rounded-lg bg-orange-500/10 text-orange-400 hover:bg-orange-500/20 font-medium text-sm flex items-center justify-center gap-2 transition-colors">
                   <X className="w-4 h-4" /> Still learning
                 </button>
                 <button onClick={() => { setLearnFlipped(false); learnAdvance(true); }}
@@ -918,15 +850,80 @@ export function QuizletStudy() {
           </div>
         )}
 
+        {/* Learn session options panel */}
+        {showLearnOptions && (
+          <div className="fixed inset-0 z-[100] flex justify-end items-stretch bg-black/50" onClick={() => setShowLearnOptions(false)}>
+            <div className="options-panel bg-(--bg-secondary) border-l border-(--bg-tertiary) w-full max-w-sm self-stretch overflow-y-auto shadow-2xl flex flex-col divide-y divide-white/8"
+              onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between p-6 shrink-0" style={{ paddingTop: 'calc(1.5rem + env(safe-area-inset-top, 0px))' }}>
+                <h2 className="text-xl font-bold">Learn Settings</h2>
+                <button className="icon-btn" onClick={() => setShowLearnOptions(false)}><X className="w-5 h-5" /></button>
+              </div>
+              {/* Answer with */}
+              <div className="p-6 flex items-center justify-between gap-4">
+                <p className="font-medium text-sm">Answer with</p>
+                <select value={learnConfig.answerWith} onChange={e => setLearnConfig(prev => ({ ...prev, answerWith: e.target.value as 'term' | 'definition' }))} className="input text-sm py-1.5 cursor-pointer">
+                  <option value="definition">Definition</option>
+                  <option value="term">Term</option>
+                </select>
+              </div>
+              {/* Question types */}
+              <div className="p-6 space-y-3">
+                <p className="font-medium text-sm">Question types</p>
+                {([{ key: 'mc' as const, label: 'Multiple choice' }, { key: 'written' as const, label: 'Written' }]).map(({ key, label }) => (
+                  <div key={key} className="flex items-center justify-between">
+                    <span className="text-sm text-(--text-secondary)">{label}</span>
+                    <button onClick={() => setLearnConfig(prev => ({ ...prev, [key]: !prev[key] }))}
+                      className={`relative w-9 h-5 rounded-full transition-colors ${learnConfig[key] ? 'bg-(--accent)' : 'bg-(--bg-tertiary)'}`}>
+                      <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${learnConfig[key] ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                    </button>
+                  </div>
+                ))}
+                <p className="text-xs text-(--text-secondary)">Flashcards always included as final stage.</p>
+              </div>
+              {/* Grading */}
+              <div className="p-6 flex items-center justify-between gap-4">
+                <p className="font-medium text-sm">Grading</p>
+                <select value={learnConfig.grading} onChange={e => setLearnConfig(prev => ({ ...prev, grading: e.target.value as 'relaxed' | 'moderate' | 'strict' }))} className="input text-sm py-1.5 cursor-pointer">
+                  <option value="relaxed">Relaxed</option>
+                  <option value="moderate">Moderate</option>
+                  <option value="strict">Strict</option>
+                </select>
+              </div>
+              {/* Retype wrong */}
+              {learnConfig.written && (
+                <div className="p-6 flex items-center justify-between gap-4">
+                  <div>
+                    <p className="font-medium text-sm">Retype correct answers</p>
+                    <p className="text-xs text-(--text-secondary) mt-0.5">Type correct answer after getting written wrong.</p>
+                  </div>
+                  <button onClick={() => setLearnConfig(prev => ({ ...prev, retypeWrong: !prev.retypeWrong }))} className="shrink-0">
+                    <div className={`relative w-9 h-5 rounded-full transition-colors ${learnConfig.retypeWrong ? 'bg-(--accent)' : 'bg-(--bg-tertiary)'}`}>
+                      <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${learnConfig.retypeWrong ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                    </div>
+                  </button>
+                </div>
+              )}
+              {/* Restart */}
+              <div className="p-6" style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))' }}>
+                <button className="text-sm text-(--accent) font-medium hover-underline"
+                  onClick={() => { setShowLearnOptions(false); setShowRestartLearnConfirm(true); }}>
+                  Restart Learn
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Restart Learn confirm */}
         {showRestartLearnConfirm && (
           <div className="fixed inset-0 z-[200] bg-black/60 flex items-center justify-center p-4" onClick={() => setShowRestartLearnConfirm(false)}>
             <div className="bg-(--bg-secondary) rounded-xl max-w-md w-full p-6 space-y-4" onClick={e => e.stopPropagation()}>
               <h3 className="text-lg font-bold">Restart Learn?</h3>
-              <p className="text-sm text-(--text-secondary)">Learn uses your past study behavior to identify what's most challenging for you, so your study session is more targeted. Restarting will reset your study goal and progress — you'll see all the same terms, starting from the beginning.</p>
+              <p className="text-sm text-(--text-secondary)">Restarting will reset your study goal and progress — you'll see all the same terms, starting from the beginning.</p>
               <div className="flex gap-2 justify-end">
                 <button onClick={() => setShowRestartLearnConfirm(false)} className="btn btn-secondary">Cancel</button>
-                <button onClick={() => { setShowRestartLearnConfirm(false); setLearnPhase('setup'); }} className="btn btn-primary">Restart</button>
+                <button onClick={() => { setShowRestartLearnConfirm(false); setLearnPhase('goal-pick'); }} className="btn btn-primary">Restart</button>
               </div>
             </div>
           </div>
@@ -951,7 +948,7 @@ export function QuizletStudy() {
           <ArrowLeft className="w-4 h-4" /> Back to Flashcards
         </button>
         <h1 className="text-2xl font-bold">{title}</h1>
-        <ModeGrid activeMode="learn" onLearnClick={() => setLearnPhase('setup')} />
+        <ModeGrid activeMode="learn" onLearnClick={() => setLearnPhase('goal-pick')} />
         <div className="card">
           <h2 className="text-2xl font-bold mb-6">{msg}</h2>
           <div className="flex flex-col sm:flex-row gap-8">
@@ -983,7 +980,7 @@ export function QuizletStudy() {
                 <button onClick={() => setLearnPhase('session')} className="btn btn-primary w-full flex items-center justify-center gap-2">
                   <RotateCcw className="w-4 h-4" /> Study again
                 </button>
-                <button onClick={() => setLearnPhase('setup')} className="btn btn-secondary w-full">Change settings</button>
+                <button onClick={() => setLearnPhase('goal-pick')} className="btn btn-secondary w-full">Change settings</button>
                 <button onClick={() => setLearnPhase('off')} className="text-sm text-(--accent) hover-underline w-full text-center">Back to Flashcards</button>
               </div>
             </div>
@@ -997,7 +994,7 @@ export function QuizletStudy() {
               <p className="text-sm text-(--text-secondary)">Restarting will reset your study goal and progress — you'll see all the same terms, starting from the beginning.</p>
               <div className="flex gap-2 justify-end">
                 <button onClick={() => setShowRestartLearnConfirm(false)} className="btn btn-secondary">Cancel</button>
-                <button onClick={() => { setShowRestartLearnConfirm(false); setLearnPhase('setup'); }} className="btn btn-primary">Restart</button>
+                <button onClick={() => { setShowRestartLearnConfirm(false); setLearnPhase('goal-pick'); }} className="btn btn-primary">Restart</button>
               </div>
             </div>
           </div>
@@ -1123,7 +1120,7 @@ export function QuizletStudy() {
 
       {/* Desktop mode grid — above card */}
       <div className="hidden sm:block">
-        <ModeGrid activeMode="flashcards" onLearnClick={() => setLearnPhase('setup')} />
+        <ModeGrid activeMode="flashcards" onLearnClick={() => setLearnPhase('goal-pick')} />
       </div>
 
       {/* Card with 3D flip + slide-in */}
@@ -1154,11 +1151,18 @@ export function QuizletStudy() {
         </div>
       </div>
 
-      {/* Bottom controls — mobile: 2 rows (nav centered + toggle/icons), desktop: 1 row */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+      {/* Bottom controls */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="w-8 shrink-0">
+          {trackProgress && (
+            <button className={`icon-btn ${history.length === 0 ? 'opacity-30 cursor-not-allowed' : ''}`}
+              onClick={undoLast} disabled={history.length === 0} title="Undo">
+              <Undo2 className="w-4 h-4" />
+            </button>
+          )}
+        </div>
 
-        {/* Row 1 on mobile: nav centered + bigger. Middle section on desktop. */}
-        <div className="flex items-center justify-center gap-3 sm:order-2">
+        <div className="flex items-center gap-3">
           <button
             className={`w-12 h-12 sm:w-10 sm:h-10 rounded-full flex items-center justify-center transition-colors ${
               trackProgress ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30 disabled:opacity-30'
@@ -1169,7 +1173,7 @@ export function QuizletStudy() {
           >
             {trackProgress ? <X className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
           </button>
-          <span className="text-sm text-(--text-secondary) text-center tabular-nums whitespace-nowrap px-1">{index + 1} / {queue.length}</span>
+          <span className="text-sm text-(--text-secondary) text-center tabular-nums whitespace-nowrap">{index + 1} / {queue.length}</span>
           <button
             className={`w-12 h-12 sm:w-10 sm:h-10 rounded-full flex items-center justify-center transition-colors ${
               trackProgress ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30 disabled:opacity-30'
@@ -1182,36 +1186,9 @@ export function QuizletStudy() {
           </button>
         </div>
 
-        {/* Row 2 on mobile: toggle + icons space-between. On desktop: dissolves so
-            children sit directly in the parent flex as order-1 and order-3. */}
-        <div className="flex items-center justify-between sm:contents">
-          <button className="flex items-center gap-2 text-sm shrink-0 sm:order-1" onClick={toggleTrackProgress}>
-            <span className={trackProgress ? 'text-(--accent)' : 'text-(--text-secondary)'}>Track progress</span>
-            <div className={`relative w-9 h-5 rounded-full transition-colors ${trackProgress ? 'bg-(--accent)' : 'bg-(--bg-tertiary)'}`}>
-              <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${trackProgress ? 'translate-x-4' : 'translate-x-0.5'}`} />
-            </div>
-          </button>
-
-          <div className="flex items-center gap-1 shrink-0 sm:order-3">
-            {trackProgress ? (
-              <button className={`icon-btn ${history.length === 0 ? 'opacity-30 cursor-not-allowed' : ''}`}
-                onClick={undoLast} disabled={history.length === 0} title="Undo">
-                <Undo2 className="w-4 h-4" />
-              </button>
-            ) : (
-              <button className={`icon-btn ${isAutoplay ? 'text-(--accent)' : ''}`}
-                onClick={() => setIsAutoplay(a => !a)} title={isAutoplay ? 'Stop' : 'Autoplay'}>
-                <Play className={`w-4 h-4 ${isAutoplay ? 'fill-current' : ''}`} />
-              </button>
-            )}
-            <button className={`icon-btn ${isShuffled ? 'text-(--accent)' : ''}`} onClick={toggleShuffle} title={isShuffled ? 'Unshuffle' : 'Shuffle'}>
-              <Shuffle className="w-4 h-4" />
-            </button>
-            <button className="icon-btn" title="Options" onClick={() => setShowOptions(true)}><Settings className="w-4 h-4" /></button>
-            <button className="icon-btn" title="Fullscreen (coming soon)"><Maximize2 className="w-4 h-4" /></button>
-          </div>
-        </div>
-
+        <button className="icon-btn shrink-0" title="Options" onClick={() => setShowOptions(true)}>
+          <Settings className="w-4 h-4" />
+        </button>
       </div>
 
       {/* Progress bar */}
@@ -1222,7 +1199,7 @@ export function QuizletStudy() {
 
       {/* Mobile mode grid — below progress bar */}
       <div className="block sm:hidden">
-        <ModeGrid mobile activeMode="flashcards" onLearnClick={() => setLearnPhase('setup')} />
+        <ModeGrid mobile activeMode="flashcards" onLearnClick={() => setLearnPhase('goal-pick')} />
       </div>
 
       {/* Card list */}
@@ -1358,7 +1335,7 @@ export function QuizletStudy() {
             <div className="p-6 flex items-center justify-between gap-4">
               <div>
                 <p className="font-medium text-sm">Track progress</p>
-                <p className="text-xs text-(--text-secondary) mt-0.5">Toggle off returns to card 1. Toggle on resumes where you left off.</p>
+                <p className="text-xs text-(--text-secondary) mt-0.5">Mark cards as known or still learning. Turns nav buttons into ✓ / ✗.</p>
               </div>
               <button onClick={toggleTrackProgress} className="shrink-0">
                 <div className={`relative w-9 h-5 rounded-full transition-colors ${trackProgress ? 'bg-(--accent)' : 'bg-(--bg-tertiary)'}`}>
@@ -1366,6 +1343,31 @@ export function QuizletStudy() {
                 </div>
               </button>
             </div>
+
+            {/* Shuffle */}
+            <div className="p-6 flex items-center justify-between gap-4">
+              <p className="font-medium text-sm">Shuffle</p>
+              <button onClick={() => { toggleShuffle(); }} className="shrink-0">
+                <div className={`relative w-9 h-5 rounded-full transition-colors ${isShuffled ? 'bg-(--accent)' : 'bg-(--bg-tertiary)'}`}>
+                  <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${isShuffled ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                </div>
+              </button>
+            </div>
+
+            {/* Autoplay */}
+            {!trackProgress && (
+              <div className="p-6 flex items-center justify-between gap-4">
+                <div>
+                  <p className="font-medium text-sm">Autoplay</p>
+                  <p className="text-xs text-(--text-secondary) mt-0.5">Automatically flip and advance every 2 seconds.</p>
+                </div>
+                <button onClick={() => setIsAutoplay(a => !a)} className="shrink-0">
+                  <div className={`relative w-9 h-5 rounded-full transition-colors ${isAutoplay ? 'bg-(--accent)' : 'bg-(--bg-tertiary)'}`}>
+                    <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${isAutoplay ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                  </div>
+                </button>
+              </div>
+            )}
 
             {/* Study only starred terms */}
             <div className="p-6 flex items-center justify-between gap-4">

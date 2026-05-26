@@ -52,8 +52,8 @@ sessions: dict[str, dict] = {}
 # { ip: [(timestamp, ...), ...] }
 _login_attempts: dict[str, list[float]] = defaultdict(list)
 _LOGIN_WINDOW   = 60   # seconds
-_LOGIN_MAX_FAIL = 10   # max failures before lockout
-_LOGIN_LOCKOUT  = 300  # lockout duration in seconds after hitting limit
+_LOGIN_MAX_FAIL = 5    # max failures before lockout
+_LOGIN_LOCKOUT  = 60   # lockout duration in seconds after hitting limit
 
 def _check_login_rate_limit(ip: str) -> None:
     now = time.time()

@@ -7,6 +7,9 @@ import { auth, setup, theme as themeApi } from '../api';
 import { Logo } from './Logo';
 import { applyAccentColor, saveAccentColor, applyBaseColors, saveBaseColors } from '../hooks/useAccentColor';
 
+const MAX_ATTEMPTS = 5;
+const LOCK_SECONDS = 60;
+
 export function Login() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -15,27 +18,50 @@ export function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [failCount, setFailCount] = useState(0);
+  const [lockedUntil, setLockedUntil] = useState<number | null>(null);
+  const [, setSecsLeft] = useState(0);
 
   useEffect(() => {
     setup.status().then(s => {
       if (s.needs_setup || !s.has_container) navigate('/setup', { replace: true });
     }).catch(() => {});
-    // Apply server colors only when localStorage has no personal theme.
     if (!localStorage.getItem('ankibase-accent'))
       themeApi.get().then(t => applyAccentColor(t.accent, t.hover)).catch(() => {});
     if (!localStorage.getItem('ankibase-base-colors'))
       themeApi.getBase().then(c => applyBaseColors(c)).catch(() => {});
   }, [navigate]);
 
+  // Countdown tick when locked
+  useEffect(() => {
+    if (!lockedUntil) return;
+    const tick = () => {
+      const s = Math.ceil((lockedUntil - Date.now()) / 1000);
+      if (s <= 0) {
+        setLockedUntil(null);
+        setSecsLeft(0);
+        setFailCount(0);
+        setError('');
+      } else {
+        setSecsLeft(s);
+        setError(`Too many attempts. Try again in ${s}s.`);
+      }
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [lockedUntil]);
+
+  const isLocked = !!lockedUntil;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLocked || loading) return;
     setError('');
     setLoading(true);
 
     try {
       await auth.login(username, password);
-      // Seed localStorage from server only when empty (new device).
-      // If localStorage already has data, trust it — don't overwrite with potentially stale server data.
       try {
         const noLocalAccent = !localStorage.getItem('ankibase-accent');
         const noLocalBase = !localStorage.getItem('ankibase-base-colors');
@@ -46,12 +72,30 @@ export function Login() {
         }
       } catch {}
       navigate('/', { replace: true });
-    } catch {
-      setError(t('login.invalidCredentials'));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '';
+      // Server-side rate limit hit
+      if (msg.toLowerCase().includes('too many')) {
+        const match = msg.match(/(\d+)\s*second/i);
+        const secs = match ? parseInt(match[1]) : LOCK_SECONDS;
+        setLockedUntil(Date.now() + secs * 1000);
+        setSecsLeft(secs);
+      } else {
+        const next = failCount + 1;
+        setFailCount(next);
+        if (next >= MAX_ATTEMPTS) {
+          setLockedUntil(Date.now() + LOCK_SECONDS * 1000);
+          setSecsLeft(LOCK_SECONDS);
+        } else {
+          setError(`${next}/${MAX_ATTEMPTS} attempts`);
+        }
+      }
     } finally {
       setLoading(false);
     }
   };
+
+  const inputCls = `input w-full${isLocked ? ' opacity-50 cursor-not-allowed' : ''}`;
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-(--bg-primary)">
@@ -68,8 +112,9 @@ export function Login() {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               placeholder={t('login.username')}
-              className="input w-full"
+              className={inputCls}
               autoFocus
+              disabled={isLocked || loading}
               required
             />
           </div>
@@ -80,10 +125,11 @@ export function Login() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder={t('login.password')}
-              className="input w-full pr-10 password-input"
+              className={`${inputCls} pr-10 password-input`}
+              disabled={isLocked || loading}
               required
             />
-            {password && (
+            {password && !isLocked && (
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
@@ -100,7 +146,7 @@ export function Login() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || isLocked}
             className="btn btn-primary w-full"
           >
             {loading ? t('login.loggingIn') : t('login.loginButton')}

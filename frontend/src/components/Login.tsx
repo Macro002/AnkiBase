@@ -9,6 +9,8 @@ import { applyAccentColor, saveAccentColor, applyBaseColors, saveBaseColors } fr
 
 const MAX_ATTEMPTS = 5;
 const LOCK_SECONDS = 60;
+const SS_UNTIL = 'ankibase-login-lockout';
+const SS_COUNT = 'ankibase-login-failcount';
 
 export function Login() {
   const { t } = useTranslation();
@@ -20,7 +22,19 @@ export function Login() {
   const [loading, setLoading] = useState(false);
   const [failCount, setFailCount] = useState(0);
   const [lockedUntil, setLockedUntil] = useState<number | null>(null);
-  const [, setSecsLeft] = useState(0);
+
+  // Restore lockout from sessionStorage on mount
+  useEffect(() => {
+    const until = Number(sessionStorage.getItem(SS_UNTIL) ?? 0);
+    const count = Number(sessionStorage.getItem(SS_COUNT) ?? 0);
+    if (until && Date.now() < until) {
+      setLockedUntil(until);
+      setFailCount(count || MAX_ATTEMPTS);
+    } else {
+      sessionStorage.removeItem(SS_UNTIL);
+      sessionStorage.removeItem(SS_COUNT);
+    }
+  }, []);
 
   useEffect(() => {
     setup.status().then(s => {
@@ -32,18 +46,18 @@ export function Login() {
       themeApi.getBase().then(c => applyBaseColors(c)).catch(() => {});
   }, [navigate]);
 
-  // Countdown tick when locked
+  // Countdown tick
   useEffect(() => {
     if (!lockedUntil) return;
     const tick = () => {
       const s = Math.ceil((lockedUntil - Date.now()) / 1000);
       if (s <= 0) {
         setLockedUntil(null);
-        setSecsLeft(0);
         setFailCount(0);
         setError('');
+        sessionStorage.removeItem(SS_UNTIL);
+        sessionStorage.removeItem(SS_COUNT);
       } else {
-        setSecsLeft(s);
         setError(`Too many attempts. Try again in ${s}s.`);
       }
     };
@@ -51,6 +65,13 @@ export function Login() {
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, [lockedUntil]);
+
+  const lock = (until: number, count: number) => {
+    setLockedUntil(until);
+    setFailCount(count);
+    sessionStorage.setItem(SS_UNTIL, String(until));
+    sessionStorage.setItem(SS_COUNT, String(count));
+  };
 
   const isLocked = !!lockedUntil;
 
@@ -71,23 +92,22 @@ export function Login() {
           if (noLocalBase && me.base_colors) saveBaseColors(me.base_colors);
         }
       } catch {}
+      sessionStorage.removeItem(SS_UNTIL);
+      sessionStorage.removeItem(SS_COUNT);
       navigate('/', { replace: true });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : '';
-      // Server-side rate limit hit
       if (msg.toLowerCase().includes('too many')) {
         const match = msg.match(/(\d+)\s*second/i);
         const secs = match ? parseInt(match[1]) : LOCK_SECONDS;
-        setLockedUntil(Date.now() + secs * 1000);
-        setSecsLeft(secs);
+        lock(Date.now() + secs * 1000, MAX_ATTEMPTS);
       } else {
         const next = failCount + 1;
-        setFailCount(next);
         if (next >= MAX_ATTEMPTS) {
-          setLockedUntil(Date.now() + LOCK_SECONDS * 1000);
-          setSecsLeft(LOCK_SECONDS);
+          lock(Date.now() + LOCK_SECONDS * 1000, next);
         } else {
-          setError(`${next}/${MAX_ATTEMPTS} attempts`);
+          setFailCount(next);
+          setError(`Wrong username or password — ${next}/${MAX_ATTEMPTS} attempts`);
         }
       }
     } finally {

@@ -9,6 +9,8 @@ import os
 import json
 import tempfile
 import shutil
+import time
+from collections import defaultdict
 
 from config import get_settings, Settings, get_api_keys, get_api_key_info, save_api_key, delete_api_key, change_password, get_account_api_keys_file
 from anki_client import AnkiConnectClient
@@ -45,6 +47,31 @@ app.add_middleware(
 # Simple session store (in production, use Redis or similar)
 # session_id -> user info
 sessions: dict[str, dict] = {}
+
+# Login rate limiting: track failed attempts per IP
+# { ip: [(timestamp, ...), ...] }
+_login_attempts: dict[str, list[float]] = defaultdict(list)
+_LOGIN_WINDOW   = 60   # seconds
+_LOGIN_MAX_FAIL = 10   # max failures before lockout
+_LOGIN_LOCKOUT  = 300  # lockout duration in seconds after hitting limit
+
+def _check_login_rate_limit(ip: str) -> None:
+    now = time.time()
+    attempts = _login_attempts[ip]
+    # Drop entries outside the window
+    _login_attempts[ip] = [t for t in attempts if now - t < _LOGIN_WINDOW]
+    if len(_login_attempts[ip]) >= _LOGIN_MAX_FAIL:
+        wait = int(_LOGIN_LOCKOUT - (now - _login_attempts[ip][0]))
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many failed login attempts. Try again in {max(wait, 1)} seconds."
+        )
+
+def _record_login_failure(ip: str) -> None:
+    _login_attempts[ip].append(time.time())
+
+def _clear_login_attempts(ip: str) -> None:
+    _login_attempts.pop(ip, None)
 
 
 # Startup event - auto-configure AnkiWeb if credentials exist
@@ -372,11 +399,15 @@ async def setup_container_stream(name: str, request: Request):
 
 # Auth endpoints
 @app.post("/api/auth/login", response_model=LoginResponse)
-async def login(request: LoginRequest, response: Response):
+async def login(request: LoginRequest, response: Response, req: Request):
     from database import verify_user_credentials, get_user_accessible_containers, set_active_account
+
+    ip = req.client.host if req.client else "unknown"
+    _check_login_rate_limit(ip)
 
     user = verify_user_credentials(request.username, request.password)
     if user:
+        _clear_login_attempts(ip)
         # Auto-switch to first accessible container for this user
         accounts = get_user_accessible_containers(user['id'])
         if accounts:
@@ -421,6 +452,7 @@ async def login(request: LoginRequest, response: Response):
                 'language': user.get('language', 'en')
             }
         )
+    _record_login_failure(ip)
     raise HTTPException(status_code=401, detail="Invalid username or password")
 
 

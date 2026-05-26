@@ -45,8 +45,7 @@ export function Login() {
           if (noLocalBase && me.base_colors) saveBaseColors(me.base_colors);
         }
       } catch {}
-      // Force a full page reload to ensure fresh data from the correct container
-      window.location.href = '/';
+      navigate('/', { replace: true });
     } catch {
       setError(t('login.invalidCredentials'));
     } finally {

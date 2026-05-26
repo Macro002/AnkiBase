@@ -23,7 +23,7 @@ export function Login() {
   const [failCount, setFailCount] = useState(0);
   const [lockedUntil, setLockedUntil] = useState<number | null>(null);
 
-  // Restore lockout from sessionStorage on mount
+  // Restore lockout / attempt count from sessionStorage on mount
   useEffect(() => {
     const until = Number(sessionStorage.getItem(SS_UNTIL) ?? 0);
     const count = Number(sessionStorage.getItem(SS_COUNT) ?? 0);
@@ -32,7 +32,12 @@ export function Login() {
       setFailCount(count || MAX_ATTEMPTS);
     } else {
       sessionStorage.removeItem(SS_UNTIL);
-      sessionStorage.removeItem(SS_COUNT);
+      if (count > 0 && count < MAX_ATTEMPTS) {
+        setFailCount(count);
+        setError(`Wrong username or password — ${count}/${MAX_ATTEMPTS} attempts`);
+      } else {
+        sessionStorage.removeItem(SS_COUNT);
+      }
     }
   }, []);
 
@@ -95,6 +100,7 @@ export function Login() {
       sessionStorage.removeItem(SS_UNTIL);
       sessionStorage.removeItem(SS_COUNT);
       navigate('/', { replace: true });
+
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : '';
       if (msg.toLowerCase().includes('too many')) {
@@ -107,6 +113,7 @@ export function Login() {
           lock(Date.now() + LOCK_SECONDS * 1000, next);
         } else {
           setFailCount(next);
+          sessionStorage.setItem(SS_COUNT, String(next));
           setError(`Wrong username or password — ${next}/${MAX_ATTEMPTS} attempts`);
         }
       }

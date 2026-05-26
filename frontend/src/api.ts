@@ -11,7 +11,9 @@ async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> 
   });
 
   if (response.status === 401) {
-    window.location.href = '/login';
+    if (!endpoint.includes('/auth/login')) {
+      window.location.href = '/login';
+    }
     throw new Error('Unauthorized');
   }
 

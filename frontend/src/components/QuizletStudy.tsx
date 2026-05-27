@@ -894,8 +894,8 @@ export function QuizletStudy() {
 
       {/* ── GOAL PICK ── */}
       {learnPhase === 'goal-pick' && (
-        <div className="card max-w-lg mx-auto text-center space-y-6 py-8">
-          <div>
+        <div className="card flex flex-col justify-center space-y-6" style={{ minHeight: 'clamp(16rem, 72vw, 28rem)' }}>
+          <div className="text-center">
             <h2 className="text-xl font-bold mb-1">Choose a goal for this session</h2>
             <p className="text-sm text-(--text-secondary)">This will shape how your session works.</p>
           </div>

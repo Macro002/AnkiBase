@@ -1,6 +1,7 @@
 import sqlite3
 import json
 import os
+import time
 from datetime import datetime
 from typing import Optional
 from contextlib import contextmanager
@@ -178,6 +179,18 @@ def init_global_db():
                 UNIQUE(card_id, deck_id)
             )
         """)
+
+        # Login attempts for persistent, server-side rate limiting
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS login_attempts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                identifier TEXT NOT NULL,
+                attempt_time REAL NOT NULL
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_login_attempts_id_time ON login_attempts(identifier, attempt_time)"
+        )
 
         conn.commit()
 
@@ -1094,6 +1107,45 @@ def clear_user_base_colors(user_id: int) -> None:
         cursor = conn.cursor()
         cursor.execute("UPDATE users SET base_colors = NULL WHERE id = ?", (user_id,))
         conn.commit()
+
+
+# --- Login rate limiting (persistent, DB-backed) ---
+
+def record_login_attempt(identifier: str) -> None:
+    with get_db() as conn:
+        conn.execute(
+            "INSERT INTO login_attempts (identifier, attempt_time) VALUES (?, ?)",
+            (identifier, time.time()),
+        )
+        conn.commit()
+
+def count_recent_attempts(identifier: str, window: int) -> int:
+    cutoff = time.time() - window
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM login_attempts WHERE identifier = ? AND attempt_time > ?",
+            (identifier, cutoff),
+        ).fetchone()
+        return row[0] if row else 0
+
+def clear_login_attempts(*identifiers: str) -> None:
+    with get_db() as conn:
+        for ident in identifiers:
+            conn.execute("DELETE FROM login_attempts WHERE identifier = ?", (ident,))
+        conn.commit()
+
+def get_lockout_wait(identifier: str, window: int, max_attempts: int) -> int:
+    """Return seconds remaining in lockout (>0 = locked), 0 = not locked."""
+    cutoff = time.time() - window
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT attempt_time FROM login_attempts WHERE identifier = ? AND attempt_time > ? ORDER BY attempt_time ASC",
+            (identifier, cutoff),
+        ).fetchall()
+    if len(rows) >= max_attempts:
+        oldest = rows[0][0]
+        return max(int(window - (time.time() - oldest)), 1)
+    return 0
 
 
 # Initialize database on import

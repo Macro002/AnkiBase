@@ -13,13 +13,25 @@ async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> 
   if (response.status === 401) {
     if (!endpoint.includes('/auth/login')) {
       window.location.href = '/login';
+      throw new Error('Unauthorized');
     }
-    throw new Error('Unauthorized');
+    const body = await response.json().catch(() => ({}));
+    const detail = body.detail || {};
+    const err = new Error(typeof detail === 'object' ? (detail.message || 'Invalid credentials') : String(detail)) as any;
+    if (typeof detail === 'object' && detail.remaining !== undefined) err.remaining = detail.remaining;
+    throw err;
   }
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
-    throw new Error(error.detail || 'Request failed');
+    const detail = error.detail;
+    if (typeof detail === 'object' && detail !== null) {
+      const err = new Error(detail.message || 'Request failed') as any;
+      if (detail.wait_seconds !== undefined) err.waitSeconds = detail.wait_seconds;
+      if (detail.remaining !== undefined) err.remaining = detail.remaining;
+      throw err;
+    }
+    throw new Error(detail || 'Request failed');
   }
 
   return response.json();

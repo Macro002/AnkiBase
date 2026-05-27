@@ -48,30 +48,10 @@ app.add_middleware(
 # session_id -> user info
 sessions: dict[str, dict] = {}
 
-# Login rate limiting: track failed attempts per IP
-# { ip: [(timestamp, ...), ...] }
-_login_attempts: dict[str, list[float]] = defaultdict(list)
-_LOGIN_WINDOW   = 60   # seconds
-_LOGIN_MAX_FAIL = 5    # max failures before lockout
-_LOGIN_LOCKOUT  = 60   # lockout duration in seconds after hitting limit
-
-def _check_login_rate_limit(ip: str) -> None:
-    now = time.time()
-    attempts = _login_attempts[ip]
-    # Drop entries outside the window
-    _login_attempts[ip] = [t for t in attempts if now - t < _LOGIN_WINDOW]
-    if len(_login_attempts[ip]) >= _LOGIN_MAX_FAIL:
-        wait = int(_LOGIN_LOCKOUT - (now - _login_attempts[ip][0]))
-        raise HTTPException(
-            status_code=429,
-            detail=f"Too many failed login attempts. Try again in {max(wait, 1)} seconds."
-        )
-
-def _record_login_failure(ip: str) -> None:
-    _login_attempts[ip].append(time.time())
-
-def _clear_login_attempts(ip: str) -> None:
-    _login_attempts.pop(ip, None)
+# Login rate limiting constants (DB-backed, persistent)
+_LOGIN_WINDOW      = 900   # 15-minute sliding window
+_USERNAME_MAX_FAIL = 5     # per username
+_IP_MAX_FAIL       = 20    # per IP (allows multiple users on same network)
 
 
 # Startup event - auto-configure AnkiWeb if credentials exist
@@ -400,14 +380,30 @@ async def setup_container_stream(name: str, request: Request):
 # Auth endpoints
 @app.post("/api/auth/login", response_model=LoginResponse)
 async def login(request: LoginRequest, response: Response, req: Request):
-    from database import verify_user_credentials, get_user_accessible_containers, set_active_account
+    from database import (
+        verify_user_credentials, get_user_accessible_containers, set_active_account,
+        record_login_attempt, count_recent_attempts, clear_login_attempts, get_lockout_wait,
+    )
 
-    ip = req.client.host if req.client else "unknown"
-    _check_login_rate_limit(ip)
+    ip_key   = f"ip:{req.client.host if req.client else 'unknown'}"
+    user_key = f"user:{request.username.lower()}"
+
+    ip_wait = get_lockout_wait(ip_key, _LOGIN_WINDOW, _IP_MAX_FAIL)
+    if ip_wait > 0:
+        raise HTTPException(
+            status_code=429,
+            detail={"message": "Too many failed login attempts.", "wait_seconds": ip_wait},
+        )
+    user_wait = get_lockout_wait(user_key, _LOGIN_WINDOW, _USERNAME_MAX_FAIL)
+    if user_wait > 0:
+        raise HTTPException(
+            status_code=429,
+            detail={"message": "Too many failed login attempts.", "wait_seconds": user_wait},
+        )
 
     user = verify_user_credentials(request.username, request.password)
     if user:
-        _clear_login_attempts(ip)
+        clear_login_attempts(ip_key, user_key)
         # Auto-switch to first accessible container for this user
         accounts = get_user_accessible_containers(user['id'])
         if accounts:
@@ -452,8 +448,21 @@ async def login(request: LoginRequest, response: Response, req: Request):
                 'language': user.get('language', 'en')
             }
         )
-    _record_login_failure(ip)
-    raise HTTPException(status_code=401, detail="Invalid username or password")
+    record_login_attempt(ip_key)
+    record_login_attempt(user_key)
+
+    user_count = count_recent_attempts(user_key, _LOGIN_WINDOW)
+    remaining = max(_USERNAME_MAX_FAIL - user_count, 0)
+    if remaining == 0:
+        wait = get_lockout_wait(user_key, _LOGIN_WINDOW, _USERNAME_MAX_FAIL)
+        raise HTTPException(
+            status_code=429,
+            detail={"message": "Too many failed login attempts.", "wait_seconds": wait},
+        )
+    raise HTTPException(
+        status_code=401,
+        detail={"message": "Invalid username or password", "remaining": remaining},
+    )
 
 
 @app.post("/api/auth/logout")

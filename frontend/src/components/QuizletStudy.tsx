@@ -4,7 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Star, ChevronLeft, ChevronRight, ChevronDown,
   Undo2, Settings, X, Check,
-  TrendingUp, Lightbulb, BookOpen, Pencil, RotateCcw, Shuffle, BarChart2,
+  TrendingUp, Lightbulb, BookOpen, Pencil, RotateCcw,
 } from 'lucide-react';
 import { Flashcard, useFlashcard } from 'react-quizlet-flashcard';
 import 'react-quizlet-flashcard/dist/index.css';
@@ -856,27 +856,9 @@ export function QuizletStudy() {
             </button>
           </div>
 
-          <div className="flex items-center gap-1 shrink-0">
-            <button
-              onClick={toggleShuffle}
-              className={`icon-btn ${isShuffled ? 'text-(--accent)' : ''}`}
-              title="Shuffle"
-              style={isShuffled ? { background: 'rgba(var(--accent-rgb),0.15)' } : undefined}
-            >
-              <Shuffle className="w-4 h-4" />
-            </button>
-            <button
-              onClick={toggleTrackProgress}
-              className={`icon-btn ${trackProgress ? 'text-(--accent)' : ''}`}
-              title="Track progress"
-              style={trackProgress ? { background: 'rgba(var(--accent-rgb),0.15)' } : undefined}
-            >
-              <BarChart2 className="w-4 h-4" />
-            </button>
-            <button className="icon-btn" title="Options" onClick={() => setShowOptions(true)}>
-              <Settings className="w-4 h-4" />
-            </button>
-          </div>
+          <button className="icon-btn shrink-0" title="Options" onClick={() => setShowOptions(true)}>
+            <Settings className="w-4 h-4" />
+          </button>
         </div>
 
         {/* Progress bar */}
@@ -1233,6 +1215,29 @@ export function QuizletStudy() {
               <h2 className="text-xl font-bold">Options</h2>
               <button className="icon-btn" onClick={closeOptions} title="Close">
                 <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Track progress */}
+            <div className="p-6 flex items-center justify-between gap-4">
+              <div>
+                <p className="font-medium text-sm">Track progress</p>
+                <p className="text-xs text-(--text-secondary) mt-0.5">Mark cards as known or still learning. Turns nav buttons into ✓ / ✗.</p>
+              </div>
+              <button onClick={toggleTrackProgress} className="shrink-0">
+                <div className={`relative w-9 h-5 rounded-full transition-colors ${trackProgress ? 'bg-(--accent)' : 'bg-(--bg-tertiary)'}`}>
+                  <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${trackProgress ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                </div>
+              </button>
+            </div>
+
+            {/* Shuffle */}
+            <div className="p-6 flex items-center justify-between gap-4">
+              <p className="font-medium text-sm">Shuffle</p>
+              <button onClick={() => { toggleShuffle(); }} className="shrink-0">
+                <div className={`relative w-9 h-5 rounded-full transition-colors ${isShuffled ? 'bg-(--accent)' : 'bg-(--bg-tertiary)'}`}>
+                  <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${isShuffled ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                </div>
               </button>
             </div>
 

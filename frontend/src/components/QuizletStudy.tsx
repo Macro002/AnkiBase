@@ -947,12 +947,12 @@ export function QuizletStudy() {
                   const isSelected = learnMCSelected === opt.id;
                   let cls: string;
                   if (learnShowResult) {
-                    const base = 'rounded-xl text-left p-4 w-full text-sm font-medium transition-all flex items-start gap-3 border';
-                    if (isCorrect)       cls = `${base} border-green-500 bg-green-500/10`;
-                    else if (isSelected) cls = `${base} border-red-500 bg-red-500/10`;
-                    else                 cls = `${base} border-(--bg-tertiary) bg-(--bg-secondary) opacity-40`;
+                    const base = 'rounded-xl text-left p-4 w-full text-sm font-medium transition-all flex items-start gap-3';
+                    if (isCorrect)       cls = `${base} bg-green-500/15`;
+                    else if (isSelected) cls = `${base} bg-red-500/15`;
+                    else                 cls = `${base} bg-(--bg-secondary) opacity-40`;
                   } else {
-                    cls = 'rounded-xl text-left p-4 w-full text-sm font-medium transition-all flex items-start gap-3 border border-(--bg-tertiary) bg-(--bg-secondary) cursor-pointer hover:border-(--accent) hover:bg-(--accent)/5';
+                    cls = 'rounded-xl text-left p-4 w-full text-sm font-medium transition-all flex items-start gap-3 bg-(--bg-secondary) cursor-pointer hover:bg-white/8';
                   }
                   return (
                     <button key={opt.id} disabled={learnShowResult} className={cls}

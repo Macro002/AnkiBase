@@ -1,0 +1,82 @@
+---
+title: Getting Started
+---
+
+import { Callout, Steps } from 'nextra/components'
+
+# Getting Started
+
+## Requirements
+
+- A Debian-based server (Debian 12/13, Ubuntu 22.04+) with root access
+- A domain name pointed at your server (recommended for SSL)
+- Ports 80 and 443 open (for nginx + SSL)
+
+## Installation
+
+<Steps>
+
+### Run the installer
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Macro002/AnkiBase/main/install.sh | sudo bash
+```
+
+The installer will:
+- Install Docker, Node.js 20, and Python if not already present
+- Build the frontend
+- Find an available port (starting at 8000)
+- Generate a secret key and encryption config
+- Set up a `systemd` service (`ankibase`)
+- Optionally configure nginx reverse proxy + SSL via Certbot
+
+### Complete the setup wizard
+
+On first visit, a setup wizard walks you through:
+1. Creating your admin account
+2. Initializing your first Anki container
+
+### Log in
+
+Use the credentials you just created. The login page includes rate limiting — 5 failed attempts per username triggers a lockout.
+
+</Steps>
+
+## Updating
+
+**In-app:** An update button appears in the header when a new version is available. Click it to update automatically with zero downtime.
+
+**Via terminal:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Macro002/AnkiBase/main/install.sh | sudo bash -s -- --update
+```
+
+## Useful Commands
+
+```bash
+# Live logs
+journalctl -u ankibase -f
+
+# Restart the service
+systemctl restart ankibase
+
+# Check status
+systemctl status ankibase
+```
+
+## Docker (Anki container)
+
+Each user account runs its own headless Anki container using the `thisisnttheway/headless-anki` image. These are managed automatically — you don't need to interact with them directly.
+
+```bash
+# List running Anki containers
+docker ps --filter "name=anki"
+
+# View container logs
+docker logs <container-name>
+```
+
+<Callout type="info">
+  AnkiConnect runs on port 8765 inside each container and is mapped to a unique host port per account. The backend communicates with AnkiConnect over this port.
+</Callout>

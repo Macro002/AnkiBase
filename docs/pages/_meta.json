@@ -1,0 +1,10 @@
+{
+  "index": "Overview",
+  "getting-started": "Getting Started",
+  "configuration": "Configuration",
+  "api-reference": {
+    "title": "API Reference ↗",
+    "href": "https://macro002.github.io/AnkiBase/api-reference.html",
+    "newWindow": true
+  }
+}

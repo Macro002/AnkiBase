@@ -1,0 +1,88 @@
+---
+title: Configuration
+---
+
+import { Callout } from 'nextra/components'
+
+# Configuration
+
+## Environment Variables
+
+The installer generates a `.env` file at `/opt/ankibase/backend/.env`. You can edit it manually if needed.
+
+| Variable | Description | Default |
+|---|---|---|
+| `SECRET_KEY` | Session signing key — keep secret | Auto-generated |
+| `ENCRYPTION_KEY` | Fernet key for credential encryption | Auto-generated |
+| `PORT` | Backend listen port | `8000` |
+| `DATA_DIR` | Directory for per-account SQLite databases | `./data` |
+
+After editing, restart the service:
+
+```bash
+systemctl restart ankibase
+```
+
+## AI Providers
+
+API keys are managed in-app via **Settings → API Keys**. Supported providers:
+
+| Provider | Model used |
+|---|---|
+| OpenAI | `gpt-4o-mini` |
+| Anthropic | `claude-haiku-3-5` |
+| Google Gemini | `gemini-1.5-flash` |
+
+Keys are encrypted at rest using the `ENCRYPTION_KEY` from `.env`.
+
+## Nginx
+
+The installer can set up nginx automatically. If you need to configure it manually, here's the recommended config:
+
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name your-domain.com;
+
+    ssl_certificate     /etc/letsencrypt/live/your-domain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
+
+    client_max_body_size 500M;
+
+    location / {
+        proxy_pass         http://127.0.0.1:8000;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300s;
+    }
+}
+```
+
+## Multi-user Setup
+
+AnkiBase supports multiple users, each with their own Anki container.
+
+- The first account created (id=1) is always the root admin and cannot be deleted or demoted.
+- Admins can create users and assign container access via the **User Management** panel.
+- Per-user permissions: `is_admin`, `can_add_containers`, and per-container access grants.
+
+<Callout type="warning">
+  Each additional Anki container requires its own Docker container and a free port on the host. Make sure you have sufficient resources before adding many accounts.
+</Callout>
+
+## AnkiWeb Sync
+
+AnkiWeb credentials are stored encrypted in the database. Each account can have its own AnkiWeb credentials configured via **Settings → AnkiWeb**.
+
+Sync modes available:
+- **Normal sync** — incremental, merges changes
+- **Full upload** — overwrites AnkiWeb with local data
+- **Full download** — overwrites local data with AnkiWeb

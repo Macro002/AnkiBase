@@ -1,0 +1,42 @@
+---
+title: Overview
+---
+
+import Image from 'next/image'
+
+# AnkiBase
+
+**Self-hosted web interface for Anki** — study flashcards, sync with AnkiWeb, import from Quizlet, and generate AI vocabulary stories. Runs entirely on your own server.
+
+![AnkiBase desktop view](/AnkiBase/desktop.png)
+
+## Features
+
+| Feature | Description |
+|---|---|
+| **Study** | Review cards with ease ratings, undo, progress tracking, and learn mode |
+| **Quizlet Import** | Paste any Quizlet URL to import decks with images |
+| **AI Stories** | Generate vocabulary stories from deck words (OpenAI, Anthropic, Gemini) |
+| **AnkiWeb Sync** | Sync to/from AnkiWeb with conflict resolution |
+| **Search** | Full-text search across all notes |
+| **Import** | Drag-and-drop `.apkg` file import |
+| **Stats** | Activity heatmap filterable by Anki or Quizlet reviews |
+| **Multi-user** | Admin panel with per-user container access control |
+| **Multi-account** | Each account gets its own isolated Anki container |
+| **In-app updates** | Pull the latest version without touching the server |
+
+## Mobile
+
+AnkiBase is fully responsive with a bottom navigation bar and safe-area aware layout.
+
+![AnkiBase mobile view](/AnkiBase/mobile.png)
+
+## Stack
+
+| Layer | Tech |
+|---|---|
+| Backend | FastAPI + Uvicorn |
+| Frontend | React 19, TypeScript, TailwindCSS v4 |
+| Anki runtime | headless-anki (Docker + AnkiConnect) |
+| Database | SQLite |
+| AI providers | OpenAI, Anthropic, Google Gemini |

@@ -9,8 +9,10 @@ import {
 } from 'lucide-react';
 import { Flashcard, useFlashcard } from 'react-quizlet-flashcard';
 import 'react-quizlet-flashcard/dist/index.css';
-import FlashcardsIcon from '../assets/icons/brand-flashcards.svg?react';
-import LearnIcon      from '../assets/icons/brand-learn.svg?react';
+import FlashcardsIcon  from '../assets/icons/brand-flashcards.svg?react';
+import LearnIcon       from '../assets/icons/brand-learn.svg?react';
+import CramIcon        from '../assets/icons/brand-cram.svg?react';
+import MemorizeIcon    from '../assets/icons/brand-memorize.svg?react';
 import TestIcon       from '../assets/icons/brand-test.svg?react';
 import BlocksIcon     from '../assets/icons/brand-blocks.svg?react';
 import BlastIcon      from '../assets/icons/brand-blast.svg?react';
@@ -894,21 +896,27 @@ export function QuizletStudy() {
 
       {/* ── GOAL PICK ── */}
       {learnPhase === 'goal-pick' && (
-        <div className="card flex flex-col justify-center space-y-6" style={{ minHeight: 'clamp(16rem, 72vw, 28rem)' }}>
+        <div className="card relative flex flex-col justify-center space-y-6 overflow-hidden" style={{ minHeight: 'clamp(16rem, 72vw, 28rem)' }}>
+          {/* Decorative learn icon watermark */}
+          <LearnIcon className="absolute top-4 right-4 w-10 h-10 opacity-20 pointer-events-none" style={{ color: 'var(--accent)' }} />
+
           <div className="text-center">
             <h2 className="text-xl font-bold mb-1">Choose a goal for this session</h2>
             <p className="text-sm text-(--text-secondary)">This will shape how your session works.</p>
           </div>
-          <div className="grid grid-cols-2 gap-3 text-left">
+          <div className="grid grid-cols-2 gap-3">
             {([
-              { g: 'cram' as const, title: 'Cram for a test', desc: 'Go through each term once — best for quick review.' },
-              { g: 'memorize' as const, title: 'Memorize it all', desc: 'Repeat cards until all are mastered — best for retention.' },
-            ]).map(({ g, title: t, desc }) => (
+              { g: 'cram' as const,     title: 'Cram for a test', desc: 'Go through each term once — best for quick review.',       Icon: CramIcon },
+              { g: 'memorize' as const, title: 'Memorize it all',  desc: 'Repeat cards until all are mastered — best for retention.', Icon: MemorizeIcon },
+            ]).map(({ g, title: t, desc, Icon }) => (
               <button key={g}
                 onClick={() => startLearn({ ...learnConfig, goal: g })}
-                className="rounded-xl p-4 bg-(--bg-tertiary) hover:bg-(--accent)/10 hover:text-(--accent) transition-colors text-left">
-                <p className="font-semibold text-sm mb-1">{t}</p>
-                <p className="text-xs text-(--text-secondary)">{desc}</p>
+                className="group rounded-xl p-5 bg-(--bg-tertiary) hover:bg-(--accent)/10 transition-colors text-left flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-semibold text-sm mb-1 group-hover:text-(--accent) transition-colors">{t}</p>
+                  <p className="text-xs text-(--text-secondary) leading-relaxed">{desc}</p>
+                </div>
+                <Icon className="w-10 h-10 shrink-0 mt-0.5" style={{ color: 'rgba(var(--accent-rgb), 0.5)' }} />
               </button>
             ))}
           </div>

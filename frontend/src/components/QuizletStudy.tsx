@@ -896,27 +896,27 @@ export function QuizletStudy() {
 
       {/* ── GOAL PICK ── */}
       {learnPhase === 'goal-pick' && (
-        <div className="card relative flex flex-col justify-center space-y-6 overflow-hidden" style={{ minHeight: 'clamp(16rem, 72vw, 28rem)' }}>
+        <div className="card relative flex flex-col space-y-8 overflow-hidden" style={{ minHeight: 'clamp(22rem, 85vw, 36rem)', padding: '2rem' }}>
           {/* Decorative learn icon watermark */}
-          <LearnIcon className="absolute top-4 right-4 w-10 h-10 opacity-20 pointer-events-none" style={{ color: 'var(--accent)' }} />
+          <LearnIcon className="absolute top-5 right-5 w-10 h-10 opacity-20 pointer-events-none" style={{ color: 'var(--accent)' }} />
 
-          <div className="text-center">
-            <h2 className="text-xl font-bold mb-1">Choose a goal for this session</h2>
-            <p className="text-sm text-(--text-secondary)">This will shape how your session works.</p>
+          <div className="text-center pt-2">
+            <h2 className="text-2xl font-bold mb-2">Choose a goal for this session</h2>
+            <p className="text-(--text-secondary)">This will shape how your session works.</p>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-4 flex-1">
             {([
               { g: 'cram' as const,     title: 'Cram for a test', desc: 'Go through each term once — best for quick review.',       Icon: CramIcon },
               { g: 'memorize' as const, title: 'Memorize it all',  desc: 'Repeat cards until all are mastered — best for retention.', Icon: MemorizeIcon },
             ]).map(({ g, title: t, desc, Icon }) => (
               <button key={g}
                 onClick={() => startLearn({ ...learnConfig, goal: g })}
-                className="group rounded-xl p-5 bg-(--bg-tertiary) hover:bg-(--accent)/10 transition-colors text-left flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="font-semibold text-sm mb-1 group-hover:text-(--accent) transition-colors">{t}</p>
-                  <p className="text-xs text-(--text-secondary) leading-relaxed">{desc}</p>
+                className="group rounded-xl p-6 bg-(--bg-tertiary) hover:bg-(--accent)/10 transition-colors text-left flex flex-col" style={{ minHeight: '9rem' }}>
+                <div className="flex-1">
+                  <p className="font-bold text-base mb-2 group-hover:text-(--accent) transition-colors">{t}</p>
+                  <p className="text-sm text-(--text-secondary) leading-relaxed">{desc}</p>
                 </div>
-                <Icon className="w-10 h-10 shrink-0 mt-0.5" style={{ color: 'rgba(var(--accent-rgb), 0.5)' }} />
+                <Icon className="w-12 h-12 mt-5 self-end" style={{ color: 'rgba(var(--accent-rgb), 0.5)' }} />
               </button>
             ))}
           </div>
@@ -926,28 +926,6 @@ export function QuizletStudy() {
       {/* ── LEARN SESSION ── */}
       {learnPhase === 'session' && learnItem && (
         <div className="space-y-4">
-          {/* Gear for learn settings */}
-          <div className="flex justify-end">
-            <button onClick={() => setShowLearnOptions(true)} className="icon-btn" title="Learn settings">
-              <Settings className="w-4 h-4" />
-            </button>
-          </div>
-
-          {/* Segmented progress bar */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs tabular-nums text-(--text-secondary) shrink-0">{learnQIdx}</span>
-            <div className="flex-1 flex gap-0.5 h-2">
-              {Array.from({ length: Math.min(learnQueue.length, 60) }).map((_, i) => {
-                const segIdx = Math.floor((i / Math.min(learnQueue.length, 60)) * learnQueue.length);
-                return (
-                  <div key={i} className="flex-1 rounded-full transition-colors duration-300"
-                    style={{ background: segIdx < learnQIdx ? 'var(--accent)' : 'var(--bg-tertiary)' }} />
-                );
-              })}
-            </div>
-            <span className="text-xs tabular-nums text-(--text-secondary) shrink-0">{learnQueue.length}</span>
-          </div>
-
           {/* Prompt card */}
           <div className="card flex flex-col" style={{ minHeight: 'clamp(12rem, 50vw, 22rem)' }}>
             <div className="px-5 pt-4 shrink-0">
@@ -964,14 +942,17 @@ export function QuizletStudy() {
               <p className="text-sm text-(--text-secondary) font-medium">Choose an answer</p>
               <div className="grid grid-cols-2 gap-2">
                 {learnMCOptions.map((opt, i) => {
-                  const optHtml   = learnConfig.answerWith === 'definition' ? opt.back : opt.front;
-                  const isCorrect = opt.id === learnItem.card.id;
+                  const optHtml    = learnConfig.answerWith === 'definition' ? opt.back : opt.front;
+                  const isCorrect  = opt.id === learnItem.card.id;
                   const isSelected = learnMCSelected === opt.id;
-                  let cls = 'card text-left p-4 w-full text-sm font-medium transition-colors flex items-start gap-3';
+                  let cls: string;
                   if (learnShowResult) {
-                    if (isCorrect)       cls += ' !border-green-500 bg-green-500/10';
-                    else if (isSelected) cls += ' !border-red-500 bg-red-500/10';
-                    else                 cls += ' opacity-40';
+                    const base = 'rounded-xl text-left p-4 w-full text-sm font-medium transition-all flex items-start gap-3 border';
+                    if (isCorrect)       cls = `${base} border-green-500 bg-green-500/10`;
+                    else if (isSelected) cls = `${base} border-red-500 bg-red-500/10`;
+                    else                 cls = `${base} border-(--bg-tertiary) bg-(--bg-secondary) opacity-40`;
+                  } else {
+                    cls = 'rounded-xl text-left p-4 w-full text-sm font-medium transition-all flex items-start gap-3 border border-(--bg-tertiary) bg-(--bg-secondary) cursor-pointer hover:border-(--accent) hover:bg-(--accent)/5';
                   }
                   return (
                     <button key={opt.id} disabled={learnShowResult} className={cls}
@@ -1072,6 +1053,24 @@ export function QuizletStudy() {
               )}
             </div>
           )}
+
+          {/* Bottom: segmented progress bar + gear */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs tabular-nums text-(--text-secondary) shrink-0">{learnQIdx}</span>
+            <div className="flex-1 flex gap-0.5 h-2">
+              {Array.from({ length: Math.min(learnQueue.length, 60) }).map((_, i) => {
+                const segIdx = Math.floor((i / Math.min(learnQueue.length, 60)) * learnQueue.length);
+                return (
+                  <div key={i} className="flex-1 rounded-full transition-colors duration-300"
+                    style={{ background: segIdx < learnQIdx ? 'var(--accent)' : 'var(--bg-tertiary)' }} />
+                );
+              })}
+            </div>
+            <span className="text-xs tabular-nums text-(--text-secondary) shrink-0">{learnQueue.length}</span>
+            <button onClick={() => setShowLearnOptions(true)} className="icon-btn shrink-0 ml-1" title="Learn settings">
+              <Settings className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       )}
 

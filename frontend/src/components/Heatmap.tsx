@@ -315,7 +315,7 @@ export function Heatmap({ className = '' }: HeatmapProps) {
                   <div
                     key={dayIndex}
                     className={`rounded-sm cursor-pointer transition-all duration-150 ${
-                      isToday ? 'ring-2 ring-white ring-offset-1 ring-offset-(--bg-secondary)' : ''
+                      isToday ? 'ring-2 ring-(--text-primary) ring-offset-1 ring-offset-(--bg-secondary)' : ''
                     } ${isHovered ? 'scale-125 z-10' : 'hover:scale-110'}`}
                     style={{
                       width: `${squareSize}px`,

@@ -59,7 +59,7 @@ body {
 
 .btn-primary {
   background: var(--accent);
-  color: white;
+  color: var(--text-primary);
 }
 
 .btn-primary:hover {
@@ -68,7 +68,7 @@ body {
 
 .btn-secondary {
   background: var(--bg-tertiary);
-  color: white;
+  color: var(--text-primary);
   border: 1px solid var(--bg-tertiary);
 }
 

@@ -4,7 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Star, ChevronLeft, ChevronRight, ChevronDown,
   Undo2, Settings, X, Check,
-  TrendingUp, Lightbulb, BookOpen, Pencil, RotateCcw,
+  TrendingUp, Lightbulb, BookOpen, Pencil, RotateCcw, Shuffle, BarChart2,
 } from 'lucide-react';
 import { Flashcard, useFlashcard } from 'react-quizlet-flashcard';
 import 'react-quizlet-flashcard/dist/index.css';
@@ -137,7 +137,7 @@ const MODES = [
 
 // desktop: 3-col grid, icon left + label right
 // mobile: rendered separately below progress bar as 2-col grid, icon+label stacked
-function ModeGrid({ mobile = false, activeMode = 'flashcards', onLearnClick }: { mobile?: boolean; activeMode?: string; onLearnClick?: () => void }) {
+function ModeGrid({ mobile = false, activeMode = 'flashcards', onModeClick }: { mobile?: boolean; activeMode?: string; onModeClick?: (id: string) => void }) {
   return (
     <div className={mobile ? 'grid grid-cols-2 gap-2' : 'grid grid-cols-3 gap-2'}>
       {MODES.map(({ id, label, Icon, active }) => {
@@ -146,7 +146,7 @@ function ModeGrid({ mobile = false, activeMode = 'flashcards', onLearnClick }: {
           <button
             key={id}
             disabled={!active}
-            onClick={id === 'learn' && active ? onLearnClick : undefined}
+            onClick={active ? () => onModeClick?.(id) : undefined}
             title={active ? undefined : 'Coming soon'}
             className={`rounded-lg font-medium transition-colors ${
               mobile
@@ -654,354 +654,24 @@ export function QuizletStudy() {
       : Math.round((index / queue.length) * 100)
     : 0;
 
-  // --- Learn goal-pick screen ---
-  if (learnPhase === 'goal-pick') {
-    return (
-      <div className="max-w-3xl mx-auto space-y-4 pb-8">
-        <button onClick={() => setLearnPhase('off')} className="flex items-center gap-2 text-(--text-secondary) hover-accent text-sm">
-          <ArrowLeft className="w-4 h-4" /> Back
-        </button>
-        <h1 className="text-2xl font-bold">{title}</h1>
-        <ModeGrid activeMode="learn" />
-        <div className="card max-w-lg mx-auto text-center space-y-6 py-8">
-          <div>
-            <h2 className="text-xl font-bold mb-1">Choose a goal for this session</h2>
-            <p className="text-sm text-(--text-secondary)">This will shape how your session works.</p>
-          </div>
-          <div className="grid grid-cols-2 gap-3 text-left">
-            {([
-              { g: 'cram' as const, title: 'Cram for a test', desc: 'Go through each term once — best for quick review.' },
-              { g: 'memorize' as const, title: 'Memorize it all', desc: 'Repeat cards until all are mastered — best for retention.' },
-            ]).map(({ g, title: t, desc }) => (
-              <button key={g}
-                onClick={() => startLearn({ ...learnConfig, goal: g })}
-                className="rounded-xl p-4 bg-(--bg-tertiary) hover:bg-(--accent)/10 hover:text-(--accent) transition-colors text-left">
-                <p className="font-semibold text-sm mb-1">{t}</p>
-                <p className="text-xs text-(--text-secondary)">{desc}</p>
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
 
-  // --- Learn session screen ---
-  if (learnPhase === 'session') {
-    const item = learnQueue[learnQIdx];
-    if (!item) return null;
-
-    const prompt      = learnConfig.answerWith === 'definition' ? item.card.front : item.card.back;
-    const correctHtml = learnConfig.answerWith === 'definition' ? item.card.back  : item.card.front;
-    const totalItems  = learnQueue.length;
-    const doneCount   = learnQIdx;
-    const promptLabel = learnConfig.answerWith === 'definition' ? 'Term' : 'Definition';
-    const mcFlat = learnMCOptions;
-
-    return (
-      <div className="max-w-3xl mx-auto space-y-4 pb-8">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <button onClick={() => setLearnPhase('off')} className="flex items-center gap-2 text-(--text-secondary) hover-accent text-sm">
-            <ArrowLeft className="w-4 h-4" /> Back to Flashcards
-          </button>
-          <button onClick={() => setShowLearnOptions(true)} className="icon-btn" title="Settings">
-            <Settings className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* Segmented progress bar */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs tabular-nums text-(--text-secondary) shrink-0">{doneCount}</span>
-          <div className="flex-1 flex gap-0.5 h-2">
-            {Array.from({ length: Math.min(totalItems, 60) }).map((_, i) => {
-              const segIdx = Math.floor((i / Math.min(totalItems, 60)) * totalItems);
-              return (
-                <div key={i} className="flex-1 rounded-full transition-colors duration-300"
-                  style={{ background: segIdx < doneCount ? 'var(--accent)' : 'var(--bg-tertiary)' }} />
-              );
-            })}
-          </div>
-          <span className="text-xs tabular-nums text-(--text-secondary) shrink-0">{totalItems}</span>
-        </div>
-
-        {/* Prompt card — tall like flashcard */}
-        <div className="card flex flex-col" style={{ minHeight: 'clamp(12rem, 50vw, 22rem)' }}>
-          <div className="px-5 pt-4 shrink-0">
-            <span className="text-xs text-(--text-secondary) uppercase tracking-wide">{promptLabel}</span>
-          </div>
-          <div className="flex-1 flex items-center justify-center p-6 text-center">
-            <div className="text-2xl font-medium leading-snug" dangerouslySetInnerHTML={{ __html: prompt }} />
-          </div>
-        </div>
-
-        {/* Multiple choice */}
-        {item.qtype === 'mc' && (
-          <div className="space-y-3">
-            <p className="text-sm text-(--text-secondary) font-medium">Choose an answer</p>
-            <div className="grid grid-cols-2 gap-2">
-              {mcFlat.map((opt, i) => {
-                const optHtml   = learnConfig.answerWith === 'definition' ? opt.back : opt.front;
-                const isCorrect = opt.id === item.card.id;
-                const isSelected = learnMCSelected === opt.id;
-                let cls = 'card text-left p-4 w-full text-sm font-medium transition-colors flex items-start gap-3';
-                if (learnShowResult) {
-                  if (isCorrect)       cls += ' !border-green-500 bg-green-500/10';
-                  else if (isSelected) cls += ' !border-red-500 bg-red-500/10';
-                  else                 cls += ' opacity-40';
-                }
-                return (
-                  <button key={opt.id} disabled={learnShowResult} className={cls}
-                    onClick={() => {
-                      if (learnShowResult) return;
-                      setLearnMCSelected(opt.id);
-                      setLearnShowResult(true);
-                      setTimeout(() => learnAdvance(isCorrect), isCorrect ? 700 : 1300);
-                    }}
-                  >
-                    <span className="shrink-0 w-6 h-6 rounded-md bg-(--bg-tertiary) flex items-center justify-center text-xs font-bold text-(--text-secondary)">{i + 1}</span>
-                    <div dangerouslySetInnerHTML={{ __html: optHtml }} />
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Written */}
-        {item.qtype === 'written' && !learnNeedRetype && (
-          <div className="space-y-3">
-            <input
-              ref={learnWrittenRef}
-              type="text"
-              placeholder="Type your answer…"
-              value={learnWrittenText}
-              onChange={e => setLearnWrittenText(e.target.value)}
-              disabled={!!learnWrittenResult}
-              autoFocus
-              onKeyDown={e => {
-                if (e.key === 'Enter' && !learnWrittenResult) {
-                  const ok = gradeAnswer(learnWrittenText, correctHtml, learnConfig.grading);
-                  setLearnWrittenResult(ok ? 'correct' : 'wrong');
-                }
-              }}
-              className={`input w-full text-base py-3 ${learnWrittenResult === 'correct' ? 'border-green-500' : learnWrittenResult === 'wrong' ? 'border-red-500' : ''}`}
-            />
-            {learnWrittenResult && (
-              <div className={`rounded-lg p-3 text-sm ${learnWrittenResult === 'correct' ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
-                {learnWrittenResult === 'correct'
-                  ? <div className="flex items-center gap-2"><Check className="w-4 h-4" /> Correct!</div>
-                  : <div>
-                      <div className="flex items-center gap-2 mb-1"><X className="w-4 h-4" /> Incorrect</div>
-                      <p className="text-white/80">Correct answer: <span className="font-semibold" dangerouslySetInnerHTML={{ __html: correctHtml }} /></p>
-                    </div>
-                }
-              </div>
-            )}
-            {!learnWrittenResult
-              ? <button onClick={() => { const ok = gradeAnswer(learnWrittenText, correctHtml, learnConfig.grading); setLearnWrittenResult(ok ? 'correct' : 'wrong'); }} className="btn btn-primary w-full">Check Answer</button>
-              : <button onClick={() => {
-                  const wasCorrect = learnWrittenResult === 'correct';
-                  if (!wasCorrect && learnConfig.retypeWrong) { setLearnNeedRetype(true); setLearnRetypeText(''); }
-                  else learnAdvance(wasCorrect);
-                }} className="btn btn-secondary w-full">Continue</button>
-            }
-          </div>
-        )}
-
-        {/* Written retype gate */}
-        {item.qtype === 'written' && learnNeedRetype && (
-          <div className="space-y-3">
-            <p className="text-sm text-(--text-secondary)">Type the correct answer to continue:</p>
-            <input type="text" placeholder="Retype the correct answer…" value={learnRetypeText}
-              onChange={e => setLearnRetypeText(e.target.value)} autoFocus
-              onKeyDown={e => { if (e.key === 'Enter' && gradeAnswer(learnRetypeText, correctHtml, 'moderate')) { setLearnNeedRetype(false); learnAdvance(false); } }}
-              className="input w-full text-base py-3" />
-            <button onClick={() => { if (gradeAnswer(learnRetypeText, correctHtml, 'moderate')) { setLearnNeedRetype(false); learnAdvance(false); } }} className="btn btn-primary w-full">Submit</button>
-          </div>
-        )}
-
-        {/* Flashcard confirmation */}
-        {item.qtype === 'flashcard' && (
-          <div className="space-y-3">
-            <div className="card cursor-pointer flex flex-col items-center justify-center text-center p-6 select-none"
-              style={{ minHeight: 'clamp(10rem, 40vw, 18rem)' }}
-              onClick={() => setLearnFlipped(f => !f)}>
-              {!learnFlipped
-                ? <div className="space-y-2">
-                    <div className="text-2xl font-medium leading-snug" dangerouslySetInnerHTML={{ __html: prompt }} />
-                    <p className="text-xs text-(--text-secondary) mt-3">Tap to reveal answer</p>
-                  </div>
-                : <div className="text-2xl font-medium leading-snug" dangerouslySetInnerHTML={{ __html: correctHtml }} />
-              }
-            </div>
-            {learnFlipped && (
-              <div className="flex gap-2">
-                <button onClick={() => { setLearnFlipped(false); learnAdvance(false); }}
-                  className="flex-1 py-3 rounded-lg bg-orange-500/10 text-orange-400 hover:bg-orange-500/20 font-medium text-sm flex items-center justify-center gap-2 transition-colors">
-                  <X className="w-4 h-4" /> Still learning
-                </button>
-                <button onClick={() => { setLearnFlipped(false); learnAdvance(true); }}
-                  className="flex-1 btn btn-primary flex items-center justify-center gap-2">
-                  <Check className="w-4 h-4" /> Got it
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Learn session options panel */}
-        {showLearnOptions && (
-          <div className="fixed inset-0 z-[100] flex justify-end items-stretch bg-black/50" onClick={() => setShowLearnOptions(false)}>
-            <div className="options-panel bg-(--bg-secondary) border-l border-(--bg-tertiary) w-full max-w-sm self-stretch overflow-y-auto shadow-2xl flex flex-col divide-y divide-white/8"
-              onClick={e => e.stopPropagation()}>
-              <div className="flex items-center justify-between p-6 shrink-0" style={{ paddingTop: 'calc(1.5rem + env(safe-area-inset-top, 0px))' }}>
-                <h2 className="text-xl font-bold">Learn Settings</h2>
-                <button className="icon-btn" onClick={() => setShowLearnOptions(false)}><X className="w-5 h-5" /></button>
-              </div>
-              {/* Answer with */}
-              <div className="p-6 flex items-center justify-between gap-4">
-                <p className="font-medium text-sm">Answer with</p>
-                <select value={learnConfig.answerWith} onChange={e => setLearnConfig(prev => ({ ...prev, answerWith: e.target.value as 'term' | 'definition' }))} className="input text-sm py-1.5 cursor-pointer">
-                  <option value="definition">Definition</option>
-                  <option value="term">Term</option>
-                </select>
-              </div>
-              {/* Question types */}
-              <div className="p-6 space-y-3">
-                <p className="font-medium text-sm">Question types</p>
-                {([{ key: 'mc' as const, label: 'Multiple choice' }, { key: 'written' as const, label: 'Written' }]).map(({ key, label }) => (
-                  <div key={key} className="flex items-center justify-between">
-                    <span className="text-sm text-(--text-secondary)">{label}</span>
-                    <button onClick={() => setLearnConfig(prev => ({ ...prev, [key]: !prev[key] }))}
-                      className={`relative w-9 h-5 rounded-full transition-colors ${learnConfig[key] ? 'bg-(--accent)' : 'bg-(--bg-tertiary)'}`}>
-                      <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${learnConfig[key] ? 'translate-x-4' : 'translate-x-0.5'}`} />
-                    </button>
-                  </div>
-                ))}
-                <p className="text-xs text-(--text-secondary)">Flashcards always included as final stage.</p>
-              </div>
-              {/* Grading */}
-              <div className="p-6 flex items-center justify-between gap-4">
-                <p className="font-medium text-sm">Grading</p>
-                <select value={learnConfig.grading} onChange={e => setLearnConfig(prev => ({ ...prev, grading: e.target.value as 'relaxed' | 'moderate' | 'strict' }))} className="input text-sm py-1.5 cursor-pointer">
-                  <option value="relaxed">Relaxed</option>
-                  <option value="moderate">Moderate</option>
-                  <option value="strict">Strict</option>
-                </select>
-              </div>
-              {/* Retype wrong */}
-              {learnConfig.written && (
-                <div className="p-6 flex items-center justify-between gap-4">
-                  <div>
-                    <p className="font-medium text-sm">Retype correct answers</p>
-                    <p className="text-xs text-(--text-secondary) mt-0.5">Type correct answer after getting written wrong.</p>
-                  </div>
-                  <button onClick={() => setLearnConfig(prev => ({ ...prev, retypeWrong: !prev.retypeWrong }))} className="shrink-0">
-                    <div className={`relative w-9 h-5 rounded-full transition-colors ${learnConfig.retypeWrong ? 'bg-(--accent)' : 'bg-(--bg-tertiary)'}`}>
-                      <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${learnConfig.retypeWrong ? 'translate-x-4' : 'translate-x-0.5'}`} />
-                    </div>
-                  </button>
-                </div>
-              )}
-              {/* Restart */}
-              <div className="p-6" style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))' }}>
-                <button className="text-sm text-(--accent) font-medium hover-underline"
-                  onClick={() => { setShowLearnOptions(false); setShowRestartLearnConfirm(true); }}>
-                  Restart Learn
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Restart Learn confirm */}
-        {showRestartLearnConfirm && (
-          <div className="fixed inset-0 z-[200] bg-black/60 flex items-center justify-center p-4" onClick={() => setShowRestartLearnConfirm(false)}>
-            <div className="bg-(--bg-secondary) rounded-xl max-w-md w-full p-6 space-y-4" onClick={e => e.stopPropagation()}>
-              <h3 className="text-lg font-bold">Restart Learn?</h3>
-              <p className="text-sm text-(--text-secondary)">Restarting will reset your study goal and progress — you'll see all the same terms, starting from the beginning.</p>
-              <div className="flex gap-2 justify-end">
-                <button onClick={() => setShowRestartLearnConfirm(false)} className="btn btn-secondary">Cancel</button>
-                <button onClick={() => { setShowRestartLearnConfirm(false); setLearnPhase('goal-pick'); }} className="btn btn-primary">Restart</button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // --- Learn end screen ---
-  if (learnPhase === 'end') {
-    const totalCards = cards.length;
-    const masteredCount = [...learnFinalResult.values()].filter(Boolean).length;
-    const learningCount = [...learnFinalResult.values()].filter(v => !v).length;
-    const percent = totalCards > 0 ? Math.round((masteredCount / totalCards) * 100) : 0;
-    const msg = percent === 100 ? 'Perfect! You know them all!'
-      : percent >= 80 ? 'Impressive! Just a bit more to go!'
-      : percent >= 60 ? 'Good progress! Keep it up!'
-      : "Keep practicing — you're getting there!";
-    return (
-      <div className="max-w-3xl mx-auto space-y-6 pb-8">
-        <button onClick={() => setLearnPhase('off')} className="flex items-center gap-2 text-(--text-secondary) hover-accent text-sm">
-          <ArrowLeft className="w-4 h-4" /> Back to Flashcards
-        </button>
-        <h1 className="text-2xl font-bold">{title}</h1>
-        <ModeGrid activeMode="learn" onLearnClick={() => setLearnPhase('goal-pick')} />
-        <div className="card">
-          <h2 className="text-2xl font-bold mb-6">{msg}</h2>
-          <div className="flex flex-col sm:flex-row gap-8">
-            <div className="flex-1">
-              <p className="text-sm text-(--text-secondary) font-medium mb-4">How you're doing</p>
-              <div className="flex items-center gap-6">
-                <DonutChart percent={percent} />
-                <div className="space-y-2 flex-1">
-                  {[
-                    { label: 'Correct', count: masteredCount, color: 'bg-green-500' },
-                    { label: 'Still learning', count: learningCount, color: 'bg-orange-500' },
-                  ].map(({ label, count, color }) => (
-                    <div key={label}>
-                      <div className="flex justify-between text-sm mb-1">
-                        <span className="flex items-center gap-2"><span className={`w-3 h-3 rounded-sm inline-block ${color}`} />{label}</span>
-                        <span className="font-semibold">{count}</span>
-                      </div>
-                      <div className="w-full bg-(--bg-tertiary) rounded-full h-1.5">
-                        <div className={`h-1.5 rounded-full transition-all ${color}`} style={{ width: `${totalCards > 0 ? (count / totalCards) * 100 : 0}%` }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-            <div className="flex-1">
-              <p className="text-sm text-(--text-secondary) font-medium mb-4">Next steps</p>
-              <div className="space-y-3">
-                <button onClick={() => setLearnPhase('session')} className="btn btn-primary w-full flex items-center justify-center gap-2">
-                  <RotateCcw className="w-4 h-4" /> Study again
-                </button>
-                <button onClick={() => setLearnPhase('goal-pick')} className="btn btn-secondary w-full">Change settings</button>
-                <button onClick={() => setLearnPhase('off')} className="text-sm text-(--accent) hover-underline w-full text-center">Back to Flashcards</button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {showRestartLearnConfirm && (
-          <div className="fixed inset-0 z-[200] bg-black/60 flex items-center justify-center p-4" onClick={() => setShowRestartLearnConfirm(false)}>
-            <div className="bg-(--bg-secondary) rounded-xl max-w-md w-full p-6 space-y-4" onClick={e => e.stopPropagation()}>
-              <h3 className="text-lg font-bold">Restart Learn?</h3>
-              <p className="text-sm text-(--text-secondary)">Restarting will reset your study goal and progress — you'll see all the same terms, starting from the beginning.</p>
-              <div className="flex gap-2 justify-end">
-                <button onClick={() => setShowRestartLearnConfirm(false)} className="btn btn-secondary">Cancel</button>
-                <button onClick={() => { setShowRestartLearnConfirm(false); setLearnPhase('goal-pick'); }} className="btn btn-primary">Restart</button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
+  // Computed vars for inline learn rendering (used in main return below)
+  const learnItem        = learnQueue[learnQIdx];
+  const learnPrompt      = learnItem ? (learnConfig.answerWith === 'definition' ? learnItem.card.front : learnItem.card.back) : '';
+  const learnCorrectHtml = learnItem ? (learnConfig.answerWith === 'definition' ? learnItem.card.back  : learnItem.card.front) : '';
+  const learnPromptLabel = learnConfig.answerWith === 'definition' ? 'Term' : 'Definition';
+  const learnEndMastered = [...learnFinalResult.values()].filter(Boolean).length;
+  const learnEndLearning = [...learnFinalResult.values()].filter(v => !v).length;
+  const learnEndPercent  = cards.length > 0 ? Math.round((learnEndMastered / cards.length) * 100) : 0;
+  const learnEndMsg      = learnEndPercent === 100 ? 'Perfect! You know them all!'
+    : learnEndPercent >= 80 ? 'Impressive! Just a bit more to go!'
+    : learnEndPercent >= 60 ? 'Good progress! Keep it up!'
+    : "Keep practicing — you're getting there!";
+  const activeMode = learnPhase === 'off' ? 'flashcards' : 'learn';
+  const handleModeClick = (id: string) => {
+    if (id === 'flashcards') setLearnPhase('off');
+    else if (id === 'learn') setLearnPhase('goal-pick');
+  };
 
   if (loading) {
     return (
@@ -1017,7 +687,7 @@ export function QuizletStudy() {
     );
   }
 
-  if (sessionDone && trackProgress) {
+  if (learnPhase === 'off' && sessionDone && trackProgress) {
     return (
       <EndScreen title={title} total={queue.length} known={known} unknown={unknown}
         onRestart={() => restart()} onBack={() => navigate('/')}
@@ -1025,7 +695,7 @@ export function QuizletStudy() {
     );
   }
 
-  if (sessionDone && !trackProgress) {
+  if (learnPhase === 'off' && sessionDone && !trackProgress) {
     return (
       <EndScreen title={title} total={queue.length}
         known={new Set<number>(queue.map(c => c.id))} unknown={new Set<number>()}
@@ -1118,88 +788,323 @@ export function QuizletStudy() {
         </div>
       </div>
 
-      {/* Desktop mode grid — above card */}
+      {/* Desktop mode grid */}
       <div className="hidden sm:block">
-        <ModeGrid activeMode="flashcards" onLearnClick={() => setLearnPhase('goal-pick')} />
+        <ModeGrid activeMode={activeMode} onModeClick={handleModeClick} />
       </div>
 
-      {/* Card with 3D flip + slide-in */}
-      <div style={{ perspective: '1100px' }}>
-        <div
-          key={index}
-          className={`relative ${
-            feedback
-              ? (feedback === 'unknown' ? 'card-swipe-left' : 'card-swipe-right')
-              : (slideDir === 'right' ? 'card-slide-right' : 'card-slide-left')
-          }`}
-        >
-          {feedback && (
-            <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
-              <span
-                className={`text-4xl font-bold ${feedback === 'unknown' ? 'text-orange-400' : 'text-green-400'}`}
-              >
-                {feedback === 'unknown' ? 'Still learning' : 'Got it!'}
-              </span>
+      {/* ── FLASHCARD mode ── */}
+      {learnPhase === 'off' && (<>
+        {/* Card with 3D flip + slide-in */}
+        <div style={{ perspective: '1100px' }}>
+          <div
+            key={index}
+            className={`relative ${
+              feedback
+                ? (feedback === 'unknown' ? 'card-swipe-left' : 'card-swipe-right')
+                : (slideDir === 'right' ? 'card-slide-right' : 'card-slide-left')
+            }`}
+          >
+            {feedback && (
+              <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+                <span className={`text-4xl font-bold ${feedback === 'unknown' ? 'text-orange-400' : 'text-green-400'}`}>
+                  {feedback === 'unknown' ? 'Still learning' : 'Got it!'}
+                </span>
+              </div>
+            )}
+            <Flashcard
+              flipHook={flipHook}
+              front={{ html: renderFaceContent(false) }}
+              back={{ html: renderFaceContent(true) }}
+              style={{ height: 'clamp(16rem, 72vw, 28rem)' }}
+            />
+          </div>
+        </div>
+
+        {/* Toolbar */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="w-8 shrink-0">
+            {trackProgress && (
+              <button className={`icon-btn ${history.length === 0 ? 'opacity-30 cursor-not-allowed' : ''}`}
+                onClick={undoLast} disabled={history.length === 0} title="Undo">
+                <Undo2 className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              className={`w-12 h-12 sm:w-10 sm:h-10 rounded-full flex items-center justify-center transition-colors ${
+                trackProgress ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30 disabled:opacity-30'
+                  : 'bg-(--bg-secondary) text-(--text-secondary) hover-accent disabled:opacity-30'
+              }`}
+              onClick={() => trackProgress ? markCard(false) : goPrev()}
+              disabled={(!trackProgress && index === 0) || !!feedback}
+            >
+              {trackProgress ? <X className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
+            </button>
+            <span className="text-sm text-(--text-secondary) text-center tabular-nums whitespace-nowrap">{index + 1} / {queue.length}</span>
+            <button
+              className={`w-12 h-12 sm:w-10 sm:h-10 rounded-full flex items-center justify-center transition-colors ${
+                trackProgress ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30 disabled:opacity-30'
+                  : 'bg-(--bg-secondary) text-(--text-secondary) hover-accent disabled:opacity-30'
+              }`}
+              onClick={() => trackProgress ? markCard(true) : goNext()}
+              disabled={!!feedback}
+            >
+              {trackProgress ? <Check className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
+            </button>
+          </div>
+
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              onClick={toggleShuffle}
+              className={`icon-btn ${isShuffled ? 'text-(--accent)' : ''}`}
+              title="Shuffle"
+              style={isShuffled ? { background: 'rgba(var(--accent-rgb),0.15)' } : undefined}
+            >
+              <Shuffle className="w-4 h-4" />
+            </button>
+            <button
+              onClick={toggleTrackProgress}
+              className={`icon-btn ${trackProgress ? 'text-(--accent)' : ''}`}
+              title="Track progress"
+              style={trackProgress ? { background: 'rgba(var(--accent-rgb),0.15)' } : undefined}
+            >
+              <BarChart2 className="w-4 h-4" />
+            </button>
+            <button className="icon-btn" title="Options" onClick={() => setShowOptions(true)}>
+              <Settings className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Progress bar */}
+        <div className="w-full bg-(--bg-tertiary) rounded-full h-1 overflow-hidden">
+          <div className="h-full rounded-full transition-all duration-300"
+            style={{ width: `${progressPercent}%`, background: 'var(--accent)' }} />
+        </div>
+      </>)}
+
+      {/* ── GOAL PICK ── */}
+      {learnPhase === 'goal-pick' && (
+        <div className="card max-w-lg mx-auto text-center space-y-6 py-8">
+          <div>
+            <h2 className="text-xl font-bold mb-1">Choose a goal for this session</h2>
+            <p className="text-sm text-(--text-secondary)">This will shape how your session works.</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3 text-left">
+            {([
+              { g: 'cram' as const, title: 'Cram for a test', desc: 'Go through each term once — best for quick review.' },
+              { g: 'memorize' as const, title: 'Memorize it all', desc: 'Repeat cards until all are mastered — best for retention.' },
+            ]).map(({ g, title: t, desc }) => (
+              <button key={g}
+                onClick={() => startLearn({ ...learnConfig, goal: g })}
+                className="rounded-xl p-4 bg-(--bg-tertiary) hover:bg-(--accent)/10 hover:text-(--accent) transition-colors text-left">
+                <p className="font-semibold text-sm mb-1">{t}</p>
+                <p className="text-xs text-(--text-secondary)">{desc}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── LEARN SESSION ── */}
+      {learnPhase === 'session' && learnItem && (
+        <div className="space-y-4">
+          {/* Gear for learn settings */}
+          <div className="flex justify-end">
+            <button onClick={() => setShowLearnOptions(true)} className="icon-btn" title="Learn settings">
+              <Settings className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Segmented progress bar */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs tabular-nums text-(--text-secondary) shrink-0">{learnQIdx}</span>
+            <div className="flex-1 flex gap-0.5 h-2">
+              {Array.from({ length: Math.min(learnQueue.length, 60) }).map((_, i) => {
+                const segIdx = Math.floor((i / Math.min(learnQueue.length, 60)) * learnQueue.length);
+                return (
+                  <div key={i} className="flex-1 rounded-full transition-colors duration-300"
+                    style={{ background: segIdx < learnQIdx ? 'var(--accent)' : 'var(--bg-tertiary)' }} />
+                );
+              })}
+            </div>
+            <span className="text-xs tabular-nums text-(--text-secondary) shrink-0">{learnQueue.length}</span>
+          </div>
+
+          {/* Prompt card */}
+          <div className="card flex flex-col" style={{ minHeight: 'clamp(12rem, 50vw, 22rem)' }}>
+            <div className="px-5 pt-4 shrink-0">
+              <span className="text-xs text-(--text-secondary) uppercase tracking-wide">{learnPromptLabel}</span>
+            </div>
+            <div className="flex-1 flex items-center justify-center p-6 text-center">
+              <div className="text-2xl font-medium leading-snug" dangerouslySetInnerHTML={{ __html: learnPrompt }} />
+            </div>
+          </div>
+
+          {/* Multiple choice */}
+          {learnItem.qtype === 'mc' && (
+            <div className="space-y-3">
+              <p className="text-sm text-(--text-secondary) font-medium">Choose an answer</p>
+              <div className="grid grid-cols-2 gap-2">
+                {learnMCOptions.map((opt, i) => {
+                  const optHtml   = learnConfig.answerWith === 'definition' ? opt.back : opt.front;
+                  const isCorrect = opt.id === learnItem.card.id;
+                  const isSelected = learnMCSelected === opt.id;
+                  let cls = 'card text-left p-4 w-full text-sm font-medium transition-colors flex items-start gap-3';
+                  if (learnShowResult) {
+                    if (isCorrect)       cls += ' !border-green-500 bg-green-500/10';
+                    else if (isSelected) cls += ' !border-red-500 bg-red-500/10';
+                    else                 cls += ' opacity-40';
+                  }
+                  return (
+                    <button key={opt.id} disabled={learnShowResult} className={cls}
+                      onClick={() => {
+                        if (learnShowResult) return;
+                        setLearnMCSelected(opt.id);
+                        setLearnShowResult(true);
+                        setTimeout(() => learnAdvance(isCorrect), isCorrect ? 700 : 1300);
+                      }}
+                    >
+                      <span className="shrink-0 w-6 h-6 rounded-md bg-(--bg-tertiary) flex items-center justify-center text-xs font-bold text-(--text-secondary)">{i + 1}</span>
+                      <div dangerouslySetInnerHTML={{ __html: optHtml }} />
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
-          <Flashcard
-            flipHook={flipHook}
-            front={{ html: renderFaceContent(false) }}
-            back={{ html: renderFaceContent(true) }}
-            style={{ height: 'clamp(16rem, 72vw, 28rem)' }}
-          />
-        </div>
-      </div>
 
-      {/* Bottom controls */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="w-8 shrink-0">
-          {trackProgress && (
-            <button className={`icon-btn ${history.length === 0 ? 'opacity-30 cursor-not-allowed' : ''}`}
-              onClick={undoLast} disabled={history.length === 0} title="Undo">
-              <Undo2 className="w-4 h-4" />
-            </button>
+          {/* Written */}
+          {learnItem.qtype === 'written' && !learnNeedRetype && (
+            <div className="space-y-3">
+              <input
+                ref={learnWrittenRef}
+                type="text"
+                placeholder="Type your answer…"
+                value={learnWrittenText}
+                onChange={e => setLearnWrittenText(e.target.value)}
+                disabled={!!learnWrittenResult}
+                autoFocus
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && !learnWrittenResult) {
+                    const ok = gradeAnswer(learnWrittenText, learnCorrectHtml, learnConfig.grading);
+                    setLearnWrittenResult(ok ? 'correct' : 'wrong');
+                  }
+                }}
+                className={`input w-full text-base py-3 ${learnWrittenResult === 'correct' ? 'border-green-500' : learnWrittenResult === 'wrong' ? 'border-red-500' : ''}`}
+              />
+              {learnWrittenResult && (
+                <div className={`rounded-lg p-3 text-sm ${learnWrittenResult === 'correct' ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
+                  {learnWrittenResult === 'correct'
+                    ? <div className="flex items-center gap-2"><Check className="w-4 h-4" /> Correct!</div>
+                    : <div>
+                        <div className="flex items-center gap-2 mb-1"><X className="w-4 h-4" /> Incorrect</div>
+                        <p className="text-white/80">Correct answer: <span className="font-semibold" dangerouslySetInnerHTML={{ __html: learnCorrectHtml }} /></p>
+                      </div>
+                  }
+                </div>
+              )}
+              {!learnWrittenResult
+                ? <button onClick={() => { const ok = gradeAnswer(learnWrittenText, learnCorrectHtml, learnConfig.grading); setLearnWrittenResult(ok ? 'correct' : 'wrong'); }} className="btn btn-primary w-full">Check Answer</button>
+                : <button onClick={() => {
+                    const wasCorrect = learnWrittenResult === 'correct';
+                    if (!wasCorrect && learnConfig.retypeWrong) { setLearnNeedRetype(true); setLearnRetypeText(''); }
+                    else learnAdvance(wasCorrect);
+                  }} className="btn btn-secondary w-full">Continue</button>
+              }
+            </div>
+          )}
+
+          {/* Written retype gate */}
+          {learnItem.qtype === 'written' && learnNeedRetype && (
+            <div className="space-y-3">
+              <p className="text-sm text-(--text-secondary)">Type the correct answer to continue:</p>
+              <input type="text" placeholder="Retype the correct answer…" value={learnRetypeText}
+                onChange={e => setLearnRetypeText(e.target.value)} autoFocus
+                onKeyDown={e => { if (e.key === 'Enter' && gradeAnswer(learnRetypeText, learnCorrectHtml, 'moderate')) { setLearnNeedRetype(false); learnAdvance(false); } }}
+                className="input w-full text-base py-3" />
+              <button onClick={() => { if (gradeAnswer(learnRetypeText, learnCorrectHtml, 'moderate')) { setLearnNeedRetype(false); learnAdvance(false); } }} className="btn btn-primary w-full">Submit</button>
+            </div>
+          )}
+
+          {/* Flashcard confirmation */}
+          {learnItem.qtype === 'flashcard' && (
+            <div className="space-y-3">
+              <div className="card cursor-pointer flex flex-col items-center justify-center text-center p-6 select-none"
+                style={{ minHeight: 'clamp(10rem, 40vw, 18rem)' }}
+                onClick={() => setLearnFlipped(f => !f)}>
+                {!learnFlipped
+                  ? <div className="space-y-2">
+                      <div className="text-2xl font-medium leading-snug" dangerouslySetInnerHTML={{ __html: learnPrompt }} />
+                      <p className="text-xs text-(--text-secondary) mt-3">Tap to reveal answer</p>
+                    </div>
+                  : <div className="text-2xl font-medium leading-snug" dangerouslySetInnerHTML={{ __html: learnCorrectHtml }} />
+                }
+              </div>
+              {learnFlipped && (
+                <div className="flex gap-2">
+                  <button onClick={() => { setLearnFlipped(false); learnAdvance(false); }}
+                    className="flex-1 py-3 rounded-lg bg-orange-500/10 text-orange-400 hover:bg-orange-500/20 font-medium text-sm flex items-center justify-center gap-2 transition-colors">
+                    <X className="w-4 h-4" /> Still learning
+                  </button>
+                  <button onClick={() => { setLearnFlipped(false); learnAdvance(true); }}
+                    className="flex-1 btn btn-primary flex items-center justify-center gap-2">
+                    <Check className="w-4 h-4" /> Got it
+                  </button>
+                </div>
+              )}
+            </div>
           )}
         </div>
+      )}
 
-        <div className="flex items-center gap-3">
-          <button
-            className={`w-12 h-12 sm:w-10 sm:h-10 rounded-full flex items-center justify-center transition-colors ${
-              trackProgress ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30 disabled:opacity-30'
-                : 'bg-(--bg-secondary) text-(--text-secondary) hover-accent disabled:opacity-30'
-            }`}
-            onClick={() => trackProgress ? markCard(false) : goPrev()}
-            disabled={(!trackProgress && index === 0) || !!feedback}
-          >
-            {trackProgress ? <X className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
-          </button>
-          <span className="text-sm text-(--text-secondary) text-center tabular-nums whitespace-nowrap">{index + 1} / {queue.length}</span>
-          <button
-            className={`w-12 h-12 sm:w-10 sm:h-10 rounded-full flex items-center justify-center transition-colors ${
-              trackProgress ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30 disabled:opacity-30'
-                : 'bg-(--bg-secondary) text-(--text-secondary) hover-accent disabled:opacity-30'
-            }`}
-            onClick={() => trackProgress ? markCard(true) : goNext()}
-            disabled={!!feedback}
-          >
-            {trackProgress ? <Check className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
-          </button>
+      {/* ── LEARN END ── */}
+      {learnPhase === 'end' && (
+        <div className="card">
+          <h2 className="text-2xl font-bold mb-6">{learnEndMsg}</h2>
+          <div className="flex flex-col sm:flex-row gap-8">
+            <div className="flex-1">
+              <p className="text-sm text-(--text-secondary) font-medium mb-4">How you're doing</p>
+              <div className="flex items-center gap-6">
+                <DonutChart percent={learnEndPercent} />
+                <div className="space-y-2 flex-1">
+                  {[
+                    { label: 'Correct',        count: learnEndMastered, color: 'bg-green-500' },
+                    { label: 'Still learning', count: learnEndLearning, color: 'bg-orange-500' },
+                  ].map(({ label, count, color }) => (
+                    <div key={label}>
+                      <div className="flex justify-between text-sm mb-1">
+                        <span className="flex items-center gap-2"><span className={`w-3 h-3 rounded-sm inline-block ${color}`} />{label}</span>
+                        <span className="font-semibold">{count}</span>
+                      </div>
+                      <div className="w-full bg-(--bg-tertiary) rounded-full h-1.5">
+                        <div className={`h-1.5 rounded-full transition-all ${color}`} style={{ width: `${cards.length > 0 ? (count / cards.length) * 100 : 0}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="flex-1">
+              <p className="text-sm text-(--text-secondary) font-medium mb-4">Next steps</p>
+              <div className="space-y-3">
+                <button onClick={() => setLearnPhase('session')} className="btn btn-primary w-full flex items-center justify-center gap-2">
+                  <RotateCcw className="w-4 h-4" /> Study again
+                </button>
+                <button onClick={() => setLearnPhase('goal-pick')} className="btn btn-secondary w-full">Change settings</button>
+                <button onClick={() => setLearnPhase('off')} className="text-sm text-(--accent) hover-underline w-full text-center">Back to Flashcards</button>
+              </div>
+            </div>
+          </div>
         </div>
+      )}
 
-        <button className="icon-btn shrink-0" title="Options" onClick={() => setShowOptions(true)}>
-          <Settings className="w-4 h-4" />
-        </button>
-      </div>
-
-      {/* Progress bar */}
-      <div className="w-full bg-(--bg-tertiary) rounded-full h-1 overflow-hidden">
-        <div className="h-full rounded-full transition-all duration-300"
-          style={{ width: `${progressPercent}%`, background: 'var(--accent)' }} />
-      </div>
-
-      {/* Mobile mode grid — below progress bar */}
+      {/* Mobile mode grid */}
       <div className="block sm:hidden">
-        <ModeGrid mobile activeMode="flashcards" onLearnClick={() => setLearnPhase('goal-pick')} />
+        <ModeGrid mobile activeMode={activeMode} onModeClick={handleModeClick} />
       </div>
 
       {/* Card list */}
@@ -1331,29 +1236,6 @@ export function QuizletStudy() {
               </button>
             </div>
 
-            {/* Track progress */}
-            <div className="p-6 flex items-center justify-between gap-4">
-              <div>
-                <p className="font-medium text-sm">Track progress</p>
-                <p className="text-xs text-(--text-secondary) mt-0.5">Mark cards as known or still learning. Turns nav buttons into ✓ / ✗.</p>
-              </div>
-              <button onClick={toggleTrackProgress} className="shrink-0">
-                <div className={`relative w-9 h-5 rounded-full transition-colors ${trackProgress ? 'bg-(--accent)' : 'bg-(--bg-tertiary)'}`}>
-                  <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${trackProgress ? 'translate-x-4' : 'translate-x-0.5'}`} />
-                </div>
-              </button>
-            </div>
-
-            {/* Shuffle */}
-            <div className="p-6 flex items-center justify-between gap-4">
-              <p className="font-medium text-sm">Shuffle</p>
-              <button onClick={() => { toggleShuffle(); }} className="shrink-0">
-                <div className={`relative w-9 h-5 rounded-full transition-colors ${isShuffled ? 'bg-(--accent)' : 'bg-(--bg-tertiary)'}`}>
-                  <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${isShuffled ? 'translate-x-4' : 'translate-x-0.5'}`} />
-                </div>
-              </button>
-            </div>
-
             {/* Autoplay */}
             {!trackProgress && (
               <div className="p-6 flex items-center justify-between gap-4">
@@ -1437,6 +1319,80 @@ export function QuizletStudy() {
               >
                 Restart Flashcards
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Learn settings panel */}
+      {showLearnOptions && (
+        <div className="fixed inset-0 z-[100] flex justify-end items-stretch bg-black/50" onClick={() => setShowLearnOptions(false)}>
+          <div className="options-panel bg-(--bg-secondary) border-l border-(--bg-tertiary) w-full max-w-sm self-stretch overflow-y-auto shadow-2xl flex flex-col divide-y divide-white/8"
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-6 shrink-0" style={{ paddingTop: 'calc(1.5rem + env(safe-area-inset-top, 0px))' }}>
+              <h2 className="text-xl font-bold">Learn Settings</h2>
+              <button className="icon-btn" onClick={() => setShowLearnOptions(false)}><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-6 flex items-center justify-between gap-4">
+              <p className="font-medium text-sm">Answer with</p>
+              <select value={learnConfig.answerWith} onChange={e => setLearnConfig(prev => ({ ...prev, answerWith: e.target.value as 'term' | 'definition' }))} className="input text-sm py-1.5 cursor-pointer">
+                <option value="definition">Definition</option>
+                <option value="term">Term</option>
+              </select>
+            </div>
+            <div className="p-6 space-y-3">
+              <p className="font-medium text-sm">Question types</p>
+              {([{ key: 'mc' as const, label: 'Multiple choice' }, { key: 'written' as const, label: 'Written' }]).map(({ key, label }) => (
+                <div key={key} className="flex items-center justify-between">
+                  <span className="text-sm text-(--text-secondary)">{label}</span>
+                  <button onClick={() => setLearnConfig(prev => ({ ...prev, [key]: !prev[key] }))}
+                    className={`relative w-9 h-5 rounded-full transition-colors ${learnConfig[key] ? 'bg-(--accent)' : 'bg-(--bg-tertiary)'}`}>
+                    <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${learnConfig[key] ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                  </button>
+                </div>
+              ))}
+              <p className="text-xs text-(--text-secondary)">Flashcards always included as final stage.</p>
+            </div>
+            <div className="p-6 flex items-center justify-between gap-4">
+              <p className="font-medium text-sm">Grading</p>
+              <select value={learnConfig.grading} onChange={e => setLearnConfig(prev => ({ ...prev, grading: e.target.value as 'relaxed' | 'moderate' | 'strict' }))} className="input text-sm py-1.5 cursor-pointer">
+                <option value="relaxed">Relaxed</option>
+                <option value="moderate">Moderate</option>
+                <option value="strict">Strict</option>
+              </select>
+            </div>
+            {learnConfig.written && (
+              <div className="p-6 flex items-center justify-between gap-4">
+                <div>
+                  <p className="font-medium text-sm">Retype correct answers</p>
+                  <p className="text-xs text-(--text-secondary) mt-0.5">Type correct answer after getting written wrong.</p>
+                </div>
+                <button onClick={() => setLearnConfig(prev => ({ ...prev, retypeWrong: !prev.retypeWrong }))} className="shrink-0">
+                  <div className={`relative w-9 h-5 rounded-full transition-colors ${learnConfig.retypeWrong ? 'bg-(--accent)' : 'bg-(--bg-tertiary)'}`}>
+                    <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${learnConfig.retypeWrong ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                  </div>
+                </button>
+              </div>
+            )}
+            <div className="p-6" style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))' }}>
+              <button className="text-sm text-(--accent) font-medium hover-underline"
+                onClick={() => { setShowLearnOptions(false); setShowRestartLearnConfirm(true); }}>
+                Restart Learn
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Restart Learn confirm */}
+      {showRestartLearnConfirm && (
+        <div className="fixed inset-0 z-[200] bg-black/60 flex items-center justify-center p-4" onClick={() => setShowRestartLearnConfirm(false)}>
+          <div className="bg-(--bg-secondary) rounded-xl max-w-md w-full p-6 space-y-4" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-bold">Restart Learn?</h3>
+            <p className="text-sm text-(--text-secondary)">Restarting will reset your study goal and progress — you'll see all the same terms, starting from the beginning.</p>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setShowRestartLearnConfirm(false)} className="btn btn-secondary">Cancel</button>
+              <button onClick={() => { setShowRestartLearnConfirm(false); setLearnPhase('goal-pick'); }} className="btn btn-primary">Restart</button>
             </div>
           </div>
         </div>

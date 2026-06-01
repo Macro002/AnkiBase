@@ -315,8 +315,10 @@ export function QuizletStudy() {
   const [editingCard, setEditingCard] = useState<QuizletCard | null>(null);
   const [editSaving, setEditSaving] = useState(false);
   const [editImageUrl, setEditImageUrl] = useState('');
+  const [editImageDrag, setEditImageDrag] = useState(false);
   const frontEditRef = useRef<HTMLDivElement>(null);
   const backEditRef = useRef<HTMLDivElement>(null);
+  const editImageInputRef = useRef<HTMLInputElement>(null);
 
   // Learn mode state
   const [learnPhase, setLearnPhase] = useState<LearnPhase>('off');
@@ -505,6 +507,12 @@ export function QuizletStudy() {
   const openEdit = useCallback((card: QuizletCard) => {
     setEditingCard(card);
   }, []);
+
+  const loadImageFile = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = e => setEditImageUrl(e.target?.result as string);
+    reader.readAsDataURL(file);
+  };
 
   useEffect(() => {
     if (!editingCard) return;
@@ -1449,22 +1457,36 @@ export function QuizletStudy() {
               {/* Image */}
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-(--text-secondary) mb-1.5">Image</label>
-                {editImageUrl && (
-                  <div className="flex items-center gap-3 mb-2 p-2 bg-(--bg-tertiary) rounded-lg">
-                    <img src={editImageUrl} alt="" className="w-14 h-14 object-contain rounded shrink-0" onError={e => (e.currentTarget.style.display = 'none')} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs text-(--text-secondary) truncate">{editImageUrl}</p>
+                <input
+                  ref={editImageInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) loadImageFile(f); e.target.value = ''; }}
+                />
+                {editImageUrl ? (
+                  <div className="flex items-center gap-3 p-2 bg-(--bg-tertiary) rounded-lg">
+                    <img src={editImageUrl} alt="" className="w-14 h-14 object-contain rounded shrink-0" />
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <p className="text-xs text-(--text-secondary)">Image attached</p>
+                      <button
+                        onClick={() => editImageInputRef.current?.click()}
+                        className="text-xs text-(--accent) hover:underline"
+                      >Replace</button>
                     </div>
                     <button onClick={() => setEditImageUrl('')} className="icon-btn icon-btn-danger shrink-0"><X className="w-3.5 h-3.5" /></button>
                   </div>
+                ) : (
+                  <div
+                    onClick={() => editImageInputRef.current?.click()}
+                    onDragOver={e => { e.preventDefault(); setEditImageDrag(true); }}
+                    onDragLeave={() => setEditImageDrag(false)}
+                    onDrop={e => { e.preventDefault(); setEditImageDrag(false); const f = e.dataTransfer.files[0]; if (f) loadImageFile(f); }}
+                    className={`flex flex-col items-center justify-center gap-1.5 p-4 rounded-lg border-2 border-dashed cursor-pointer transition-colors text-sm ${editImageDrag ? 'border-(--accent) bg-(--accent)/5' : 'border-(--bg-tertiary) text-(--text-secondary) hover:border-(--accent)/50'}`}
+                  >
+                    Drop image or click to upload
+                  </div>
                 )}
-                <input
-                  type="url"
-                  placeholder="Image URL (leave empty for no image)"
-                  value={editImageUrl}
-                  onChange={e => setEditImageUrl(e.target.value)}
-                  className="input w-full text-sm"
-                />
               </div>
 
               {/* Actions */}

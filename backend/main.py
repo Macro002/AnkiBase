@@ -2231,7 +2231,11 @@ async def get_models(client: AnkiConnectClient = Depends(get_anki_client), _: st
 
 
 def _scrape_ankiweb_download_url(deck_url: str) -> tuple:
-    """Open the AnkiWeb shared deck page, click Download, return (signed_url, deck_title)."""
+    """Open the AnkiWeb shared deck page, click Download, return (signed_url, deck_title, cookies).
+
+    The browser's own request to the download endpoint is aborted so the JWT token
+    remains unconsumed and can be used by the subsequent httpx download.
+    """
     import time
     from invisible_playwright import InvisiblePlaywright
     from invisible_playwright import download as ip_download
@@ -2245,11 +2249,14 @@ def _scrape_ankiweb_download_url(deck_url: str) -> tuple:
             ctx = browser.new_context()
             page = ctx.new_page()
 
-            def on_request(req):
-                if '/svc/shared/download-deck/' in req.url:
-                    state['dl_url'] = req.url
+            def handle_route(route):
+                if '/svc/shared/download-deck/' in route.request.url:
+                    state['dl_url'] = route.request.url
+                    route.abort()  # prevent browser from consuming the token
+                else:
+                    route.continue_()
 
-            page.on('request', on_request)
+            page.route('**/*', handle_route)
             page.goto(deck_url, timeout=30000)
             time.sleep(4)
 
@@ -2262,13 +2269,15 @@ def _scrape_ankiweb_download_url(deck_url: str) -> tuple:
                 const btn = Array.from(document.querySelectorAll('button')).find(b => /download/i.test(b.textContent));
                 if (btn) btn.click();
             }""")
-            time.sleep(3)
+            time.sleep(2)
+
+            cookies = {c['name']: c['value'] for c in ctx.cookies()}
             ctx.close()
 
     if not state['dl_url']:
         raise Exception("Could not find download link. The deck may require login or be unavailable.")
 
-    return state['dl_url'], state['title'] or 'AnkiWeb Deck'
+    return state['dl_url'], state['title'] or 'AnkiWeb Deck', cookies
 
 
 class AnkiWebUrlImportRequest(BaseModel):
@@ -2288,13 +2297,18 @@ async def import_ankiweb_url(
 
     loop = asyncio.get_event_loop()
     try:
-        dl_url, deck_title = await loop.run_in_executor(None, _scrape_ankiweb_download_url, url)
+        dl_url, deck_title, cookies = await loop.run_in_executor(None, _scrape_ankiweb_download_url, url)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
     import httpx as _httpx
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0',
+        'Accept': '*/*',
+        'Referer': url,
+    }
     async with _httpx.AsyncClient(follow_redirects=True, timeout=300) as http:
-        resp = await http.get(dl_url, headers={'User-Agent': 'Mozilla/5.0'})
+        resp = await http.get(dl_url, headers=headers, cookies=cookies)
         if resp.status_code != 200:
             raise HTTPException(status_code=500, detail=f"Download failed (HTTP {resp.status_code})")
 

@@ -583,29 +583,63 @@ function AnkiImport() {
   );
 }
 
+function QuizletBrowse() {
+  return (
+    <>
+      <div className="card">
+        <h3 className="font-semibold mb-3">Browse Quizlet</h3>
+        <p className="text-(--text-secondary) text-sm mb-4">
+          Search Quizlet for decks on any topic, then paste the deck link above to import.
+        </p>
+        <a
+          href="https://quizlet.com/search"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="btn btn-secondary inline-flex items-center gap-2"
+        >
+          <ExternalLink className="w-4 h-4" />
+          Search Quizlet Decks
+        </a>
+      </div>
+
+      <div className="card">
+        <h3 className="font-semibold mb-3">How to Import</h3>
+        <ol className="list-decimal list-inside space-y-2 text-(--text-secondary) text-sm">
+          <li>Search for a deck on Quizlet using the link above</li>
+          <li>Open the deck page and copy its URL</li>
+          <li>Paste it in the import field above and click Preview</li>
+          <li>Review the cards, then click Save to import them</li>
+        </ol>
+      </div>
+    </>
+  );
+}
+
 export function Import() {
   const [tab, setTab] = useState<'anki' | 'quizlet'>('anki');
 
-  const tabs = [
-    { id: 'anki' as const, label: 'Anki' },
-    { id: 'quizlet' as const, label: 'Quizlet' },
-  ];
-
   return (
     <div className="space-y-5">
-      {/* Tab bar */}
-      <div className="flex gap-1 p-1 bg-(--bg-tertiary) rounded-xl">
-        {tabs.map(t => (
+      {/* Sliding tab bar */}
+      <div className="relative flex p-1 bg-(--bg-tertiary) rounded-xl">
+        {/* Sliding pill */}
+        <div
+          className="absolute top-1 bottom-1 rounded-lg transition-all duration-200 ease-out"
+          style={{
+            width: 'calc(50% - 4px)',
+            left: tab === 'anki' ? '4px' : 'calc(50%)',
+            background: 'rgba(var(--accent-rgb), 0.15)',
+          }}
+        />
+        {(['anki', 'quizlet'] as const).map(id => (
           <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`flex-1 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
-              tab === t.id
-                ? 'bg-(--bg-primary) text-white'
-                : 'text-(--text-secondary) hover:text-white'
+            key={id}
+            onClick={() => setTab(id)}
+            className={`relative z-10 flex-1 px-4 py-2 rounded-lg text-sm font-semibold transition-colors capitalize ${
+              tab === id ? 'text-(--accent)' : 'text-(--text-secondary) hover:text-white'
             }`}
           >
-            {t.label}
+            {id === 'anki' ? 'Anki' : 'Quizlet'}
           </button>
         ))}
       </div>
@@ -616,7 +650,12 @@ export function Import() {
           <AnkiImport />
         </div>
       )}
-      {tab === 'quizlet' && <QuizletImport />}
+      {tab === 'quizlet' && (
+        <div className="space-y-4">
+          <QuizletImport />
+          <QuizletBrowse />
+        </div>
+      )}
     </div>
   );
 }

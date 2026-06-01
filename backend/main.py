@@ -2043,7 +2043,14 @@ def _scrape_quizlet_sync(url: str) -> dict:
     from xvfbwrapper import Xvfb
     ip_download.ensure_binary()
 
-    EXTRACT_JS = '''() => {
+    CLICK_SEE_MORE_JS = """() => {
+        const b = Array.from(document.querySelectorAll("button"))
+                    .find(b => b.textContent.trim() === "See more");
+        if (b) { b.scrollIntoView(); b.click(); return true; }
+        return false;
+    }"""
+
+    EXTRACT_JS = """() => {
         const terms = Array.from(document.querySelectorAll(".TermText"));
         const cards = [];
         for (let i = 0; i + 1 < terms.length; i += 2) {
@@ -2064,7 +2071,7 @@ def _scrape_quizlet_sync(url: str) -> dict:
             });
         }
         return cards;
-    }'''
+    }"""
 
     def _unwrap_cdn_image(img_url):
         if not img_url:
@@ -2078,52 +2085,28 @@ def _scrape_quizlet_sync(url: str) -> dict:
             page.goto(url, timeout=45000)
             time.sleep(5)
 
-            title = page.evaluate('''() => {
+            title = page.evaluate("""() => {
                 const h1 = document.querySelector("h1");
                 return h1 ? h1.textContent.trim() : document.title.replace(" | Quizlet", "").trim();
-            }''')
+            }""")
 
-            # Try to read total card count shown on the page
-            total_expected = page.evaluate('''() => {
-                const allText = document.body.innerText;
-                const m = allText.match(/\b(\d+)\s+terms?\b/i);
-                return m ? parseInt(m[1]) : null;
-            }''')
-
-            # Scroll incrementally, deduplicating by (front, back) to handle virtual lists
-            seen = {}        # (front, back) -> image
-            seen_order = []  # insertion-order keys
-            stall = 0
-
-            for _ in range(80):
-                batch = page.evaluate(EXTRACT_JS)
-                added = 0
-                for c in batch:
-                    key = (c['front'], c['back'])
-                    if key not in seen:
-                        seen[key] = c['image']
-                        seen_order.append(key)
-                        added += 1
-
-                if total_expected and len(seen) >= total_expected:
+            # Click "See more" until all cards are loaded
+            for _ in range(60):
+                page.evaluate("() => window.scrollTo(0, document.body.scrollHeight)")
+                time.sleep(0.8)
+                clicked = page.evaluate(CLICK_SEE_MORE_JS)
+                if not clicked:
                     break
-
-                if added == 0:
-                    stall += 1
-                    if stall >= 3:
-                        break
-                else:
-                    stall = 0
-
-                page.evaluate('() => window.scrollTo(0, document.body.scrollHeight)')
                 time.sleep(1.5)
 
-    if not seen_order:
+            cards_raw = page.evaluate(EXTRACT_JS)
+
+    if not cards_raw:
         raise Exception("No flashcard terms found. The deck may be private or the URL is invalid.")
 
     cards = [
-        {"front": k[0], "back": k[1], "image": _unwrap_cdn_image(seen[k])}
-        for k in seen_order
+        {"front": c["front"], "back": c["back"], "image": _unwrap_cdn_image(c["image"])}
+        for c in cards_raw
     ]
     return {"title": title or "Quizlet Import", "cards": cards}
 

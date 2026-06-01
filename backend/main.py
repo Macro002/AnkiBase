@@ -2230,6 +2230,100 @@ async def get_models(client: AnkiConnectClient = Depends(get_anki_client), _: st
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _scrape_ankiweb_download_url(deck_url: str) -> tuple:
+    """Open the AnkiWeb shared deck page, click Download, return (signed_url, deck_title)."""
+    import time
+    from invisible_playwright import InvisiblePlaywright
+    from invisible_playwright import download as ip_download
+    from xvfbwrapper import Xvfb
+    ip_download.ensure_binary()
+
+    state = {'dl_url': None, 'title': None}
+
+    with Xvfb():
+        with InvisiblePlaywright(headless=False) as browser:
+            ctx = browser.new_context()
+            page = ctx.new_page()
+
+            def on_request(req):
+                if '/svc/shared/download-deck/' in req.url:
+                    state['dl_url'] = req.url
+
+            page.on('request', on_request)
+            page.goto(deck_url, timeout=30000)
+            time.sleep(4)
+
+            state['title'] = page.evaluate("""() => {
+                const h1 = document.querySelector('h1');
+                return h1 ? h1.textContent.trim() : document.title.replace(' - AnkiWeb', '').trim();
+            }""")
+
+            page.evaluate("""() => {
+                const btn = Array.from(document.querySelectorAll('button')).find(b => /download/i.test(b.textContent));
+                if (btn) btn.click();
+            }""")
+            time.sleep(3)
+            ctx.close()
+
+    if not state['dl_url']:
+        raise Exception("Could not find download link. The deck may require login or be unavailable.")
+
+    return state['dl_url'], state['title'] or 'AnkiWeb Deck'
+
+
+class AnkiWebUrlImportRequest(BaseModel):
+    url: str
+
+
+@app.post("/api/import/ankiweb-url")
+async def import_ankiweb_url(
+    request: AnkiWebUrlImportRequest,
+    client: AnkiConnectClient = Depends(get_anki_client),
+    _: str = Depends(require_auth),
+):
+    import re as _re, asyncio
+    url = request.url.strip()
+    if not _re.match(r'https?://(www\.)?ankiweb\.net/shared/info/\d+', url):
+        raise HTTPException(status_code=400, detail="Invalid URL. Expected: https://ankiweb.net/shared/info/<id>")
+
+    loop = asyncio.get_event_loop()
+    try:
+        dl_url, deck_title = await loop.run_in_executor(None, _scrape_ankiweb_download_url, url)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    import httpx as _httpx
+    async with _httpx.AsyncClient(follow_redirects=True, timeout=300) as http:
+        resp = await http.get(dl_url, headers={'User-Agent': 'Mozilla/5.0'})
+        if resp.status_code != 200:
+            raise HTTPException(status_code=500, detail=f"Download failed (HTTP {resp.status_code})")
+
+    active_account = get_active_account()
+    if not active_account:
+        raise HTTPException(status_code=400, detail="No active account")
+
+    export_dir = f"/opt/ankibase/containers/{active_account['container_name']}/export"
+    os.makedirs(export_dir, exist_ok=True)
+
+    cd = resp.headers.get('content-disposition', '')
+    m = _re.search(r'filename="?([^";\n]+)', cd)
+    filename = m.group(1).strip() if m else f"ankiweb_{url.rstrip('/').split('/')[-1]}.apkg"
+    if not filename.endswith('.apkg'):
+        filename += '.apkg'
+
+    file_path = os.path.join(export_dir, filename)
+    try:
+        with open(file_path, 'wb') as f:
+            f.write(resp.content)
+        await client.import_package(f"/export/{filename}")
+        return {"success": True, "message": f'Successfully imported "{deck_title}"', "deck_title": deck_title}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+
+
 # Import deck endpoint
 @app.post("/api/import")
 async def import_deck(

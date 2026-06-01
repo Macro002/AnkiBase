@@ -3,6 +3,83 @@ import { useTranslation } from 'react-i18next';
 import { Upload, ExternalLink, Loader2, CheckCircle, AlertCircle, FileArchive, X, Link } from 'lucide-react';
 import { importDeck, quizlet } from '../api';
 
+function AnkiUrlImport() {
+  const [url, setUrl] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [error, setError] = useState('');
+
+  const handleImport = async () => {
+    if (!url.trim()) return;
+    setImporting(true);
+    setError('');
+    setResult(null);
+    try {
+      const data = await importDeck.fromAnkiWeb(url.trim());
+      setResult({ success: true, message: data.message });
+      setUrl('');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Import failed');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  return (
+    <div className="card space-y-4">
+      <div className="flex items-center gap-3">
+        <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-(--accent)/15">
+          <Link className="w-4 h-4 text-(--accent)" />
+        </div>
+        <div>
+          <h3 className="font-semibold">Import from AnkiWeb</h3>
+          <p className="text-sm text-(--text-secondary)">Paste a shared deck link to download and import directly</p>
+        </div>
+      </div>
+
+      <div className="flex gap-2">
+        <input
+          className="input flex-1"
+          placeholder="https://ankiweb.net/shared/info/123456789"
+          value={url}
+          onChange={e => setUrl(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && !importing && handleImport()}
+          disabled={importing}
+        />
+        <button
+          className="btn btn-primary flex items-center gap-2 shrink-0"
+          onClick={handleImport}
+          disabled={importing || !url.trim()}
+        >
+          {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+          {importing ? 'Importing...' : 'Import'}
+        </button>
+      </div>
+
+      {importing && (
+        <p className="text-sm text-(--text-secondary) flex items-center gap-2">
+          <Loader2 className="w-3 h-3 animate-spin" />
+          Opening deck page and downloading — large decks may take a minute...
+        </p>
+      )}
+
+      {error && (
+        <div className="flex items-center gap-2 text-sm text-(--error)">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          {error}
+        </div>
+      )}
+
+      {result && (
+        <div className={`flex items-center gap-2 text-sm p-3 rounded-lg ${result.success ? 'bg-green-400/10 text-green-400' : 'bg-red-400/10 text-red-400'}`}>
+          {result.success ? <CheckCircle className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
+          {result.message}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface ImportState {
   fileName: string;
   fileSize: number;
@@ -215,7 +292,7 @@ function QuizletImport() {
   );
 }
 
-export function Import() {
+function AnkiImport() {
   const { t } = useTranslation();
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -325,16 +402,7 @@ export function Import() {
   };
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-xl font-bold">{t('import.title')}</h2>
-
-      <p className="text-(--text-secondary)">
-        {t('import.description', 'Import Anki deck packages (.apkg files) to add new decks or merge cards into existing ones.')}
-      </p>
-
-      {/* Quizlet import */}
-      <QuizletImport />
-
+    <div className="space-y-4">
       {/* Restored import notice */}
       {restoredImport && !uploading && (
         <div className="card border-2 border-yellow-500/30 bg-yellow-500/10">
@@ -511,6 +579,44 @@ export function Import() {
           animation: shimmer 1.5s infinite;
         }
       `}</style>
+    </div>
+  );
+}
+
+export function Import() {
+  const [tab, setTab] = useState<'anki' | 'quizlet'>('anki');
+
+  const tabs = [
+    { id: 'anki' as const, label: 'Anki' },
+    { id: 'quizlet' as const, label: 'Quizlet' },
+  ];
+
+  return (
+    <div className="space-y-5">
+      {/* Tab bar */}
+      <div className="flex gap-1 p-1 bg-(--bg-tertiary) rounded-xl">
+        {tabs.map(t => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`flex-1 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+              tab === t.id
+                ? 'bg-(--bg-primary) text-white'
+                : 'text-(--text-secondary) hover:text-white'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'anki' && (
+        <div className="space-y-4">
+          <AnkiUrlImport />
+          <AnkiImport />
+        </div>
+      )}
+      {tab === 'quizlet' && <QuizletImport />}
     </div>
   );
 }

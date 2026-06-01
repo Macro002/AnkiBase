@@ -456,6 +456,11 @@ export const importDeck = {
       xhr.send(formData);
     });
   },
+  fromAnkiWeb: (url: string) =>
+    fetchAPI<{ success: boolean; message: string; deck_title: string }>('/import/ankiweb-url', {
+      method: 'POST',
+      body: JSON.stringify({ url }),
+    }),
 };
 
 // Stats

@@ -11,12 +11,15 @@ interface ImportState {
   progress: number;
 }
 
+type QuizletCard = { front: string; back: string; image?: string | null };
+
 function QuizletImport() {
   const [url, setUrl] = useState('');
   const [scraping, setScraping] = useState(false);
-  const [preview, setPreview] = useState<{ title: string; cards: { front: string; back: string; image?: string | null }[] } | null>(null);
+  const [preview, setPreview] = useState<{ title: string; cards: QuizletCard[] } | null>(null);
   const [deckName, setDeckName] = useState('');
   const [importing, setImporting] = useState(false);
+  const [imgDownload, setImgDownload] = useState<{ done: number; total: number } | null>(null);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
   const [error, setError] = useState('');
 
@@ -37,21 +40,63 @@ function QuizletImport() {
     }
   };
 
-  const handleImport = async () => {
+  const doSave = async (cards: QuizletCard[]) => {
+    await quizlet.saveDecks(deckName.trim(), url.trim(), cards);
+    setResult({ success: true, message: `Saved "${deckName}" (${cards.length} cards) to Quizlet Decks` });
+    setPreview(null);
+    setUrl('');
+  };
+
+  const handleSaveUrls = async () => {
     if (!preview || !deckName.trim()) return;
     setImporting(true);
     setResult(null);
     try {
-      await quizlet.saveDecks(deckName.trim(), url.trim(), preview.cards);
-      setResult({ success: true, message: `Saved "${deckName}" (${preview.cards.length} cards) to Quizlet Decks` });
-      setPreview(null);
-      setUrl('');
+      await doSave(preview.cards);
     } catch (e) {
       setResult({ success: false, message: e instanceof Error ? e.message : 'Import failed' });
     } finally {
       setImporting(false);
     }
   };
+
+  const handleSaveWithImages = async () => {
+    if (!preview || !deckName.trim()) return;
+    setImporting(true);
+    setResult(null);
+
+    const imageIndices = preview.cards
+      .map((c, i) => (c.image && !c.image.startsWith('data:') ? i : -1))
+      .filter(i => i >= 0);
+
+    setImgDownload({ done: 0, total: imageIndices.length });
+
+    const cards = preview.cards.map(c => ({ ...c }));
+    let done = 0;
+
+    for (const idx of imageIndices) {
+      try {
+        const res = await quizlet.fetchImage(cards[idx].image!);
+        cards[idx].image = res.data;
+      } catch {
+        // keep original URL if download fails
+      }
+      done++;
+      setImgDownload({ done, total: imageIndices.length });
+    }
+
+    setImgDownload(null);
+
+    try {
+      await doSave(cards);
+    } catch (e) {
+      setResult({ success: false, message: e instanceof Error ? e.message : 'Import failed' });
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const hasImages = preview?.cards.some(c => c.image);
 
   return (
     <div className="card space-y-4">
@@ -87,7 +132,7 @@ function QuizletImport() {
       {scraping && (
         <p className="text-sm text-(--text-secondary) flex items-center gap-2">
           <Loader2 className="w-3 h-3 animate-spin" />
-          Loading deck — this takes ~10 seconds...
+          Loading deck — large decks may take 30–60 seconds...
         </p>
       )}
 
@@ -100,9 +145,7 @@ function QuizletImport() {
 
       {preview && (
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-(--text-secondary)">{preview.cards.length} cards found</span>
-          </div>
+          <span className="text-sm text-(--text-secondary)">{preview.cards.length} cards found</span>
 
           <div>
             <label className="block text-sm text-(--text-secondary) mb-1">Deck name</label>
@@ -118,7 +161,7 @@ function QuizletImport() {
               <table className="w-full text-sm">
                 <thead className="sticky top-0 z-10">
                   <tr className="bg-(--bg-tertiary) text-(--text-secondary)">
-                    {preview.cards.some(c => c.image) && <th className="px-3 py-2 text-left w-10">Img</th>}
+                    {hasImages && <th className="px-3 py-2 text-left w-10">Img</th>}
                     <th className="px-3 py-2 text-left">Front</th>
                     <th className="px-3 py-2 text-left">Back</th>
                   </tr>
@@ -126,7 +169,7 @@ function QuizletImport() {
                 <tbody>
                   {preview.cards.map((card, i) => (
                     <tr key={i} className="border-t border-(--bg-tertiary)">
-                      {preview.cards.some(c => c.image) && (
+                      {hasImages && (
                         <td className="px-3 py-2">
                           {card.image ? (
                             <img src={card.image} alt="" className="w-8 h-8 object-cover rounded" />
@@ -144,14 +187,54 @@ function QuizletImport() {
             </div>
           </div>
 
-          <button
-            className="btn btn-primary w-full flex items-center justify-center gap-2"
-            onClick={handleImport}
-            disabled={importing || !deckName.trim()}
-          >
-            {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-            {importing ? 'Saving...' : `Save ${preview.cards.length} cards to Quizlet Decks`}
-          </button>
+          {/* Image download progress bar */}
+          {imgDownload && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-xs text-(--text-secondary)">
+                <span className="flex items-center gap-1.5">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Downloading images...
+                </span>
+                <span>{imgDownload.done} / {imgDownload.total}</span>
+              </div>
+              <div className="w-full bg-(--bg-tertiary) rounded-full h-1.5 overflow-hidden">
+                <div
+                  className="h-full bg-(--accent) transition-all duration-300"
+                  style={{ width: `${(imgDownload.done / imgDownload.total) * 100}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {hasImages ? (
+            <div className="flex gap-2">
+              <button
+                className="btn btn-secondary flex-1 flex items-center justify-center gap-2"
+                onClick={handleSaveUrls}
+                disabled={importing || !deckName.trim()}
+              >
+                {importing && !imgDownload ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                Save (keep URLs)
+              </button>
+              <button
+                className="btn btn-primary flex-1 flex items-center justify-center gap-2"
+                onClick={handleSaveWithImages}
+                disabled={importing || !deckName.trim()}
+              >
+                {importing && imgDownload ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                Save + Download Images
+              </button>
+            </div>
+          ) : (
+            <button
+              className="btn btn-primary w-full flex items-center justify-center gap-2"
+              onClick={handleSaveUrls}
+              disabled={importing || !deckName.trim()}
+            >
+              {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+              {importing ? 'Saving...' : `Save ${preview.cards.length} cards to Quizlet Decks`}
+            </button>
+          )}
         </div>
       )}
 

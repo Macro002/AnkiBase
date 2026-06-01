@@ -2037,11 +2037,40 @@ class QuizletReviewRequest(BaseModel):
 
 
 def _scrape_quizlet_sync(url: str) -> dict:
-    import time
+    import time, re
     from invisible_playwright import InvisiblePlaywright
     from invisible_playwright import download as ip_download
     from xvfbwrapper import Xvfb
     ip_download.ensure_binary()
+
+    EXTRACT_JS = '''() => {
+        const terms = Array.from(document.querySelectorAll(".TermText"));
+        const cards = [];
+        for (let i = 0; i + 1 < terms.length; i += 2) {
+            let image = null;
+            let node = terms[i].parentElement;
+            for (let lvl = 0; lvl < 5 && node; lvl++) {
+                const img = node.querySelector("img");
+                if (img && img.src && !img.src.startsWith("data:")) {
+                    image = img.src;
+                    break;
+                }
+                node = node.parentElement;
+            }
+            cards.push({
+                front: terms[i].textContent.trim(),
+                back: terms[i+1].textContent.trim(),
+                image: image
+            });
+        }
+        return cards;
+    }'''
+
+    def _unwrap_cdn_image(img_url):
+        if not img_url:
+            return img_url
+        m = re.search(r'cdn-cgi/image/[^/]+/(https?://.+)$', img_url)
+        return m.group(1) if m else img_url
 
     with Xvfb():
         with InvisiblePlaywright(headless=False) as browser:
@@ -2054,46 +2083,53 @@ def _scrape_quizlet_sync(url: str) -> dict:
                 return h1 ? h1.textContent.trim() : document.title.replace(" | Quizlet", "").trim();
             }''')
 
-            texts = page.evaluate('''() =>
-                Array.from(document.querySelectorAll(".TermText")).map(e => e.textContent.trim())
-            ''')
-
-            images = page.evaluate('''() => {
-                const terms = Array.from(document.querySelectorAll(".TermText"));
-                const out = [];
-                for (let i = 0; i < terms.length; i += 2) {
-                    let found = null;
-                    let node = terms[i].parentElement;
-                    for (let lvl = 0; lvl < 5 && node; lvl++) {
-                        const img = node.querySelector("img");
-                        if (img && img.src && !img.src.startsWith("data:")) {
-                            found = img.src;
-                            break;
-                        }
-                        node = node.parentElement;
-                    }
-                    out.push(found);
-                }
-                return out;
+            # Try to read total card count shown on the page
+            total_expected = page.evaluate('''() => {
+                const allText = document.body.innerText;
+                const m = allText.match(/\b(\d+)\s+terms?\b/i);
+                return m ? parseInt(m[1]) : null;
             }''')
 
-    if not texts:
+            # Scroll incrementally, deduplicating by (front, back) to handle virtual lists
+            seen = {}        # (front, back) -> image
+            seen_order = []  # insertion-order keys
+            stall = 0
+
+            for _ in range(80):
+                batch = page.evaluate(EXTRACT_JS)
+                added = 0
+                for c in batch:
+                    key = (c['front'], c['back'])
+                    if key not in seen:
+                        seen[key] = c['image']
+                        seen_order.append(key)
+                        added += 1
+
+                if total_expected and len(seen) >= total_expected:
+                    break
+
+                if added == 0:
+                    stall += 1
+                    if stall >= 3:
+                        break
+                else:
+                    stall = 0
+
+                page.evaluate('() => window.scrollTo(0, document.body.scrollHeight)')
+                time.sleep(1.5)
+
+    if not seen_order:
         raise Exception("No flashcard terms found. The deck may be private or the URL is invalid.")
 
-    def _unwrap_cdn_image(url):
-        # Quizlet serves images through Cloudflare Image Resizing with baked-in h/w/fit params.
-        # Strip the cdn-cgi wrapper to get the original full-resolution URL.
-        if not url:
-            return url
-        import re
-        m = re.search(r'cdn-cgi/image/[^/]+/(https?://.+)$', url)
-        return m.group(1) if m else url
-
     cards = [
-        {"front": texts[i], "back": texts[i + 1], "image": _unwrap_cdn_image(images[i // 2] if images and i // 2 < len(images) else None)}
-        for i in range(0, len(texts) - 1, 2)
+        {"front": k[0], "back": k[1], "image": _unwrap_cdn_image(seen[k])}
+        for k in seen_order
     ]
     return {"title": title or "Quizlet Import", "cards": cards}
+
+
+class ImageFetchRequest(BaseModel):
+    url: str
 
 
 @app.post("/api/quizlet/scrape")
@@ -2106,6 +2142,20 @@ async def quizlet_scrape(request: QuizletScrapeRequest, _: str = Depends(require
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(None, _scrape_quizlet_sync, url)
         return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/quizlet/fetch-image")
+async def quizlet_fetch_image(request: ImageFetchRequest, _: str = Depends(require_auth)):
+    import httpx, base64
+    try:
+        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
+            resp = await client.get(request.url, headers={"User-Agent": "Mozilla/5.0"})
+            resp.raise_for_status()
+            content_type = resp.headers.get("content-type", "image/jpeg").split(";")[0].strip()
+            b64 = base64.b64encode(resp.content).decode()
+            return {"data": f"data:{content_type};base64,{b64}"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

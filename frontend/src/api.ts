@@ -615,4 +615,9 @@ export const quizlet = {
       method: 'PATCH',
       body: JSON.stringify({ front, back, image }),
     }),
+  fetchImage: (url: string) =>
+    fetchAPI<{ data: string }>('/quizlet/fetch-image', {
+      method: 'POST',
+      body: JSON.stringify({ url }),
+    }),
 };

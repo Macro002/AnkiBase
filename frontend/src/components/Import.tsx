@@ -620,26 +620,20 @@ export function Import() {
 
   return (
     <div className="space-y-5">
-      {/* Sliding tab bar */}
-      <div className="relative flex p-1 bg-(--bg-tertiary) rounded-xl">
-        {/* Sliding pill */}
-        <div
-          className="absolute top-1 bottom-1 rounded-lg transition-all duration-200 ease-out"
-          style={{
-            width: 'calc(50% - 4px)',
-            left: tab === 'anki' ? '4px' : 'calc(50%)',
-            background: 'rgba(var(--accent-rgb), 0.15)',
-          }}
-        />
+      {/* Tab bar */}
+      <div className="flex gap-6 border-b border-(--bg-tertiary)">
         {(['anki', 'quizlet'] as const).map(id => (
           <button
             key={id}
             onClick={() => setTab(id)}
-            className={`relative z-10 flex-1 px-4 py-2 rounded-lg text-sm font-semibold transition-colors capitalize ${
+            className={`pb-2.5 text-sm font-semibold transition-colors capitalize relative ${
               tab === id ? 'text-(--accent)' : 'text-(--text-secondary) hover:text-white'
             }`}
           >
             {id === 'anki' ? 'Anki' : 'Quizlet'}
+            {tab === id && (
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full bg-(--accent)" />
+            )}
           </button>
         ))}
       </div>

@@ -2250,13 +2250,10 @@ def _scrape_ankiweb_download_url(deck_url: str) -> tuple:
             page = ctx.new_page()
 
             def handle_route(route):
-                if '/svc/shared/download-deck/' in route.request.url:
-                    state['dl_url'] = route.request.url
-                    route.abort()  # prevent browser from consuming the token
-                else:
-                    route.continue_()
+                state['dl_url'] = route.request.url
+                route.abort()  # prevent browser from consuming the token
 
-            page.route('**/*', handle_route)
+            page.route('**/svc/shared/download-deck/**', handle_route)
             page.goto(deck_url, timeout=30000)
             time.sleep(4)
 

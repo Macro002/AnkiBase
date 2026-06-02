@@ -1243,10 +1243,9 @@ export function QuizletStudy() {
 
       {/* Options panel */}
       {showOptions && (
-        <div className="fixed inset-0 z-[100] flex justify-end items-stretch bg-black/50" onClick={closeOptions}>
+        <div className="fixed inset-0 z-[100] flex justify-end bg-black/50" onClick={closeOptions}>
           <div
-            className={`${closingOptions ? 'options-panel-closing' : 'options-panel'} bg-(--bg-secondary) border-l border-(--bg-tertiary) w-full max-w-sm self-stretch overflow-y-auto shadow-2xl flex flex-col divide-y divide-white/8`}
-            style={{ minHeight: '100%' }}
+            className={`${closingOptions ? 'options-panel-closing' : 'options-panel'} bg-(--bg-secondary) border-l border-(--bg-tertiary) w-full max-w-sm h-screen overflow-y-auto shadow-2xl flex flex-col divide-y divide-white/8`}
             onClick={e => e.stopPropagation()}
           >
             {/* Header */}
@@ -1345,8 +1344,8 @@ export function QuizletStudy() {
 
       {/* Learn settings panel */}
       {showLearnOptions && (
-        <div className="fixed inset-0 z-[100] flex justify-end items-stretch bg-black/50" onClick={() => setShowLearnOptions(false)}>
-          <div className="options-panel bg-(--bg-secondary) border-l border-(--bg-tertiary) w-full max-w-sm self-stretch overflow-y-auto shadow-2xl flex flex-col divide-y divide-white/8"
+        <div className="fixed inset-0 z-[100] flex justify-end bg-black/50" onClick={() => setShowLearnOptions(false)}>
+          <div className="options-panel bg-(--bg-secondary) border-l border-(--bg-tertiary) w-full max-w-sm h-screen overflow-y-auto shadow-2xl flex flex-col divide-y divide-white/8"
             onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between p-6 shrink-0" style={{ paddingTop: 'calc(1.5rem + env(safe-area-inset-top, 0px))' }}>
               <h2 className="text-xl font-bold">Learn Settings</h2>

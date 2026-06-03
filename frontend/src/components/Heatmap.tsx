@@ -247,7 +247,7 @@ export function Heatmap({ className = '' }: HeatmapProps) {
 
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => { el.removeEventListener('wheel', onWheel); cancelAnimationFrame(rafId); };
-  }, []);
+  }, [loading]);
 
   if (loading) {
     return (

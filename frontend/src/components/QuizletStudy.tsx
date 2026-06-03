@@ -304,6 +304,12 @@ export function QuizletStudy() {
 
   const [feedback, setFeedback] = useState<'known' | 'unknown' | null>(null);
 
+  // Swipe-to-dismiss drag state (mobile only)
+  const [dragX, setDragX] = useState(0);
+  const [dragFlying, setDragFlying] = useState<'left' | 'right' | null>(null);
+  const swipeRef = useRef<{ startX: number; startY: number; axis: 'h' | 'v' | null; active: boolean }>({ startX: 0, startY: 0, axis: null, active: false });
+  const SWIPE_THRESHOLD = 72;
+
   const [showOptions, setShowOptions] = useState(false);
   const [closingOptions, setClosingOptions] = useState(false);
   const [studyStarredOnly, setStudyStarredOnly] = useState(false);
@@ -434,6 +440,69 @@ export function QuizletStudy() {
       if (isLast) setSessionDone(true);
       else advance(capturedIndex + 1);
     }, 430);
+  };
+
+  // Reset drag when card changes
+  useEffect(() => {
+    setDragX(0);
+    setDragFlying(null);
+    swipeRef.current.active = false;
+    swipeRef.current.axis = null;
+  }, [index]);
+
+  const onCardTouchStart = (e: React.TouchEvent) => {
+    if (feedback || dragFlying) return;
+    const t = e.touches[0];
+    swipeRef.current = { startX: t.clientX, startY: t.clientY, axis: null, active: true };
+  };
+
+  const onCardTouchMove = (e: React.TouchEvent) => {
+    const s = swipeRef.current;
+    if (!s.active || dragFlying) return;
+    const dx = e.touches[0].clientX - s.startX;
+    const dy = e.touches[0].clientY - s.startY;
+    if (!s.axis) {
+      if (Math.abs(dx) > Math.abs(dy) + 3) s.axis = 'h';
+      else if (Math.abs(dy) > Math.abs(dx) + 3) s.axis = 'v';
+      else return;
+    }
+    if (s.axis === 'v') return;
+    e.preventDefault();
+    setDragX(dx);
+  };
+
+  const onCardTouchEnd = (e: React.TouchEvent) => {
+    const s = swipeRef.current;
+    s.active = false;
+    if (s.axis !== 'h' || dragFlying) { setDragX(0); return; }
+    if (Math.abs(dragX) > 5) e.preventDefault(); // suppress tap-to-flip click
+
+    if (Math.abs(dragX) >= SWIPE_THRESHOLD) {
+      const dir = dragX > 0 ? 'right' : 'left';
+      setDragFlying(dir);
+      // Capture stale-closure-safe values
+      const cap = { current, index, trackProgress, queueLen: queue.length };
+      setTimeout(() => {
+        setDragX(0);
+        setDragFlying(null);
+        if (!cap.current) return;
+        if (cap.trackProgress) {
+          const isKnown = dir === 'right';
+          quizlet.review(deckId, cap.current.id, isKnown ? 2 : 1);
+          setStudiedToday(t => t + 1);
+          setHistory(prev => [...prev, { cardId: cap.current!.id, wasKnown: isKnown }]);
+          if (isKnown) setKnown(prev => new Set([...prev, cap.current!.id]));
+          else setUnknown(prev => new Set([...prev, cap.current!.id]));
+          if (cap.index >= cap.queueLen - 1) setSessionDone(true);
+          else advance(cap.index + 1);
+        } else {
+          if (dir === 'right' && cap.index < cap.queueLen - 1) advance(cap.index + 1);
+          else if (dir === 'left' && cap.index > 0) advance(cap.index - 1);
+        }
+      }, 230);
+    } else {
+      setDragX(0);
+    }
   };
 
   const undoLast = () => {
@@ -821,28 +890,57 @@ export function QuizletStudy() {
       {/* ── FLASHCARD mode ── */}
       {learnPhase === 'off' && (<>
         {/* Card with 3D flip + slide-in */}
-        <div style={{ perspective: '1100px' }}>
-          <div
-            key={index}
-            className={`relative ${
-              feedback
-                ? (feedback === 'unknown' ? 'card-swipe-left' : 'card-swipe-right')
-                : (slideDir === 'right' ? 'card-slide-right' : 'card-slide-left')
-            }`}
-          >
-            {feedback && (
-              <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
-                <span className={`text-4xl font-bold ${feedback === 'unknown' ? 'text-orange-400' : 'text-green-400'}`}>
-                  {feedback === 'unknown' ? 'Still learning' : 'Got it!'}
-                </span>
-              </div>
-            )}
-            <Flashcard
-              flipHook={flipHook}
-              front={{ html: renderFaceContent(false) }}
-              back={{ html: renderFaceContent(true) }}
-              style={{ height: 'clamp(16rem, 72vw, 28rem)' }}
-            />
+        <div
+          style={{ perspective: '1100px' }}
+          onTouchStart={onCardTouchStart}
+          onTouchMove={onCardTouchMove}
+          onTouchEnd={onCardTouchEnd}
+        >
+          {/* Drag/fly wrapper — sits outside key={index} so transform doesn't conflict with slide-in */}
+          <div style={
+            dragFlying
+              ? { transform: `translateX(${dragFlying === 'right' ? '160%' : '-160%'}) rotate(${dragFlying === 'right' ? 20 : -20}deg)`, opacity: 0, transition: 'transform 0.23s ease-in, opacity 0.2s ease-in', pointerEvents: 'none' }
+              : dragX !== 0
+              ? { transform: `translateX(${dragX}px) rotate(${dragX * 0.05}deg)`, transition: 'none' }
+              : {}
+          }>
+            <div
+              key={index}
+              className={`relative ${
+                feedback
+                  ? (feedback === 'unknown' ? 'card-swipe-left' : 'card-swipe-right')
+                  : (slideDir === 'right' ? 'card-slide-right' : 'card-slide-left')
+              }`}
+            >
+              {/* Drag hint overlay */}
+              {dragX !== 0 && !feedback && (
+                <div className="absolute inset-0 z-10 rounded-xl overflow-hidden pointer-events-none flex items-center justify-center">
+                  <div
+                    className={`absolute inset-0 ${dragX > 0 ? 'bg-green-500/25' : 'bg-orange-500/25'}`}
+                    style={{ opacity: Math.min(Math.abs(dragX) / SWIPE_THRESHOLD, 1) }}
+                  />
+                  <span
+                    className={`relative z-10 text-2xl font-bold ${dragX > 0 ? 'text-green-400' : 'text-orange-400'}`}
+                    style={{ opacity: Math.min(Math.abs(dragX) / SWIPE_THRESHOLD, 1) }}
+                  >
+                    {dragX > 0 ? 'Got it!' : 'Still learning'}
+                  </span>
+                </div>
+              )}
+              {feedback && (
+                <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+                  <span className={`text-4xl font-bold ${feedback === 'unknown' ? 'text-orange-400' : 'text-green-400'}`}>
+                    {feedback === 'unknown' ? 'Still learning' : 'Got it!'}
+                  </span>
+                </div>
+              )}
+              <Flashcard
+                flipHook={flipHook}
+                front={{ html: renderFaceContent(false) }}
+                back={{ html: renderFaceContent(true) }}
+                style={{ height: 'clamp(16rem, 72vw, 28rem)' }}
+              />
+            </div>
           </div>
         </div>
 

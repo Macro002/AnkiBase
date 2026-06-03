@@ -905,27 +905,27 @@ export function QuizletStudy() {
 
       {/* ── GOAL PICK ── */}
       {learnPhase === 'goal-pick' && (
-        <div className="card relative flex flex-col space-y-8 overflow-hidden" style={{ minHeight: 'clamp(22rem, 85vw, 36rem)', padding: '2rem' }}>
+        <div className="card relative flex flex-col space-y-5 overflow-hidden" style={{ padding: '1.5rem' }}>
           {/* Decorative learn icon watermark */}
-          <LearnIcon className="absolute top-5 right-5 w-10 h-10 opacity-20 pointer-events-none" style={{ color: 'var(--accent)' }} />
+          <LearnIcon className="absolute top-4 right-4 w-7 h-7 opacity-20 pointer-events-none" style={{ color: 'var(--accent)' }} />
 
-          <div className="text-center pt-2">
-            <h2 className="text-2xl font-bold mb-2">Choose a goal for this session</h2>
-            <p className="text-(--text-secondary)">This will shape how your session works.</p>
+          <div className="text-center">
+            <h2 className="text-xl font-bold mb-1">Choose a goal for this session</h2>
+            <p className="text-sm text-(--text-secondary)">This will shape how your session works.</p>
           </div>
-          <div className="grid grid-cols-2 gap-4 flex-1">
+          <div className="grid grid-cols-2 gap-3">
             {([
               { g: 'cram' as const,     title: 'Cram for a test', desc: 'Go through each term once — best for quick review.',       Icon: CramIcon },
               { g: 'memorize' as const, title: 'Memorize it all',  desc: 'Repeat cards until all are mastered — best for retention.', Icon: MemorizeIcon },
             ]).map(({ g, title: t, desc, Icon }) => (
               <button key={g}
                 onClick={() => startLearn({ ...learnConfig, goal: g })}
-                className="group rounded-xl p-6 bg-(--bg-tertiary) hover:bg-(--accent)/10 transition-colors text-left flex flex-col" style={{ minHeight: '9rem' }}>
+                className="group rounded-xl p-4 bg-(--bg-tertiary) hover:bg-(--accent)/10 transition-colors text-left flex flex-col">
                 <div className="flex-1">
-                  <p className="font-bold text-base mb-2 group-hover:text-(--accent) transition-colors">{t}</p>
-                  <p className="text-sm text-(--text-secondary) leading-relaxed">{desc}</p>
+                  <p className="font-bold text-sm mb-1.5 group-hover:text-(--accent) transition-colors">{t}</p>
+                  <p className="text-xs text-(--text-secondary) leading-relaxed">{desc}</p>
                 </div>
-                <Icon className="w-12 h-12 mt-5 self-end" style={{ color: 'rgba(var(--accent-rgb), 0.5)' }} />
+                <Icon className="w-8 h-8 mt-3 self-end" style={{ color: 'rgba(var(--accent-rgb), 0.5)' }} />
               </button>
             ))}
           </div>

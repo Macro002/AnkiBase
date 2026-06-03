@@ -235,11 +235,11 @@ export function Heatmap({ className = '' }: HeatmapProps) {
     };
 
     const onWheel = (e: WheelEvent) => {
-      if (el.scrollWidth <= el.clientWidth) return;
+      if (el.scrollWidth <= el.clientWidth) return; // fully visible — let page scroll
+      e.preventDefault(); // has overflow — always block page scroll
       const atLeft  = target <= 0;
       const atRight = target >= el.scrollWidth - el.clientWidth - 1;
       if ((e.deltaY < 0 && atLeft) || (e.deltaY > 0 && atRight)) return;
-      e.preventDefault();
       target = Math.max(0, Math.min(el.scrollWidth - el.clientWidth, target + e.deltaY));
       cancelAnimationFrame(rafId);
       rafId = requestAnimationFrame(animate);
@@ -247,7 +247,7 @@ export function Heatmap({ className = '' }: HeatmapProps) {
 
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => { el.removeEventListener('wheel', onWheel); cancelAnimationFrame(rafId); };
-  }, [loading]);
+  }, [loading, year]);
 
   if (loading) {
     return (

@@ -220,15 +220,34 @@ export function Heatmap({ className = '' }: HeatmapProps) {
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const handleWheel = (e: React.WheelEvent) => {
+  useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const atLeft = el.scrollLeft === 0;
-    const atRight = el.scrollLeft + el.clientWidth >= el.scrollWidth - 1;
-    if ((e.deltaY < 0 && atLeft) || (e.deltaY > 0 && atRight)) return;
-    e.preventDefault();
-    el.scrollLeft += e.deltaY;
-  };
+
+    let target = el.scrollLeft;
+    let rafId = 0;
+
+    const animate = () => {
+      const diff = target - el.scrollLeft;
+      if (Math.abs(diff) < 0.5) { el.scrollLeft = target; return; }
+      el.scrollLeft += diff * 0.14;
+      rafId = requestAnimationFrame(animate);
+    };
+
+    const onWheel = (e: WheelEvent) => {
+      if (el.scrollWidth <= el.clientWidth) return;
+      const atLeft  = target <= 0;
+      const atRight = target >= el.scrollWidth - el.clientWidth - 1;
+      if ((e.deltaY < 0 && atLeft) || (e.deltaY > 0 && atRight)) return;
+      e.preventDefault();
+      target = Math.max(0, Math.min(el.scrollWidth - el.clientWidth, target + e.deltaY));
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(animate);
+    };
+
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => { el.removeEventListener('wheel', onWheel); cancelAnimationFrame(rafId); };
+  }, []);
 
   if (loading) {
     return (
@@ -304,7 +323,7 @@ export function Heatmap({ className = '' }: HeatmapProps) {
           </div>
         ))}
       </div>
-      <div ref={scrollRef} className="overflow-x-auto pb-2" onWheel={handleWheel}>
+      <div ref={scrollRef} className="overflow-x-auto pb-2">
         <div className="flex relative mb-1" style={{ height: '20px' }}>
           {targetData.monthLabels.map(({ month, weekIndex }, i) => (
             <span

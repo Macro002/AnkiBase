@@ -457,7 +457,8 @@ export function QuizletStudy() {
 
   const dragXRef = useRef(0); // mirrors dragX without closure staleness
 
-  // Attach non-passive native listeners (passive: false lets us call preventDefault)
+  // Attach non-passive native listeners — depends on learnPhase so it re-runs
+  // when the flashcard section mounts (element is null until learnPhase === 'off')
   useEffect(() => {
     const el = cardTouchRef.current;
     if (!el) return;
@@ -528,7 +529,7 @@ export function QuizletStudy() {
       el.removeEventListener('touchmove', onMove);
       el.removeEventListener('touchend', onEnd);
     };
-  }, []);
+  }, [learnPhase]);
 
   const undoLast = () => {
     if (history.length === 0) return;

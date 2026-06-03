@@ -218,6 +218,18 @@ export function Heatmap({ className = '' }: HeatmapProps) {
     return { totalReviews, daysStudied, dailyAverage, daysLearnedPercent, longestStreak, currentStreak };
   }, [data, year, currentYear]);
 
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const handleWheel = (e: React.WheelEvent) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const atLeft = el.scrollLeft === 0;
+    const atRight = el.scrollLeft + el.clientWidth >= el.scrollWidth - 1;
+    if ((e.deltaY < 0 && atLeft) || (e.deltaY > 0 && atRight)) return;
+    e.preventDefault();
+    el.scrollLeft += e.deltaY;
+  };
+
   if (loading) {
     return (
       <div className={`card ${className}`}>
@@ -270,18 +282,6 @@ export function Heatmap({ className = '' }: HeatmapProps) {
       </div>
     );
   }
-
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  const handleWheel = (e: React.WheelEvent) => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const atLeft = el.scrollLeft === 0;
-    const atRight = el.scrollLeft + el.clientWidth >= el.scrollWidth - 1;
-    if ((e.deltaY < 0 && atLeft) || (e.deltaY > 0 && atRight)) return;
-    e.preventDefault();
-    el.scrollLeft += e.deltaY;
-  };
 
   const dayLabels = [
     t('heatmap.mon'),

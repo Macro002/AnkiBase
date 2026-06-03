@@ -308,6 +308,7 @@ export function QuizletStudy() {
   const [dragX, setDragX] = useState(0);
   const [dragFlying, setDragFlying] = useState<'left' | 'right' | null>(null);
   const swipeRef = useRef<{ startX: number; startY: number; axis: 'h' | 'v' | null; active: boolean }>({ startX: 0, startY: 0, axis: null, active: false });
+  const cardTouchRef = useRef<HTMLDivElement>(null);
   const SWIPE_THRESHOLD = 72;
 
   const [showOptions, setShowOptions] = useState(false);
@@ -450,60 +451,84 @@ export function QuizletStudy() {
     swipeRef.current.axis = null;
   }, [index]);
 
-  const onCardTouchStart = (e: React.TouchEvent) => {
-    if (feedback || dragFlying) return;
-    const t = e.touches[0];
-    swipeRef.current = { startX: t.clientX, startY: t.clientY, axis: null, active: true };
-  };
+  // Keep a live ref so native event handlers always see current state
+  const swipeLiveRef = useRef({ feedback, index, trackProgress, current: null as QuizletCard | null, queueLen: 0, advance });
+  swipeLiveRef.current = { feedback, index, trackProgress, current, queueLen: queue.length, advance };
 
-  const onCardTouchMove = (e: React.TouchEvent) => {
-    const s = swipeRef.current;
-    if (!s.active || dragFlying) return;
-    const dx = e.touches[0].clientX - s.startX;
-    const dy = e.touches[0].clientY - s.startY;
-    if (!s.axis) {
-      if (Math.abs(dx) > Math.abs(dy) + 3) s.axis = 'h';
-      else if (Math.abs(dy) > Math.abs(dx) + 3) s.axis = 'v';
-      else return;
-    }
-    if (s.axis === 'v') return;
-    e.preventDefault();
-    setDragX(dx);
-  };
+  const dragXRef = useRef(0); // mirrors dragX without closure staleness
 
-  const onCardTouchEnd = (e: React.TouchEvent) => {
-    const s = swipeRef.current;
-    s.active = false;
-    if (s.axis !== 'h' || dragFlying) { setDragX(0); return; }
-    if (Math.abs(dragX) > 5) e.preventDefault(); // suppress tap-to-flip click
+  // Attach non-passive native listeners (passive: false lets us call preventDefault)
+  useEffect(() => {
+    const el = cardTouchRef.current;
+    if (!el) return;
 
-    if (Math.abs(dragX) >= SWIPE_THRESHOLD) {
-      const dir = dragX > 0 ? 'right' : 'left';
-      setDragFlying(dir);
-      // Capture stale-closure-safe values
-      const cap = { current, index, trackProgress, queueLen: queue.length };
-      setTimeout(() => {
-        setDragX(0);
-        setDragFlying(null);
-        if (!cap.current) return;
-        if (cap.trackProgress) {
-          const isKnown = dir === 'right';
-          quizlet.review(deckId, cap.current.id, isKnown ? 2 : 1);
-          setStudiedToday(t => t + 1);
-          setHistory(prev => [...prev, { cardId: cap.current!.id, wasKnown: isKnown }]);
-          if (isKnown) setKnown(prev => new Set([...prev, cap.current!.id]));
-          else setUnknown(prev => new Set([...prev, cap.current!.id]));
-          if (cap.index >= cap.queueLen - 1) setSessionDone(true);
-          else advance(cap.index + 1);
-        } else {
-          if (dir === 'right' && cap.index < cap.queueLen - 1) advance(cap.index + 1);
-          else if (dir === 'left' && cap.index > 0) advance(cap.index - 1);
-        }
-      }, 230);
-    } else {
-      setDragX(0);
-    }
-  };
+    let startX = 0, startY = 0, axis: 'h' | 'v' | null = null, active = false;
+
+    const onStart = (e: TouchEvent) => {
+      if (lv().feedback) return;
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      axis = null; active = true; dragXRef.current = 0;
+    };
+
+    const onMove = (e: TouchEvent) => {
+      if (!active) return;
+      const dx = e.touches[0].clientX - startX;
+      const dy = e.touches[0].clientY - startY;
+      if (!axis) {
+        if (Math.abs(dx) > Math.abs(dy) + 3) axis = 'h';
+        else if (Math.abs(dy) > Math.abs(dx) + 3) axis = 'v';
+        else return;
+      }
+      if (axis === 'v') return;
+      e.preventDefault();
+      dragXRef.current = dx;
+      setDragX(dx);
+    };
+
+    const onEnd = (e: TouchEvent) => {
+      if (!active || axis !== 'h') { active = false; setDragX(0); return; }
+      active = false;
+      const dx = dragXRef.current;
+      if (Math.abs(dx) > 5) e.preventDefault();
+
+      if (Math.abs(dx) >= 72) {
+        const dir = dx > 0 ? 'right' : 'left';
+        setDragFlying(dir);
+        const { current: cap, index: capIdx, trackProgress: capTP, queueLen: capQL, advance: capAdv } = lv();
+        setTimeout(() => {
+          setDragX(0); dragXRef.current = 0; setDragFlying(null);
+          if (!cap) return;
+          if (capTP) {
+            const isKnown = dir === 'right';
+            quizlet.review(deckId, cap.id, isKnown ? 2 : 1);
+            setStudiedToday(t => t + 1);
+            setHistory(prev => [...prev, { cardId: cap.id, wasKnown: isKnown }]);
+            if (isKnown) setKnown(prev => new Set([...prev, cap.id]));
+            else setUnknown(prev => new Set([...prev, cap.id]));
+            if (capIdx >= capQL - 1) setSessionDone(true);
+            else capAdv(capIdx + 1);
+          } else {
+            if (dir === 'right' && capIdx < capQL - 1) capAdv(capIdx + 1);
+            else if (dir === 'left' && capIdx > 0) capAdv(capIdx - 1);
+          }
+        }, 230);
+      } else {
+        dragXRef.current = 0; setDragX(0);
+      }
+    };
+
+    const lv = () => swipeLiveRef.current;
+
+    el.addEventListener('touchstart', onStart, { passive: true });
+    el.addEventListener('touchmove', onMove, { passive: false });
+    el.addEventListener('touchend', onEnd, { passive: false });
+    return () => {
+      el.removeEventListener('touchstart', onStart);
+      el.removeEventListener('touchmove', onMove);
+      el.removeEventListener('touchend', onEnd);
+    };
+  }, []);
 
   const undoLast = () => {
     if (history.length === 0) return;
@@ -890,12 +915,7 @@ export function QuizletStudy() {
       {/* ── FLASHCARD mode ── */}
       {learnPhase === 'off' && (<>
         {/* Card with 3D flip + slide-in */}
-        <div
-          style={{ perspective: '1100px' }}
-          onTouchStart={onCardTouchStart}
-          onTouchMove={onCardTouchMove}
-          onTouchEnd={onCardTouchEnd}
-        >
+        <div ref={cardTouchRef} style={{ perspective: '1100px' }}>
           {/* Drag/fly wrapper — sits outside key={index} so transform doesn't conflict with slide-in */}
           <div style={
             dragFlying
@@ -920,7 +940,7 @@ export function QuizletStudy() {
                     style={{ opacity: Math.min(Math.abs(dragX) / SWIPE_THRESHOLD, 1) }}
                   />
                   <span
-                    className={`relative z-10 text-2xl font-bold ${dragX > 0 ? 'text-green-400' : 'text-orange-400'}`}
+                    className={`relative z-10 text-4xl font-bold ${dragX > 0 ? 'text-green-400' : 'text-orange-400'}`}
                     style={{ opacity: Math.min(Math.abs(dragX) / SWIPE_THRESHOLD, 1) }}
                   >
                     {dragX > 0 ? 'Got it!' : 'Still learning'}

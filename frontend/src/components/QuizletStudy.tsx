@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import confetti from 'canvas-confetti';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
@@ -1242,7 +1243,7 @@ export function QuizletStudy() {
       })()}
 
       {/* Options panel */}
-      {showOptions && (
+      {showOptions && createPortal(
         <div className="fixed inset-0 z-[100] flex justify-end bg-black/50" onClick={closeOptions}>
           <div
             className={`${closingOptions ? 'options-panel-closing' : 'options-panel'} bg-(--bg-secondary) border-l border-(--bg-tertiary) w-full max-w-sm h-screen overflow-y-auto shadow-2xl flex flex-col divide-y divide-white/8`}
@@ -1339,11 +1340,12 @@ export function QuizletStudy() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Learn settings panel */}
-      {showLearnOptions && (
+      {showLearnOptions && createPortal(
         <div className="fixed inset-0 z-[100] flex justify-end bg-black/50" onClick={() => setShowLearnOptions(false)}>
           <div className="options-panel bg-(--bg-secondary) border-l border-(--bg-tertiary) w-full max-w-sm h-screen overflow-y-auto shadow-2xl flex flex-col divide-y divide-white/8"
             onClick={e => e.stopPropagation()}>
@@ -1399,11 +1401,12 @@ export function QuizletStudy() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Restart Learn confirm */}
-      {showRestartLearnConfirm && (
+      {showRestartLearnConfirm && createPortal(
         <div className="fixed inset-0 z-[200] bg-black/60 flex items-center justify-center p-4" onClick={() => setShowRestartLearnConfirm(false)}>
           <div className="bg-(--bg-secondary) rounded-xl max-w-md w-full p-6 space-y-4" onClick={e => e.stopPropagation()}>
             <h3 className="text-lg font-bold">Restart Learn?</h3>
@@ -1413,11 +1416,12 @@ export function QuizletStudy() {
               <button onClick={() => { setShowRestartLearnConfirm(false); setLearnPhase('goal-pick'); }} className="btn btn-primary">Restart</button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Edit Card Modal */}
-      {editingCard && (
+      {editingCard && createPortal(
         <div className="fixed inset-0 z-[110] bg-black/60 flex items-center justify-center p-4" onClick={() => setEditingCard(null)}>
           <div className="bg-(--bg-secondary) rounded-xl max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="p-6 space-y-4">
@@ -1497,7 +1501,8 @@ export function QuizletStudy() {
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Expanded image overlay */}

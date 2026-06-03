@@ -75,18 +75,28 @@ function DonutChart({ percent }: { percent: number }) {
 
 // --- Learn mode types & helpers ---
 type LearnQtype = 'mc' | 'written' | 'flashcard';
-type LearnPhase = 'off' | 'goal-pick' | 'session' | 'end';
+type LearnPhase = 'off' | 'goal-pick' | 'session' | 'round-summary' | 'end';
 
 interface LearnConfig {
   mc: boolean;
   written: boolean;
+  flashcard: boolean;
+  shuffle: boolean;
   answerWith: 'term' | 'definition';
   grading: 'relaxed' | 'moderate' | 'strict';
   retypeWrong: boolean;
   goal: 'cram' | 'memorize';
 }
 
-interface LearnQItem { card: QuizletCard; qtype: LearnQtype; }
+const LEARN_BUFFER_SIZE = 7;
+
+function getRoundTypes(config: LearnConfig): LearnQtype[] {
+  const t: LearnQtype[] = [];
+  if (config.mc) t.push('mc');
+  if (config.written) t.push('written');
+  if (config.flashcard) t.push('flashcard');
+  return t.slice(0, 2);
+}
 
 function levenshtein(a: string, b: string): number {
   const m = a.length, n = b.length;
@@ -117,13 +127,6 @@ function gradeAnswer(userRaw: string, correctHtml: string, grading: 'relaxed' | 
   return levenshtein(norm(user), norm(correct)) <= threshold;
 }
 
-function getQtypes(config: LearnConfig): LearnQtype[] {
-  const t: LearnQtype[] = [];
-  if (config.mc) t.push('mc');
-  if (config.written) t.push('written');
-  t.push('flashcard');
-  return t;
-}
 
 function getMCOptions(card: QuizletCard, allCards: QuizletCard[]): QuizletCard[] {
   const others = shuffle(allCards.filter(c => c.id !== card.id));
@@ -324,13 +327,16 @@ export function QuizletStudy() {
   // Learn mode state
   const [learnPhase, setLearnPhase] = useState<LearnPhase>('off');
   const [learnConfig, setLearnConfig] = useState<LearnConfig>({
-    mc: true, written: true, answerWith: 'definition',
-    grading: 'relaxed', retypeWrong: false, goal: 'memorize',
+    mc: true, written: true, flashcard: false, shuffle: true,
+    answerWith: 'definition', grading: 'relaxed', retypeWrong: false, goal: 'memorize',
   });
-  const [learnQueue, setLearnQueue] = useState<LearnQItem[]>([]);
-  const [learnQIdx, setLearnQIdx] = useState(0);
-  const [learnStages, setLearnStages] = useState<Map<number, number>>(new Map());
-  const [learnMastered, setLearnMastered] = useState<Set<number>>(new Set());
+  const [learnBuffer, setLearnBuffer] = useState<QuizletCard[]>([]);
+  const [learnRemaining, setLearnRemaining] = useState<QuizletCard[]>([]);
+  const [learnRound, setLearnRound] = useState(1);
+  const [learnRoundTypes, setLearnRoundTypes] = useState<LearnQtype[]>(['mc']);
+  const [learnCounter, setLearnCounter] = useState(0);
+  const [learnRoundCorrect, setLearnRoundCorrect] = useState(0);
+  const [learnRoundWrong, setLearnRoundWrong] = useState(0);
   const [learnFinalResult, setLearnFinalResult] = useState<Map<number, boolean>>(new Map());
   const [learnMCOptions, setLearnMCOptions] = useState<QuizletCard[]>([]);
   const [learnMCSelected, setLearnMCSelected] = useState<number | null>(null);
@@ -542,25 +548,16 @@ export function QuizletStudy() {
     }
   };
 
-  const startLearn = useCallback((config: LearnConfig) => {
-    const types = getQtypes(config);
-    const stages = new Map<number, number>();
-    cards.forEach(c => stages.set(c.id, 0));
-
-    let initialQueue: LearnQItem[];
-    if (config.goal === 'cram') {
-      const shuffled = shuffle([...cards]);
-      initialQueue = types.flatMap(qtype => shuffled.map(card => ({ card, qtype })));
-    } else {
-      initialQueue = shuffle([...cards]).map(card => ({ card, qtype: types[0] }));
-    }
-
-    setLearnConfig(config);
-    setLearnStages(stages);
-    setLearnMastered(new Set());
-    setLearnFinalResult(new Map());
-    setLearnQueue(initialQueue);
-    setLearnQIdx(0);
+  const initBuffer = useCallback((cfg: LearnConfig, roundNum: number, roundTypes: LearnQtype[]) => {
+    const ordered = cfg.shuffle ? shuffle([...cards]) : [...cards];
+    const sz = Math.min(LEARN_BUFFER_SIZE, ordered.length);
+    const buf = ordered.slice(0, sz);
+    const rem = ordered.slice(sz);
+    setLearnBuffer(buf);
+    setLearnRemaining(rem);
+    setLearnRound(roundNum);
+    setLearnRoundCorrect(0);
+    setLearnRoundWrong(0);
     setLearnMCSelected(null);
     setLearnShowResult(false);
     setLearnWrittenText('');
@@ -568,53 +565,66 @@ export function QuizletStudy() {
     setLearnNeedRetype(false);
     setLearnRetypeText('');
     setLearnFlipped(false);
-    setLearnPhase('session');
-
-    if (initialQueue[0]?.qtype === 'mc') {
-      setLearnMCOptions(getMCOptions(initialQueue[0].card, cards));
+    if (roundTypes[roundNum - 1] === 'mc' && buf.length > 0) {
+      setLearnMCOptions(getMCOptions(buf[0], cards));
     }
   }, [cards]);
 
+  const startLearn = useCallback((config: LearnConfig) => {
+    const roundTypes = getRoundTypes(config);
+    if (roundTypes.length === 0) return;
+    setLearnConfig(config);
+    setLearnRoundTypes(roundTypes);
+    setLearnCounter(0);
+    setLearnFinalResult(new Map());
+    initBuffer(config, 1, roundTypes);
+    setLearnPhase('session');
+  }, [cards, initBuffer]);
+
+  const startNextRound = useCallback(() => {
+    const nextRound = learnRound + 1;
+    initBuffer(learnConfig, nextRound, learnRoundTypes);
+    setLearnPhase('session');
+  }, [learnRound, learnConfig, learnRoundTypes, initBuffer]);
+
   learnAdvanceRef.current = (wasCorrect: boolean) => {
-    const item = learnQueue[learnQIdx];
-    if (!item) return;
+    const currentCard = learnBuffer[0];
+    if (!currentCard) return;
 
     const newFinalResult = new Map(learnFinalResult);
-    newFinalResult.set(item.card.id, wasCorrect);
-    setLearnFinalResult(newFinalResult);
+    newFinalResult.set(currentCard.id, wasCorrect);
 
-    const types = getQtypes(learnConfig);
-    const currentStage = learnStages.get(item.card.id) ?? 0;
-    const newStages = new Map(learnStages);
-    const newMastered = new Set(learnMastered);
-    const newQueue = [...learnQueue];
+    let newBuffer = [...learnBuffer];
+    let newRemaining = [...learnRemaining];
+    let newCounter = learnCounter;
+    let newRoundCorrect = learnRoundCorrect;
+    let newRoundWrong = learnRoundWrong;
 
-    if (learnConfig.goal === 'memorize') {
-      if (wasCorrect) {
-        const nextStage = currentStage + 1;
-        newStages.set(item.card.id, nextStage);
-        if (nextStage >= types.length) {
-          newMastered.add(item.card.id);
-        } else {
-          newQueue.push({ card: item.card, qtype: types[nextStage] });
-        }
-      } else {
-        newQueue.push({ card: item.card, qtype: item.qtype });
+    if (wasCorrect) {
+      newBuffer = newBuffer.slice(1);
+      if (newRemaining.length > 0) {
+        newBuffer = [...newBuffer, newRemaining[0]];
+        newRemaining = newRemaining.slice(1);
       }
-      setLearnStages(newStages);
-      setLearnMastered(newMastered);
+      newCounter++;
+      newRoundCorrect++;
+    } else {
+      newBuffer = [...newBuffer.slice(1), currentCard];
+      newRoundWrong++;
     }
 
-    setLearnQueue(newQueue);
+    setLearnFinalResult(newFinalResult);
+    setLearnBuffer(newBuffer);
+    setLearnRemaining(newRemaining);
+    setLearnCounter(newCounter);
+    setLearnRoundCorrect(newRoundCorrect);
+    setLearnRoundWrong(newRoundWrong);
 
-    const nextIdx = learnQIdx + 1;
-    if (nextIdx >= newQueue.length) {
-      setLearnPhase('end');
+    if (wasCorrect && newCounter === cards.length * learnRound) {
+      setLearnPhase(learnRound >= learnRoundTypes.length ? 'end' : 'round-summary');
       return;
     }
 
-    const nextItem = newQueue[nextIdx];
-    setLearnQIdx(nextIdx);
     setLearnMCSelected(null);
     setLearnShowResult(false);
     setLearnWrittenText('');
@@ -622,8 +632,9 @@ export function QuizletStudy() {
     setLearnNeedRetype(false);
     setLearnRetypeText('');
     setLearnFlipped(false);
-    if (nextItem.qtype === 'mc') {
-      setLearnMCOptions(getMCOptions(nextItem.card, cards));
+    const nextCard = newBuffer[0];
+    if (nextCard && learnRoundTypes[learnRound - 1] === 'mc') {
+      setLearnMCOptions(getMCOptions(nextCard, cards));
     }
   };
 
@@ -668,10 +679,12 @@ export function QuizletStudy() {
 
 
   // Computed vars for inline learn rendering (used in main return below)
-  const learnItem        = learnQueue[learnQIdx];
-  const learnPrompt      = learnItem ? (learnConfig.answerWith === 'definition' ? learnItem.card.front : learnItem.card.back) : '';
-  const learnCorrectHtml = learnItem ? (learnConfig.answerWith === 'definition' ? learnItem.card.back  : learnItem.card.front) : '';
+  const learnItem        = learnBuffer[0] ?? null;
+  const learnCurrentQtype = learnRoundTypes[learnRound - 1] ?? 'mc';
+  const learnPrompt      = learnItem ? (learnConfig.answerWith === 'definition' ? learnItem.front : learnItem.back) : '';
+  const learnCorrectHtml = learnItem ? (learnConfig.answerWith === 'definition' ? learnItem.back  : learnItem.front) : '';
   const learnPromptLabel = learnConfig.answerWith === 'definition' ? 'Term' : 'Definition';
+  const learnTotalSteps  = cards.length * learnRoundTypes.length;
   const learnEndMastered = [...learnFinalResult.values()].filter(Boolean).length;
   const learnEndLearning = [...learnFinalResult.values()].filter(v => !v).length;
   const learnEndPercent  = cards.length > 0 ? Math.round((learnEndMastered / cards.length) * 100) : 0;
@@ -932,6 +945,33 @@ export function QuizletStudy() {
         </div>
       )}
 
+      {/* ── ROUND SUMMARY ── */}
+      {learnPhase === 'round-summary' && (
+        <div className="card space-y-5">
+          <div>
+            <p className="text-xs text-(--text-secondary) uppercase tracking-wider font-semibold mb-1">Round {learnRound} complete</p>
+            <h2 className="text-2xl font-bold">
+              {learnRoundCorrect === cards.length ? 'Perfect round!' : `${learnRoundCorrect} / ${cards.length} correct`}
+            </h2>
+          </div>
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm">
+              <span className="flex items-center gap-1.5 text-green-400"><Check className="w-4 h-4" />{learnRoundCorrect} correct</span>
+              <span className="flex items-center gap-1.5 text-red-400"><X className="w-4 h-4" />{learnRoundWrong} wrong</span>
+            </div>
+            <div className="h-2.5 bg-(--bg-tertiary) rounded-full overflow-hidden">
+              <div className="h-full rounded-full transition-all" style={{ width: `${cards.length > 0 ? (learnRoundCorrect / cards.length) * 100 : 0}%`, background: 'var(--accent)' }} />
+            </div>
+          </div>
+          <p className="text-sm text-(--text-secondary)">
+            Up next: <span className="font-semibold text-white">
+              {learnRoundTypes[learnRound] === 'mc' ? 'Multiple choice' : learnRoundTypes[learnRound] === 'written' ? 'Written' : 'Flashcard review'}
+            </span>
+          </p>
+          <button onClick={startNextRound} className="btn btn-primary w-full">Continue</button>
+        </div>
+      )}
+
       {/* ── LEARN SESSION ── */}
       {learnPhase === 'session' && learnItem && (
         <div className="space-y-4">
@@ -946,13 +986,13 @@ export function QuizletStudy() {
           </div>
 
           {/* Multiple choice */}
-          {learnItem.qtype === 'mc' && (
+          {learnCurrentQtype === 'mc' && (
             <div className="space-y-3">
               <p className="text-sm text-(--text-secondary) font-medium">Choose an answer</p>
               <div className="grid grid-cols-2 gap-2">
                 {learnMCOptions.map((opt, i) => {
                   const optHtml    = learnConfig.answerWith === 'definition' ? opt.back : opt.front;
-                  const isCorrect  = opt.id === learnItem.card.id;
+                  const isCorrect  = opt.id === learnItem.id;
                   const isSelected = learnMCSelected === opt.id;
                   let cls: string;
                   if (learnShowResult) {
@@ -982,7 +1022,7 @@ export function QuizletStudy() {
           )}
 
           {/* Written */}
-          {learnItem.qtype === 'written' && !learnNeedRetype && (
+          {learnCurrentQtype === 'written' && !learnNeedRetype && (
             <div className="space-y-3">
               <input
                 ref={learnWrittenRef}
@@ -1023,7 +1063,7 @@ export function QuizletStudy() {
           )}
 
           {/* Written retype gate */}
-          {learnItem.qtype === 'written' && learnNeedRetype && (
+          {learnCurrentQtype === 'written' && learnNeedRetype && (
             <div className="space-y-3">
               <p className="text-sm text-(--text-secondary)">Type the correct answer to continue:</p>
               <input type="text" placeholder="Retype the correct answer…" value={learnRetypeText}
@@ -1035,7 +1075,7 @@ export function QuizletStudy() {
           )}
 
           {/* Flashcard confirmation */}
-          {learnItem.qtype === 'flashcard' && (
+          {learnCurrentQtype === 'flashcard' && (
             <div className="space-y-3">
               <div className="card cursor-pointer flex flex-col items-center justify-center text-center p-6 select-none"
                 style={{ minHeight: 'clamp(10rem, 40vw, 18rem)' }}
@@ -1063,19 +1103,14 @@ export function QuizletStudy() {
             </div>
           )}
 
-          {/* Bottom: segmented progress bar + gear */}
+          {/* Bottom: progress counter + gear */}
           <div className="flex items-center gap-2">
-            <span className="text-xs tabular-nums text-(--text-secondary) shrink-0">{learnQIdx}</span>
-            <div className="flex-1 flex gap-0.5 h-2">
-              {Array.from({ length: Math.min(learnQueue.length, 60) }).map((_, i) => {
-                const segIdx = Math.floor((i / Math.min(learnQueue.length, 60)) * learnQueue.length);
-                return (
-                  <div key={i} className="flex-1 rounded-full transition-colors duration-300"
-                    style={{ background: segIdx < learnQIdx ? 'var(--accent)' : 'var(--bg-tertiary)' }} />
-                );
-              })}
+            <span className="text-xs tabular-nums text-(--text-secondary) shrink-0">{learnCounter}</span>
+            <div className="flex-1 h-2 bg-(--bg-tertiary) rounded-full overflow-hidden">
+              <div className="h-full rounded-full transition-all duration-300"
+                style={{ width: `${learnTotalSteps > 0 ? (learnCounter / learnTotalSteps) * 100 : 0}%`, background: 'var(--accent)' }} />
             </div>
-            <span className="text-xs tabular-nums text-(--text-secondary) shrink-0">{learnQueue.length}</span>
+            <span className="text-xs tabular-nums text-(--text-secondary) shrink-0">{learnTotalSteps}</span>
             <button onClick={() => setShowLearnOptions(true)} className="icon-btn shrink-0 ml-1" title="Learn settings">
               <Settings className="w-4 h-4" />
             </button>
@@ -1113,7 +1148,7 @@ export function QuizletStudy() {
             <div className="flex-1">
               <p className="text-sm text-(--text-secondary) font-medium mb-4">Next steps</p>
               <div className="space-y-3">
-                <button onClick={() => setLearnPhase('session')} className="btn btn-primary w-full flex items-center justify-center gap-2">
+                <button onClick={() => startLearn(learnConfig)} className="btn btn-primary w-full flex items-center justify-center gap-2">
                   <RotateCcw className="w-4 h-4" /> Study again
                 </button>
                 <button onClick={() => setLearnPhase('goal-pick')} className="btn btn-secondary w-full">Change settings</button>
@@ -1362,7 +1397,8 @@ export function QuizletStudy() {
             </div>
             <div className="p-6 space-y-3">
               <p className="font-medium text-sm">Question types</p>
-              {([{ key: 'mc' as const, label: 'Multiple choice' }, { key: 'written' as const, label: 'Written' }]).map(({ key, label }) => (
+              <p className="text-xs text-(--text-secondary)">Up to 2 enabled types = 2 rounds.</p>
+              {([{ key: 'mc' as const, label: 'Multiple choice' }, { key: 'written' as const, label: 'Written' }, { key: 'flashcard' as const, label: 'Flashcard' }]).map(({ key, label }) => (
                 <div key={key} className="flex items-center justify-between">
                   <span className="text-sm text-(--text-secondary)">{label}</span>
                   <button onClick={() => setLearnConfig(prev => ({ ...prev, [key]: !prev[key] }))}
@@ -1371,7 +1407,13 @@ export function QuizletStudy() {
                   </button>
                 </div>
               ))}
-              <p className="text-xs text-(--text-secondary)">Flashcards always included as final stage.</p>
+            </div>
+            <div className="p-6 flex items-center justify-between gap-4">
+              <p className="font-medium text-sm">Shuffle</p>
+              <button onClick={() => setLearnConfig(prev => ({ ...prev, shuffle: !prev.shuffle }))}
+                className={`relative w-9 h-5 rounded-full transition-colors ${learnConfig.shuffle ? 'bg-(--accent)' : 'bg-(--bg-tertiary)'}`}>
+                <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${learnConfig.shuffle ? 'translate-x-4' : 'translate-x-0.5'}`} />
+              </button>
             </div>
             <div className="p-6 flex items-center justify-between gap-4">
               <p className="font-medium text-sm">Grading</p>

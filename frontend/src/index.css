@@ -432,3 +432,19 @@ input[type="checkbox"]:checked::after {
 .animate-fade-out {
   animation: fade-out 500ms ease-in-out forwards;
 }
+
+/* Toast notifications */
+@keyframes toastSlideIn {
+  from { transform: translateX(calc(100% + 1rem)); opacity: 0; }
+  to   { transform: translateX(0);                 opacity: 1; }
+}
+@keyframes toastSlideOut {
+  from { transform: translateX(0);                 opacity: 1; }
+  to   { transform: translateX(calc(100% + 1rem)); opacity: 0; }
+}
+@keyframes toastProgress {
+  from { transform: scaleX(1); }
+  to   { transform: scaleX(0); }
+}
+.toast-enter { animation: toastSlideIn  0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.toast-exit  { animation: toastSlideOut 0.25s ease-in forwards; }

@@ -1,15 +1,64 @@
 import { NavLink, Outlet, useNavigate, Link, useLocation } from 'react-router-dom';
-import { BookOpen, Search, Sparkles, RefreshCw, LogOut, Layers, Check, X, Upload, BarChart3, Library, Menu, LogIn, Server, Settings } from 'lucide-react';
+import { BookOpen, Search, Sparkles, RefreshCw, LogOut, Layers, X, Upload, BarChart3, Library, Menu, LogIn, Server, Settings, CheckCircle, AlertCircle } from 'lucide-react';
 import { auth, sync, update } from '../api';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AnkiWebLoginModal } from './AnkiWebLoginModal';
 import { Logo } from './Logo';
 import { AccountSwitcherModal } from './AccountSwitcherModal';
 import { SyncConflictModal } from './SyncConflictModal';
 import { UpdateModal } from './UpdateModal';
+import { createPortal } from 'react-dom';
 
 type SyncStatus = 'idle' | 'syncing' | 'success' | 'error';
+
+interface ToastData {
+  id: number;
+  icon: React.ReactNode;
+  title: string;
+  message: string;
+  duration: number;
+}
+
+function Toast({ icon, title, message, duration, onClose }: Omit<ToastData, 'id'> & { onClose: () => void }) {
+  const [exiting, setExiting] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const dismiss = () => {
+    setExiting(true);
+    timerRef.current = setTimeout(onClose, 250);
+  };
+
+  useEffect(() => {
+    timerRef.current = setTimeout(dismiss, duration);
+    return () => clearTimeout(timerRef.current);
+  }, []);
+
+  return (
+    <div className={`w-80 bg-(--bg-secondary) border border-(--bg-tertiary) rounded-xl shadow-2xl overflow-hidden ${exiting ? 'toast-exit' : 'toast-enter'}`}>
+      <div className="flex items-start gap-3 px-4 pt-4 pb-3">
+        <span className="shrink-0 mt-0.5" style={{ color: 'var(--accent)' }}>{icon}</span>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-sm leading-snug">{title}</p>
+          <p className="text-xs text-(--text-secondary) mt-0.5 leading-relaxed">{message}</p>
+        </div>
+        <button onClick={dismiss} className="icon-btn shrink-0 -mt-0.5 -mr-1">
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
+      <div className="h-0.5 bg-(--bg-tertiary)">
+        <div
+          className="h-full"
+          style={{
+            background: 'var(--accent)',
+            transformOrigin: 'left',
+            animation: `toastProgress ${duration}ms linear forwards`,
+          }}
+        />
+      </div>
+    </div>
+  );
+}
 
 export function Layout() {
   const navigate = useNavigate();
@@ -17,7 +66,8 @@ export function Layout() {
   const { t } = useTranslation();
   const onStudyPath = location.pathname.startsWith('/anki/') || location.pathname.startsWith('/quizlet/');
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
-  const [syncMessage, setSyncMessage] = useState('');
+  const [toasts, setToasts] = useState<ToastData[]>([]);
+  const toastIdRef = useRef(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showAnkiWebModal, setShowAnkiWebModal] = useState(false);
   const [showAccountSwitcher, setShowAccountSwitcher] = useState(false);
@@ -39,53 +89,57 @@ export function Layout() {
   const mobileNavItems = navItems.slice(0, 5);
   const mobileMoreItems = navItems.slice(5);
 
+  const pushToast = (toast: Omit<ToastData, 'id'>) => {
+    const id = ++toastIdRef.current;
+    setToasts(prev => [...prev, { ...toast, id }]);
+  };
+
+  const removeToast = (id: number) => setToasts(prev => prev.filter(t => t.id !== id));
+
   const handleSync = async () => {
     setSyncStatus('syncing');
-    setSyncMessage('');
     try {
       await sync.trigger();
-      setSyncStatus('success');
-      setSyncMessage(t('sync.syncComplete'));
-      // Dispatch event to notify components that sync completed
+      setSyncStatus('idle');
       window.dispatchEvent(new CustomEvent('anki-sync-complete'));
+      pushToast({
+        icon: <CheckCircle className="w-5 h-5" />,
+        title: 'Sync complete',
+        message: 'Your cards are up to date.',
+        duration: 3000,
+      });
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : t('sync.syncFailed');
+      setSyncStatus('idle');
 
-      // Check if it's a sync conflict error (e.g. "Full sync required:download")
       if (errorMsg.includes('Full sync required')) {
         const rec = errorMsg.split(':')[1] as 'choose' | 'download' | 'upload' | undefined;
         setSyncConflictRecommendation(rec ?? 'choose');
         setShowSyncConflict(true);
-        setSyncStatus('idle');
       } else {
-        setSyncStatus('error');
-        setSyncMessage(errorMsg);
+        pushToast({
+          icon: <AlertCircle className="w-5 h-5" />,
+          title: 'Sync failed',
+          message: errorMsg,
+          duration: 6000,
+        });
       }
     }
   };
 
   const handleConflictResolved = () => {
-    setSyncStatus('success');
-    setSyncMessage(t('sync.syncComplete'));
-    // Dispatch event to notify components that sync completed
     window.dispatchEvent(new CustomEvent('anki-sync-complete'));
+    pushToast({
+      icon: <CheckCircle className="w-5 h-5" />,
+      title: 'Sync complete',
+      message: 'Your cards are up to date.',
+      duration: 3000,
+    });
   };
 
-  // Auto-hide sync status after 3 seconds
-  // Check for updates once on mount (admin only — silently ignore errors)
   useEffect(() => {
     update.check().then(r => { if (r.has_update) setHasUpdate(true); }).catch(() => {});
   }, []);
-
-  useEffect(() => {
-    if (syncStatus === 'success' || syncStatus === 'error') {
-      const timer = setTimeout(() => {
-        setSyncStatus('idle');
-        setSyncMessage('');
-      }, 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [syncStatus]);
 
   const handleLogout = async () => {
     await auth.logout();
@@ -103,23 +157,6 @@ export function Layout() {
           </Link>
 
           <div className="flex items-center gap-1 sm:gap-2 shrink-0 overflow-x-auto">
-            {/* Sync Status */}
-            {syncStatus !== 'idle' && (
-              <div
-                className={`flex items-center gap-2 text-sm px-3 py-1 rounded-lg transition-opacity duration-300 ${
-                  syncStatus === 'syncing'
-                    ? 'text-(--text-secondary)'
-                    : syncStatus === 'success'
-                    ? 'text-green-400 bg-green-400/10'
-                    : 'text-red-400 bg-red-400/10'
-                }`}
-              >
-                {syncStatus === 'syncing' && <RefreshCw className="w-4 h-4 animate-spin" />}
-                {syncStatus === 'success' && <Check className="w-4 h-4" />}
-                {syncStatus === 'error' && <X className="w-4 h-4" />}
-                <span className="hidden sm:inline">{syncStatus === 'syncing' ? t('sync.syncing') : syncMessage}</span>
-              </div>
-            )}
 
             {hasUpdate && (
               <button
@@ -300,10 +337,12 @@ export function Layout() {
       <AnkiWebLoginModal
         isOpen={showAnkiWebModal}
         onClose={() => setShowAnkiWebModal(false)}
-        onSuccess={() => {
-          setSyncMessage('AnkiWeb login updated');
-          setSyncStatus('success');
-        }}
+        onSuccess={() => pushToast({
+          icon: <CheckCircle className="w-5 h-5" />,
+          title: 'AnkiWeb connected',
+          message: 'Your credentials have been saved.',
+          duration: 3000,
+        })}
       />
 
       {/* Sync Conflict Modal */}
@@ -318,6 +357,24 @@ export function Layout() {
         isOpen={showUpdateModal}
         onClose={() => setShowUpdateModal(false)}
       />
+
+      {/* Toast notifications */}
+      {toasts.length > 0 && createPortal(
+        <div className="fixed top-[3.75rem] right-4 z-[300] flex flex-col gap-2 pointer-events-none">
+          {toasts.map(toast => (
+            <div key={toast.id} className="pointer-events-auto">
+              <Toast
+                icon={toast.icon}
+                title={toast.title}
+                message={toast.message}
+                duration={toast.duration}
+                onClose={() => removeToast(toast.id)}
+              />
+            </div>
+          ))}
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

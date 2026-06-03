@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { stats, type ReviewHistory } from '../api';
@@ -271,6 +271,18 @@ export function Heatmap({ className = '' }: HeatmapProps) {
     );
   }
 
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const handleWheel = (e: React.WheelEvent) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const atLeft = el.scrollLeft === 0;
+    const atRight = el.scrollLeft + el.clientWidth >= el.scrollWidth - 1;
+    if ((e.deltaY < 0 && atLeft) || (e.deltaY > 0 && atRight)) return;
+    e.preventDefault();
+    el.scrollLeft += e.deltaY;
+  };
+
   const dayLabels = [
     t('heatmap.mon'),
     t('heatmap.tue'),
@@ -292,7 +304,7 @@ export function Heatmap({ className = '' }: HeatmapProps) {
           </div>
         ))}
       </div>
-      <div className="overflow-x-auto pb-2">
+      <div ref={scrollRef} className="overflow-x-auto pb-2" onWheel={handleWheel}>
         <div className="flex relative mb-1" style={{ height: '20px' }}>
           {targetData.monthLabels.map(({ month, weekIndex }, i) => (
             <span

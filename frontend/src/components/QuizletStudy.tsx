@@ -506,8 +506,7 @@ export function QuizletStudy() {
             if (capIdx >= capQL - 1) setSessionDone(true);
             else capAdv(capIdx + 1);
           } else {
-            if (dir === 'right' && capIdx < capQL - 1) capAdv(capIdx + 1);
-            else if (dir === 'left' && capIdx > 0) capAdv(capIdx - 1);
+            if (capIdx < capQL - 1) capAdv(capIdx + 1);
           }
         }, 230);
       } else {
@@ -933,8 +932,8 @@ export function QuizletStudy() {
                   : (slideDir === 'right' ? 'card-slide-right' : 'card-slide-left')
               }`}
             >
-              {/* Drag hint overlay */}
-              {(dragX !== 0 || dragY !== 0) && !feedback && (
+              {/* Drag hint overlay — only shown when track progress is on */}
+              {(dragX !== 0 || dragY !== 0) && !feedback && trackProgress && (
                 <div className="absolute inset-0 z-10 rounded-xl overflow-hidden pointer-events-none flex items-center justify-center">
                   <div
                     className={`absolute inset-0 ${dragX > 0 ? 'bg-green-500/25' : 'bg-orange-500/25'}`}

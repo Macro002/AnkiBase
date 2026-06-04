@@ -347,6 +347,9 @@ export function QuizletStudy() {
   const [learnRoundCorrect, setLearnRoundCorrect] = useState(0);
   const [learnRoundWrong, setLearnRoundWrong] = useState(0);
   const [learnFinalResult, setLearnFinalResult] = useState<Map<number, boolean>>(new Map());
+  // Memorize mode
+  const [learnCardStages, setLearnCardStages] = useState<Map<number, number>>(new Map());
+  const [learnCleared, setLearnCleared] = useState(0);
   const [learnMCOptions, setLearnMCOptions] = useState<QuizletCard[]>([]);
   const [learnMCSelected, setLearnMCSelected] = useState<number | null>(null);
   const [learnShowResult, setLearnShowResult] = useState(false);
@@ -669,7 +672,33 @@ export function QuizletStudy() {
     setLearnRoundTypes(roundTypes);
     setLearnCounter(0);
     setLearnFinalResult(new Map());
-    initBuffer(config, 1, roundTypes);
+    setLearnCleared(0);
+
+    if (config.goal === 'memorize') {
+      const stages = new Map<number, number>();
+      cards.forEach(c => stages.set(c.id, 0));
+      setLearnCardStages(stages);
+      const ordered = config.shuffle ? shuffle([...cards]) : [...cards];
+      const sz = Math.min(LEARN_BUFFER_SIZE, ordered.length);
+      const buf = ordered.slice(0, sz);
+      setLearnBuffer(buf);
+      setLearnRemaining(ordered.slice(sz));
+      setLearnRound(1);
+      setLearnRoundCorrect(0);
+      setLearnRoundWrong(0);
+      setLearnMCSelected(null);
+      setLearnShowResult(false);
+      setLearnWrittenText('');
+      setLearnWrittenResult(null);
+      setLearnNeedRetype(false);
+      setLearnRetypeText('');
+      setLearnFlipped(false);
+      if (roundTypes[0] === 'mc' && buf.length > 0) {
+        setLearnMCOptions(getMCOptions(buf[0], cards));
+      }
+    } else {
+      initBuffer(config, 1, roundTypes);
+    }
     setLearnPhase('session');
   }, [cards, initBuffer]);
 
@@ -688,33 +717,74 @@ export function QuizletStudy() {
 
     let newBuffer = [...learnBuffer];
     let newRemaining = [...learnRemaining];
-    let newCounter = learnCounter;
-    let newRoundCorrect = learnRoundCorrect;
-    let newRoundWrong = learnRoundWrong;
+    let done = false;
 
-    if (wasCorrect) {
-      newBuffer = newBuffer.slice(1);
-      if (newRemaining.length > 0) {
-        newBuffer = [...newBuffer, newRemaining[0]];
-        newRemaining = newRemaining.slice(1);
+    if (learnConfig.goal === 'memorize') {
+      const newStages = new Map(learnCardStages);
+      const currentStage = newStages.get(currentCard.id) ?? 0;
+      let newCleared = learnCleared;
+
+      if (wasCorrect) {
+        const nextStage = currentStage + 1;
+        if (nextStage >= learnRoundTypes.length) {
+          // Card fully cleared — remove and pull in next unseen
+          newBuffer = newBuffer.slice(1);
+          if (newRemaining.length > 0) {
+            newBuffer = [...newBuffer, newRemaining[0]];
+            newRemaining = newRemaining.slice(1);
+          }
+          newStages.delete(currentCard.id);
+          newCleared++;
+        } else {
+          // Advance stage — push to end of buffer, no new card pulled
+          newStages.set(currentCard.id, nextStage);
+          newBuffer = [...newBuffer.slice(1), currentCard];
+        }
+      } else {
+        // Wrong — reset stage to 0, push to end
+        newStages.set(currentCard.id, 0);
+        newBuffer = [...newBuffer.slice(1), currentCard];
       }
-      newCounter++;
-      newRoundCorrect++;
+
+      setLearnCardStages(newStages);
+      setLearnCleared(newCleared);
+      setLearnFinalResult(newFinalResult);
+      setLearnBuffer(newBuffer);
+      setLearnRemaining(newRemaining);
+
+      if (newCleared === cards.length) { setLearnPhase('end'); return; }
+
     } else {
-      newBuffer = [...newBuffer.slice(1), currentCard];
-      newRoundWrong++;
-    }
+      // Cram
+      let newCounter = learnCounter;
+      let newRoundCorrect = learnRoundCorrect;
+      let newRoundWrong = learnRoundWrong;
 
-    setLearnFinalResult(newFinalResult);
-    setLearnBuffer(newBuffer);
-    setLearnRemaining(newRemaining);
-    setLearnCounter(newCounter);
-    setLearnRoundCorrect(newRoundCorrect);
-    setLearnRoundWrong(newRoundWrong);
+      if (wasCorrect) {
+        newBuffer = newBuffer.slice(1);
+        if (newRemaining.length > 0) {
+          newBuffer = [...newBuffer, newRemaining[0]];
+          newRemaining = newRemaining.slice(1);
+        }
+        newCounter++;
+        newRoundCorrect++;
+      } else {
+        newBuffer = [...newBuffer.slice(1), currentCard];
+        newRoundWrong++;
+      }
 
-    if (wasCorrect && newCounter === cards.length * learnRound) {
-      setLearnPhase(learnRound >= learnRoundTypes.length ? 'end' : 'round-summary');
-      return;
+      setLearnFinalResult(newFinalResult);
+      setLearnBuffer(newBuffer);
+      setLearnRemaining(newRemaining);
+      setLearnCounter(newCounter);
+      setLearnRoundCorrect(newRoundCorrect);
+      setLearnRoundWrong(newRoundWrong);
+
+      if (wasCorrect && newCounter === cards.length * learnRound) {
+        setLearnPhase(learnRound >= learnRoundTypes.length ? 'end' : 'round-summary');
+        return;
+      }
+      done = false;
     }
 
     setLearnMCSelected(null);
@@ -725,9 +795,13 @@ export function QuizletStudy() {
     setLearnRetypeText('');
     setLearnFlipped(false);
     const nextCard = newBuffer[0];
-    if (nextCard && learnRoundTypes[learnRound - 1] === 'mc') {
-      setLearnMCOptions(getMCOptions(nextCard, cards));
+    if (nextCard) {
+      const nextQtype = learnConfig.goal === 'memorize'
+        ? (learnRoundTypes[learnCardStages.get(nextCard.id) ?? 0] ?? 'mc')
+        : learnRoundTypes[learnRound - 1];
+      if (nextQtype === 'mc') setLearnMCOptions(getMCOptions(nextCard, cards));
     }
+    void done;
   };
 
   const learnAdvance = useCallback((wasCorrect: boolean) => {
@@ -772,11 +846,15 @@ export function QuizletStudy() {
 
   // Computed vars for inline learn rendering (used in main return below)
   const learnItem        = learnBuffer[0] ?? null;
-  const learnCurrentQtype = learnRoundTypes[learnRound - 1] ?? 'mc';
+  const learnCurrentQtype: LearnQtype = learnConfig.goal === 'memorize'
+    ? (learnRoundTypes[learnCardStages.get(learnItem?.id ?? -1) ?? 0] ?? 'mc')
+    : (learnRoundTypes[learnRound - 1] ?? 'mc');
   const learnPrompt      = learnItem ? (learnConfig.answerWith === 'definition' ? learnItem.front : learnItem.back) : '';
   const learnCorrectHtml = learnItem ? (learnConfig.answerWith === 'definition' ? learnItem.back  : learnItem.front) : '';
   const learnPromptLabel = learnConfig.answerWith === 'definition' ? 'Term' : 'Definition';
   const learnTotalSteps  = cards.length * learnRoundTypes.length;
+  const learnProgressDone  = learnConfig.goal === 'memorize' ? learnCleared : learnCounter;
+  const learnProgressTotal = learnConfig.goal === 'memorize' ? cards.length : learnTotalSteps;
   const learnEndMastered = [...learnFinalResult.values()].filter(Boolean).length;
   const learnEndLearning = [...learnFinalResult.values()].filter(v => !v).length;
   const learnEndPercent  = cards.length > 0 ? Math.round((learnEndMastered / cards.length) * 100) : 0;
@@ -1223,12 +1301,12 @@ export function QuizletStudy() {
 
           {/* Bottom: progress counter + gear */}
           <div className="flex items-center gap-2">
-            <span className="text-xs tabular-nums text-(--text-secondary) shrink-0">{learnCounter}</span>
+            <span className="text-xs tabular-nums text-(--text-secondary) shrink-0">{learnProgressDone}</span>
             <div className="flex-1 h-2 bg-(--bg-tertiary) rounded-full overflow-hidden">
               <div className="h-full rounded-full transition-all duration-300"
-                style={{ width: `${learnTotalSteps > 0 ? (learnCounter / learnTotalSteps) * 100 : 0}%`, background: 'var(--accent)' }} />
+                style={{ width: `${learnProgressTotal > 0 ? (learnProgressDone / learnProgressTotal) * 100 : 0}%`, background: 'var(--accent)' }} />
             </div>
-            <span className="text-xs tabular-nums text-(--text-secondary) shrink-0">{learnTotalSteps}</span>
+            <span className="text-xs tabular-nums text-(--text-secondary) shrink-0">{learnProgressTotal}</span>
             <button onClick={() => setShowLearnOptions(true)} className="icon-btn shrink-0 ml-1" title="Learn settings">
               <Settings className="w-4 h-4" />
             </button>

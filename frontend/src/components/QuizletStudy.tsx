@@ -306,8 +306,10 @@ export function QuizletStudy() {
 
   // Swipe-to-dismiss drag state (mobile only)
   const [dragX, setDragX] = useState(0);
+  const [dragY, setDragY] = useState(0);
+  const [dragSnapping, setDragSnapping] = useState(false);
   const [dragFlying, setDragFlying] = useState<'left' | 'right' | null>(null);
-  const swipeRef = useRef<{ startX: number; startY: number; axis: 'h' | 'v' | null; active: boolean }>({ startX: 0, startY: 0, axis: null, active: false });
+  const swipeRef = useRef<{ startX: number; startY: number; active: boolean }>({ startX: 0, startY: 0, active: false });
   const cardTouchRef = useRef<HTMLDivElement>(null);
   const SWIPE_THRESHOLD = 72;
 
@@ -445,60 +447,54 @@ export function QuizletStudy() {
 
   // Reset drag when card changes
   useEffect(() => {
-    setDragX(0);
-    setDragFlying(null);
+    setDragX(0); setDragY(0); setDragSnapping(false); setDragFlying(null);
     swipeRef.current.active = false;
-    swipeRef.current.axis = null;
   }, [index]);
 
   // Keep a live ref so native event handlers always see current state
   const swipeLiveRef = useRef({ feedback, index, trackProgress, current: null as QuizletCard | null, queueLen: 0, advance });
   swipeLiveRef.current = { feedback, index, trackProgress, current, queueLen: queue.length, advance };
 
-  const dragXRef = useRef(0); // mirrors dragX without closure staleness
+  const dragXRef = useRef(0);
+  const dragYRef = useRef(0);
 
-  // Attach non-passive native listeners — depends on learnPhase so it re-runs
-  // when the flashcard section mounts (element is null until learnPhase === 'off')
   useEffect(() => {
     const el = cardTouchRef.current;
     if (!el) return;
-
-    let startX = 0, startY = 0, axis: 'h' | 'v' | null = null, active = false;
+    const lv = () => swipeLiveRef.current;
+    let startX = 0, startY = 0, active = false;
 
     const onStart = (e: TouchEvent) => {
       if (lv().feedback) return;
       startX = e.touches[0].clientX;
       startY = e.touches[0].clientY;
-      axis = null; active = true; dragXRef.current = 0;
+      active = true;
+      dragXRef.current = 0; dragYRef.current = 0;
     };
 
     const onMove = (e: TouchEvent) => {
       if (!active) return;
       const dx = e.touches[0].clientX - startX;
       const dy = e.touches[0].clientY - startY;
-      if (!axis) {
-        if (Math.abs(dx) > Math.abs(dy) + 3) axis = 'h';
-        else if (Math.abs(dy) > Math.abs(dx) + 3) axis = 'v';
-        else return;
-      }
-      if (axis === 'v') return;
-      e.preventDefault();
-      dragXRef.current = dx;
-      setDragX(dx);
+      // Only prevent default (block page scroll) once clearly dragging the card
+      if (Math.abs(dx) > 8 || Math.abs(dy) > 8) e.preventDefault();
+      dragXRef.current = dx; dragYRef.current = dy;
+      setDragX(dx); setDragY(dy);
     };
 
     const onEnd = (e: TouchEvent) => {
-      if (!active || axis !== 'h') { active = false; setDragX(0); return; }
+      if (!active) return;
       active = false;
       const dx = dragXRef.current;
-      if (Math.abs(dx) > 5) e.preventDefault();
+      const dy = dragYRef.current;
+      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) e.preventDefault();
 
       if (Math.abs(dx) >= 72) {
         const dir = dx > 0 ? 'right' : 'left';
         setDragFlying(dir);
         const { current: cap, index: capIdx, trackProgress: capTP, queueLen: capQL, advance: capAdv } = lv();
         setTimeout(() => {
-          setDragX(0); dragXRef.current = 0; setDragFlying(null);
+          setDragX(0); setDragY(0); dragXRef.current = 0; dragYRef.current = 0; setDragFlying(null);
           if (!cap) return;
           if (capTP) {
             const isKnown = dir === 'right';
@@ -515,11 +511,13 @@ export function QuizletStudy() {
           }
         }, 230);
       } else {
-        dragXRef.current = 0; setDragX(0);
+        // Snap back with spring animation
+        dragXRef.current = 0; dragYRef.current = 0;
+        setDragSnapping(true);
+        setDragX(0); setDragY(0);
+        setTimeout(() => setDragSnapping(false), 400);
       }
     };
-
-    const lv = () => swipeLiveRef.current;
 
     el.addEventListener('touchstart', onStart, { passive: true });
     el.addEventListener('touchmove', onMove, { passive: false });
@@ -921,8 +919,10 @@ export function QuizletStudy() {
           <div style={
             dragFlying
               ? { transform: `translateX(${dragFlying === 'right' ? '160%' : '-160%'}) rotate(${dragFlying === 'right' ? 20 : -20}deg)`, opacity: 0, transition: 'transform 0.23s ease-in, opacity 0.2s ease-in', pointerEvents: 'none' }
-              : dragX !== 0
-              ? { transform: `translateX(${dragX}px) rotate(${dragX * 0.05}deg)`, transition: 'none' }
+              : dragSnapping
+              ? { transform: 'translateX(0px) translateY(0px) rotate(0deg)', transition: 'transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)' }
+              : (dragX !== 0 || dragY !== 0)
+              ? { transform: `translateX(${dragX}px) translateY(${dragY}px) rotate(${dragX * 0.05}deg)`, transition: 'none' }
               : {}
           }>
             <div
@@ -934,7 +934,7 @@ export function QuizletStudy() {
               }`}
             >
               {/* Drag hint overlay */}
-              {dragX !== 0 && !feedback && (
+              {(dragX !== 0 || dragY !== 0) && !feedback && (
                 <div className="absolute inset-0 z-10 rounded-xl overflow-hidden pointer-events-none flex items-center justify-center">
                   <div
                     className={`absolute inset-0 ${dragX > 0 ? 'bg-green-500/25' : 'bg-orange-500/25'}`}

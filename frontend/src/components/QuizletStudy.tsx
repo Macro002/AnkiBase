@@ -897,7 +897,6 @@ export function QuizletStudy() {
   const learnPrompt      = learnItem ? (learnConfig.answerWith === 'definition' ? learnItem.front : learnItem.back) : '';
   const learnCorrectHtml = learnItem ? (learnConfig.answerWith === 'definition' ? learnItem.back  : learnItem.front) : '';
   const learnPromptLabel = learnConfig.answerWith === 'definition' ? 'Term' : 'Definition';
-  const learnTotalSteps  = learnTotalStepsEarly;
   const learnProgressDone  = learnProgressDoneEarly;
   const learnProgressTotal = learnProgressTotalEarly;
   const learnEndMastered = [...learnFinalResult.values()].filter(Boolean).length;

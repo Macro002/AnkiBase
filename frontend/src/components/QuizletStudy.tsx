@@ -831,6 +831,17 @@ export function QuizletStudy() {
     learnAdvanceRef.current(wasCorrect);
   }, []);
 
+  const learnTotalStepsEarly = cards.length * learnRoundTypes.length;
+  const learnProgressDoneEarly  = learnConfig.goal === 'memorize' ? learnCleared : learnCounter;
+  const learnProgressTotalEarly = learnConfig.goal === 'memorize' ? cards.length : learnTotalStepsEarly;
+  const totalPhases = learnProgressTotalEarly > 0 ? Math.ceil(learnProgressTotalEarly / PHASE_SIZE) : 1;
+  const phaseVisibleCount = Math.min(Math.max(totalPhases, 1), 4);
+  const phaseCurrentIdx = Math.floor(learnProgressDoneEarly / PHASE_SIZE);
+  const phaseWindowStart = totalPhases <= phaseVisibleCount
+    ? 0
+    : Math.floor(phaseCurrentIdx / phaseVisibleCount) * phaseVisibleCount;
+  const phaseHasMore = phaseWindowStart + phaseVisibleCount < totalPhases;
+
   useEffect(() => {
     if (phaseWindowStart !== prevPhaseWindowRef.current) {
       prevPhaseWindowRef.current = phaseWindowStart;
@@ -886,16 +897,9 @@ export function QuizletStudy() {
   const learnPrompt      = learnItem ? (learnConfig.answerWith === 'definition' ? learnItem.front : learnItem.back) : '';
   const learnCorrectHtml = learnItem ? (learnConfig.answerWith === 'definition' ? learnItem.back  : learnItem.front) : '';
   const learnPromptLabel = learnConfig.answerWith === 'definition' ? 'Term' : 'Definition';
-  const learnTotalSteps  = cards.length * learnRoundTypes.length;
-  const learnProgressDone  = learnConfig.goal === 'memorize' ? learnCleared : learnCounter;
-  const learnProgressTotal = learnConfig.goal === 'memorize' ? cards.length : learnTotalSteps;
-  const totalPhases = learnProgressTotal > 0 ? Math.ceil(learnProgressTotal / PHASE_SIZE) : 1;
-  const phaseVisibleCount = Math.min(Math.max(totalPhases, 1), 4);
-  const phaseCurrentIdx = Math.floor(learnProgressDone / PHASE_SIZE);
-  const phaseWindowStart = totalPhases <= phaseVisibleCount
-    ? 0
-    : Math.floor(phaseCurrentIdx / phaseVisibleCount) * phaseVisibleCount;
-  const phaseHasMore = phaseWindowStart + phaseVisibleCount < totalPhases;
+  const learnTotalSteps  = learnTotalStepsEarly;
+  const learnProgressDone  = learnProgressDoneEarly;
+  const learnProgressTotal = learnProgressTotalEarly;
   const learnEndMastered = [...learnFinalResult.values()].filter(Boolean).length;
   const learnEndLearning = [...learnFinalResult.values()].filter(v => !v).length;
   const learnEndPercent  = cards.length > 0 ? Math.round((learnEndMastered / cards.length) * 100) : 0;

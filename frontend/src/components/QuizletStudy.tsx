@@ -529,7 +529,7 @@ export function QuizletStudy() {
       el.removeEventListener('touchmove', onMove);
       el.removeEventListener('touchend', onEnd);
     };
-  }, [learnPhase]);
+  }, [learnPhase, loading]);
 
   const undoLast = () => {
     if (history.length === 0) return;

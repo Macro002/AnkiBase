@@ -917,11 +917,11 @@ export function QuizletStudy() {
           {/* Drag/fly wrapper — sits outside key={index} so transform doesn't conflict with slide-in */}
           <div style={
             dragFlying
-              ? { transform: `translateX(${dragFlying === 'right' ? '160%' : '-160%'}) rotate(${dragFlying === 'right' ? 20 : -20}deg)`, opacity: 0, transition: 'transform 0.23s ease-in, opacity 0.2s ease-in', pointerEvents: 'none' }
+              ? { transform: `translateX(${dragFlying === 'right' ? '160%' : '-160%'}) rotate(${dragFlying === 'right' ? 20 : -20}deg)`, opacity: 0, transition: 'transform 0.23s ease-in, opacity 0.2s ease-in', pointerEvents: 'none', position: 'relative', zIndex: 50 }
               : dragSnapping
-              ? { transform: 'translateX(0px) translateY(0px) rotate(0deg)', transition: 'transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)' }
+              ? { transform: 'translateX(0px) translateY(0px) rotate(0deg)', transition: 'transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)', position: 'relative', zIndex: 50 }
               : (dragX !== 0 || dragY !== 0)
-              ? { transform: `translateX(${dragX}px) translateY(${dragY}px) rotate(${dragX * 0.05}deg)`, transition: 'none' }
+              ? { transform: `translateX(${dragX}px) translateY(${dragY}px) rotate(${dragX * 0.05}deg)`, transition: 'none', position: 'relative', zIndex: 50 }
               : {}
           }>
             <div

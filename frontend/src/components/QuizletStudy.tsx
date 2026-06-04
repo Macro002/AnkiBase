@@ -89,6 +89,7 @@ interface LearnConfig {
 }
 
 const LEARN_BUFFER_SIZE = 7;
+const PHASE_SIZE = 7;
 
 function getRoundTypes(config: LearnConfig): LearnQtype[] {
   const t: LearnQtype[] = [];
@@ -360,6 +361,10 @@ export function QuizletStudy() {
   const [learnFlipped, setLearnFlipped] = useState(false);
   const [showRestartLearnConfirm, setShowRestartLearnConfirm] = useState(false);
   const [showLearnOptions, setShowLearnOptions] = useState(false);
+  const [learnClearedOrder, setLearnClearedOrder] = useState<QuizletCard[]>([]);
+  const [sectionSummary, setSectionSummary] = useState<{ phaseIdx: number; cards: QuizletCard[]; correct: number; wrong: number } | null>(null);
+  const [phaseBarSliding, setPhaseBarSliding] = useState(false);
+  const prevPhaseWindowRef = useRef(0);
   const learnAdvanceRef = useRef<(wasCorrect: boolean) => void>(() => {});
   const learnWrittenRef = useRef<HTMLInputElement>(null);
 
@@ -673,6 +678,8 @@ export function QuizletStudy() {
     setLearnCounter(0);
     setLearnFinalResult(new Map());
     setLearnCleared(0);
+    setLearnClearedOrder([]);
+    setSectionSummary(null);
 
     if (config.goal === 'memorize') {
       const stages = new Map<number, number>();
@@ -735,6 +742,15 @@ export function QuizletStudy() {
           }
           newStages.delete(currentCard.id);
           newCleared++;
+          const newClearedOrder = [...learnClearedOrder, currentCard];
+          setLearnClearedOrder(newClearedOrder);
+          if (newCleared % PHASE_SIZE === 0) {
+            const phaseIdx = Math.floor(newCleared / PHASE_SIZE) - 1;
+            const phaseCards = newClearedOrder.slice(phaseIdx * PHASE_SIZE, (phaseIdx + 1) * PHASE_SIZE);
+            const correct = phaseCards.filter(c => newFinalResult.get(c.id) === true).length;
+            const wrong = phaseCards.filter(c => newFinalResult.get(c.id) === false).length;
+            setSectionSummary({ phaseIdx, cards: phaseCards, correct, wrong });
+          }
         } else {
           // Advance stage — push to end of buffer, no new card pulled
           newStages.set(currentCard.id, nextStage);
@@ -768,6 +784,13 @@ export function QuizletStudy() {
         }
         newCounter++;
         newRoundCorrect++;
+        const newClearedOrderCram = [...learnClearedOrder, currentCard];
+        setLearnClearedOrder(newClearedOrderCram);
+        if (newCounter % PHASE_SIZE === 0) {
+          const phaseIdx = Math.floor(newCounter / PHASE_SIZE) - 1;
+          const phaseCards = newClearedOrderCram.slice(phaseIdx * PHASE_SIZE, (phaseIdx + 1) * PHASE_SIZE);
+          setSectionSummary({ phaseIdx, cards: phaseCards, correct: phaseCards.length, wrong: 0 });
+        }
       } else {
         newBuffer = [...newBuffer.slice(1), currentCard];
         newRoundWrong++;
@@ -807,6 +830,17 @@ export function QuizletStudy() {
   const learnAdvance = useCallback((wasCorrect: boolean) => {
     learnAdvanceRef.current(wasCorrect);
   }, []);
+
+  useEffect(() => {
+    if (phaseWindowStart !== prevPhaseWindowRef.current) {
+      prevPhaseWindowRef.current = phaseWindowStart;
+      if (phaseWindowStart > 0) {
+        setPhaseBarSliding(true);
+        const t = setTimeout(() => setPhaseBarSliding(false), 500);
+        return () => clearTimeout(t);
+      }
+    }
+  }, [phaseWindowStart]);
 
   // Keyboard shortcuts — ref keeps handler fresh without re-registering the listener
   keyHandlerRef.current = (e: KeyboardEvent) => {
@@ -855,6 +889,13 @@ export function QuizletStudy() {
   const learnTotalSteps  = cards.length * learnRoundTypes.length;
   const learnProgressDone  = learnConfig.goal === 'memorize' ? learnCleared : learnCounter;
   const learnProgressTotal = learnConfig.goal === 'memorize' ? cards.length : learnTotalSteps;
+  const totalPhases = learnProgressTotal > 0 ? Math.ceil(learnProgressTotal / PHASE_SIZE) : 1;
+  const phaseVisibleCount = Math.min(Math.max(totalPhases, 1), 4);
+  const phaseCurrentIdx = Math.floor(learnProgressDone / PHASE_SIZE);
+  const phaseWindowStart = totalPhases <= phaseVisibleCount
+    ? 0
+    : Math.floor(phaseCurrentIdx / phaseVisibleCount) * phaseVisibleCount;
+  const phaseHasMore = phaseWindowStart + phaseVisibleCount < totalPhases;
   const learnEndMastered = [...learnFinalResult.values()].filter(Boolean).length;
   const learnEndLearning = [...learnFinalResult.values()].filter(v => !v).length;
   const learnEndPercent  = cards.length > 0 ? Math.round((learnEndMastered / cards.length) * 100) : 0;
@@ -1299,17 +1340,77 @@ export function QuizletStudy() {
             </div>
           )}
 
-          {/* Bottom: progress counter + gear */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs tabular-nums text-(--text-secondary) shrink-0">{learnProgressDone}</span>
-            <div className="flex-1 h-2 bg-(--bg-tertiary) rounded-full overflow-hidden">
-              <div className="h-full rounded-full transition-all duration-300"
-                style={{ width: `${learnProgressTotal > 0 ? (learnProgressDone / learnProgressTotal) * 100 : 0}%`, background: 'var(--accent)' }} />
+          {/* Bottom: phased progress bar + section summary */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xs tabular-nums text-(--text-secondary) shrink-0">{learnProgressDone}</span>
+              <div className="flex-1 relative">
+                <div className={`flex gap-1.5${phaseBarSliding ? ' phase-bar-slide-in' : ''}`}>
+                  {Array.from({ length: phaseVisibleCount }, (_, i) => {
+                    const phaseIdx = phaseWindowStart + i;
+                    if (phaseIdx >= totalPhases) return null;
+                    const phaseStart = phaseIdx * PHASE_SIZE;
+                    const phaseEnd = Math.min(phaseStart + PHASE_SIZE, learnProgressTotal);
+                    const phaseTotal = phaseEnd - phaseStart;
+                    let fillPct = 0;
+                    if (phaseTotal > 0) {
+                      if (learnProgressDone >= phaseEnd) fillPct = 100;
+                      else if (learnProgressDone > phaseStart) fillPct = ((learnProgressDone - phaseStart) / phaseTotal) * 100;
+                    }
+                    return (
+                      <div key={phaseIdx} className="flex-1 h-3 bg-(--bg-tertiary) rounded-full overflow-hidden">
+                        <div className="h-full rounded-full transition-all duration-300"
+                          style={{ width: `${fillPct}%`, background: 'var(--accent)' }} />
+                      </div>
+                    );
+                  })}
+                </div>
+                {phaseHasMore && (
+                  <div className="absolute right-0 top-0 bottom-0 w-10 pointer-events-none rounded-r-full"
+                    style={{ background: 'linear-gradient(to right, transparent, var(--bg-primary))' }} />
+                )}
+              </div>
+              <span className="text-xs tabular-nums text-(--text-secondary) shrink-0">{learnProgressTotal}</span>
+              <button onClick={() => setShowLearnOptions(true)} className="icon-btn shrink-0 ml-1" title="Learn settings">
+                <Settings className="w-4 h-4" />
+              </button>
             </div>
-            <span className="text-xs tabular-nums text-(--text-secondary) shrink-0">{learnProgressTotal}</span>
-            <button onClick={() => setShowLearnOptions(true)} className="icon-btn shrink-0 ml-1" title="Learn settings">
-              <Settings className="w-4 h-4" />
-            </button>
+
+            {sectionSummary && (
+              <div className="card section-summary-in" style={{ padding: '1rem' }}>
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <p className="text-xs text-(--text-secondary) uppercase tracking-wider font-semibold mb-0.5">
+                      Section {sectionSummary.phaseIdx + 1} complete
+                    </p>
+                    <p className="text-base font-bold">
+                      {sectionSummary.correct} / {sectionSummary.cards.length} correct
+                    </p>
+                  </div>
+                  <button onClick={() => setSectionSummary(null)} className="icon-btn -mt-0.5 -mr-0.5">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="flex gap-4 text-xs mb-2">
+                  <span className="flex items-center gap-1.5 text-green-400"><Check className="w-3 h-3" />{sectionSummary.correct} correct</span>
+                  <span className="flex items-center gap-1.5 text-orange-400"><X className="w-3 h-3" />{sectionSummary.wrong} still learning</span>
+                </div>
+                <div className="h-1.5 bg-(--bg-tertiary) rounded-full overflow-hidden mb-4">
+                  <div className="h-full rounded-full bg-green-500 transition-all duration-500"
+                    style={{ width: `${sectionSummary.cards.length > 0 ? (sectionSummary.correct / sectionSummary.cards.length) * 100 : 0}%` }} />
+                </div>
+                <p className="text-xs font-semibold text-(--text-secondary) uppercase tracking-wider mb-2">Words in this section</p>
+                <div className="space-y-1">
+                  {sectionSummary.cards.map(card => (
+                    <div key={card.id} className="flex gap-3 rounded-lg px-3 py-2 text-sm bg-(--bg-tertiary)">
+                      <div className="flex-1 font-medium leading-snug min-w-0" dangerouslySetInnerHTML={{ __html: card.front }} />
+                      <div className="w-px bg-white/10 shrink-0" />
+                      <div className="flex-1 text-(--text-secondary) leading-snug min-w-0" dangerouslySetInnerHTML={{ __html: card.back }} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1845,6 +1946,20 @@ export function QuizletStudy() {
         }
         .card-swipe-left  { animation: swipeLeft  0.43s cubic-bezier(0.4, 0, 0.9, 0.6) forwards; }
         .card-swipe-right { animation: swipeRight 0.43s cubic-bezier(0.4, 0, 0.9, 0.6) forwards; }
+
+        /* Phase bar slide-in when window advances */
+        @keyframes phaseBarSlideIn {
+          from { transform: translateX(28px); opacity: 0.5; }
+          to   { transform: translateX(0);    opacity: 1; }
+        }
+        .phase-bar-slide-in { animation: phaseBarSlideIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+
+        /* Section summary slide-in */
+        @keyframes sectionSummaryIn {
+          from { opacity: 0; transform: translateY(-6px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        .section-summary-in { animation: sectionSummaryIn 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
       `}</style>
     </div>
   );

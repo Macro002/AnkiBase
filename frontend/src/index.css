@@ -318,7 +318,7 @@ input[type="checkbox"]:checked::after {
 
 /* Nav tab hover underline — avoids Tailwind group-hover which uses @media(hover:hover) */
 .nav-tab:hover .nav-tab-underline {
-  transform: scaleX(1);
+  scale: 1;
 }
 
 /* Button color hover utilities */

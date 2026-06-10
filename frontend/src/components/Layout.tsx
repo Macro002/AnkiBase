@@ -229,7 +229,7 @@ export function Layout() {
                 end={to === '/'}
                 className={({ isActive }) => {
                   const active = isActive || (to === '/study' && onStudyPath);
-                  return `relative group flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${
+                  return `nav-tab relative flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${
                     active ? 'text-(--accent)' : 'text-(--text-secondary) hover-white'
                   }`;
                 }}
@@ -240,8 +240,8 @@ export function Layout() {
                     <>
                       <Icon className="w-4 h-4" />
                       <span>{label}</span>
-                      <span className={`absolute bottom-0 left-0 right-0 h-0.5 bg-(--accent) transition-transform duration-200 origin-center ${
-                        active ? 'scale-x-100' : 'scale-x-0 group-hover:scale-x-100'
+                      <span className={`nav-tab-underline absolute bottom-0 left-0 right-0 h-0.5 bg-(--accent) transition-transform duration-200 origin-center ${
+                        active ? 'scale-x-100' : 'scale-x-0'
                       }`} />
                     </>
                   );

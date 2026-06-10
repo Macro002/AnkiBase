@@ -316,6 +316,11 @@ input[type="checkbox"]:checked::after {
   color: var(--accent);
 }
 
+/* Nav tab hover underline — avoids Tailwind group-hover which uses @media(hover:hover) */
+.nav-tab:hover .nav-tab-underline {
+  transform: scaleX(1);
+}
+
 /* Button color hover utilities */
 .hover-bg-blue:hover {
   background: #3b82f6 !important;

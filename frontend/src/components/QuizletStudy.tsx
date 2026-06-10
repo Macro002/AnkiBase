@@ -296,6 +296,8 @@ export function QuizletStudy() {
   const prevIndexRef = useRef(0);
 
   const [favorites, setFavorites] = useState<Set<number>>(new Set());
+  const [brokenImages, setBrokenImages] = useState<Set<number>>(new Set());
+  const markImageBroken = (id: number) => setBrokenImages(prev => new Set([...prev, id]));
 
   const [trackProgress, setTrackProgress] = useState(false);
   const [known, setKnown] = useState<Set<number>>(new Set());
@@ -962,7 +964,7 @@ export function QuizletStudy() {
     const swapped = frontSide === 'definition';
     const showingTerm = swapped ? isBack : !isBack;
     const text = showingTerm ? current?.front : current?.back;
-    const hasImage = showingTerm && !!current?.image;
+    const hasImage = showingTerm && !!current?.image && !brokenImages.has(current.id);
     const hintTarget = swapped ? (current?.front ?? '') : (current?.back ?? '');
     const backLabel = swapped ? 'Term' : 'Definition';
     return (
@@ -999,7 +1001,8 @@ export function QuizletStudy() {
               <div className="text-2xl font-medium leading-snug text-center" dangerouslySetInnerHTML={{ __html: text ?? '' }} />
             </div>
             <div className="flex-1 p-4">
-              <img src={current!.image!} alt="" className="w-full h-full object-contain rounded-lg" />
+              <img src={current!.image!} alt="" className="w-full h-full object-contain rounded-lg"
+                onError={() => markImageBroken(current!.id)} />
             </div>
           </div>
         ) : (
@@ -1554,11 +1557,12 @@ export function QuizletStudy() {
                         </div>
                         <div className="flex-1 flex gap-2 min-h-0 items-center">
                           <div className="text-sm leading-snug flex-1" dangerouslySetInnerHTML={{ __html: card.back }} />
-                          {card.image && (
+                          {card.image && !brokenImages.has(card.id) && (
                             <img
                               src={card.image} alt=""
                               className="shrink-0 rounded object-contain cursor-zoom-in hover:opacity-85 transition-opacity"
                               style={{ width: '56px', height: '56px' }}
+                              onError={() => markImageBroken(card.id)}
                               onClick={e => {
                                 e.stopPropagation();
                                 const r = e.currentTarget.getBoundingClientRect();

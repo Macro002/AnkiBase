@@ -23,6 +23,7 @@ from database import (
     rename_quizlet_deck, record_quizlet_review, get_quizlet_daily_counts,
     get_quizlet_deck_stats, get_quizlet_favorites, toggle_quizlet_favorite,
     update_quizlet_card,
+    get_quizlet_study_state, set_quizlet_study_state, delete_quizlet_study_state,
     get_setting, set_setting, get_user_accent, set_user_accent, clear_user_accent,
     get_server_base_colors, set_server_base_colors,
     get_user_base_colors, set_user_base_colors, clear_user_base_colors,
@@ -2218,6 +2219,46 @@ async def quizlet_record_review(deck_id: int, request: QuizletReviewRequest, _: 
         return {"success": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+QUIZLET_STATE_MODES = {"learn", "match", "blast", "blocks"}
+
+
+class QuizletStateRequest(BaseModel):
+    state: dict
+
+
+def _check_state_mode(mode: str):
+    if mode not in QUIZLET_STATE_MODES:
+        raise HTTPException(status_code=400, detail="Unknown study mode")
+
+
+@app.get("/api/quizlet/decks/{deck_id}/state/{mode}")
+async def quizlet_get_state(deck_id: int, mode: str, _: str = Depends(require_auth)):
+    import json
+    _check_state_mode(mode)
+    raw = get_quizlet_study_state(deck_id, mode)
+    return {"state": json.loads(raw) if raw else None}
+
+
+@app.put("/api/quizlet/decks/{deck_id}/state/{mode}")
+async def quizlet_put_state(deck_id: int, mode: str, request: QuizletStateRequest, _: str = Depends(require_auth)):
+    import json
+    _check_state_mode(mode)
+    raw = json.dumps(request.state)
+    if len(raw) > 1_000_000:
+        raise HTTPException(status_code=413, detail="State too large")
+    if not get_quizlet_deck(deck_id):
+        raise HTTPException(status_code=404, detail="Deck not found")
+    set_quizlet_study_state(deck_id, mode, raw)
+    return {"success": True}
+
+
+@app.delete("/api/quizlet/decks/{deck_id}/state/{mode}")
+async def quizlet_delete_state(deck_id: int, mode: str, _: str = Depends(require_auth)):
+    _check_state_mode(mode)
+    delete_quizlet_study_state(deck_id, mode)
+    return {"success": True}
 
 
 # Models endpoint

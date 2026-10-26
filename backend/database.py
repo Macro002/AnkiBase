@@ -180,6 +180,17 @@ def init_global_db():
             )
         """)
 
+        # Quizlet per-deck study state (Learn progress, Match best times, ...)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS quizlet_study_state (
+                deck_id INTEGER NOT NULL REFERENCES quizlet_decks(id) ON DELETE CASCADE,
+                mode TEXT NOT NULL,
+                state TEXT NOT NULL,
+                updated_at TEXT DEFAULT (datetime('now')),
+                PRIMARY KEY (deck_id, mode)
+            )
+        """)
+
         # Login attempts for persistent, server-side rate limiting
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS login_attempts (
@@ -1011,6 +1022,32 @@ def update_quizlet_card(card_id: int, deck_id: int, front: str, back: str, image
         )
         conn.commit()
         return cursor.rowcount > 0
+
+
+def get_quizlet_study_state(deck_id: int, mode: str) -> Optional[str]:
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT state FROM quizlet_study_state WHERE deck_id = ? AND mode = ?", (deck_id, mode))
+        row = cursor.fetchone()
+        return row[0] if row else None
+
+
+def set_quizlet_study_state(deck_id: int, mode: str, state: str):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO quizlet_study_state (deck_id, mode, state, updated_at)
+            VALUES (?, ?, ?, datetime('now'))
+            ON CONFLICT(deck_id, mode) DO UPDATE SET state = excluded.state, updated_at = excluded.updated_at
+        """, (deck_id, mode, state))
+        conn.commit()
+
+
+def delete_quizlet_study_state(deck_id: int, mode: str):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM quizlet_study_state WHERE deck_id = ? AND mode = ?", (deck_id, mode))
+        conn.commit()
 
 
 def get_quizlet_daily_counts() -> dict[str, int]:

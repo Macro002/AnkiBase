@@ -582,6 +582,8 @@ export interface QuizletCard {
   position: number;
 }
 
+export type QuizletStateMode = 'learn' | 'match' | 'blast' | 'blocks';
+
 export const quizlet = {
   scrape: (url: string) =>
     fetchAPI<{ title: string; cards: { front: string; back: string; image?: string | null }[] }>('/quizlet/scrape', {
@@ -620,6 +622,17 @@ export const quizlet = {
       method: 'PATCH',
       body: JSON.stringify({ front, back, image }),
     }),
+  getState: <T,>(deckId: number, mode: QuizletStateMode) =>
+    fetchAPI<{ state: T | null }>(`/quizlet/decks/${deckId}/state/${mode}`),
+  /** `keepalive` lets the save finish while the page is unloading. */
+  putState: (deckId: number, mode: QuizletStateMode, state: unknown, keepalive = false) =>
+    fetchAPI<{ success: boolean }>(`/quizlet/decks/${deckId}/state/${mode}`, {
+      method: 'PUT',
+      body: JSON.stringify({ state }),
+      keepalive,
+    }),
+  deleteState: (deckId: number, mode: QuizletStateMode) =>
+    fetchAPI<{ success: boolean }>(`/quizlet/decks/${deckId}/state/${mode}`, { method: 'DELETE' }),
   fetchImage: (url: string) =>
     fetchAPI<{ data: string }>('/quizlet/fetch-image', {
       method: 'POST',

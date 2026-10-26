@@ -1,10 +1,5 @@
 @import "tailwindcss";
 
-/* Ultrawide monitors: the layout grows one more step. */
-@theme {
-  --breakpoint-3xl: 137.5rem;
-}
-
 :root {
   --bg-primary: #1a1a2e;
   --bg-secondary: #16213e;

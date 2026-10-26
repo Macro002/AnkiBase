@@ -200,7 +200,7 @@ export function Decks() {
         {/* Decks grid skeleton */}
         <div>
           <div className="skeleton h-7 w-24 mb-4"></div>
-          <div className="grid gap-4 [&>*]:min-w-0 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 3xl:grid-cols-5">
+          <div className="grid gap-4 [&>*]:min-w-0 sm:grid-cols-2 lg:grid-cols-3">
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="card border border-(--bg-tertiary)">
                 <div className="skeleton h-6 w-32 mb-3"></div>
@@ -269,7 +269,7 @@ export function Decks() {
         {currentPath.length > 0 ? currentPath[currentPath.length - 1] : 'My Anki Decks'}
       </h2>
 
-      <div className="grid gap-4 [&>*]:min-w-0 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 3xl:grid-cols-5 anim-stagger">
+      <div className="grid gap-4 [&>*]:min-w-0 sm:grid-cols-2 lg:grid-cols-3 anim-stagger">
         {visibleDecks.map((deck) => (
           <div
             key={deck.id}
@@ -376,7 +376,7 @@ export function Decks() {
               </button>
             </div>
           ) : (
-            <div className="grid gap-4 [&>*]:min-w-0 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 3xl:grid-cols-5 anim-stagger">
+            <div className="grid gap-4 [&>*]:min-w-0 sm:grid-cols-2 lg:grid-cols-3 anim-stagger">
               {quizletDecks.map(deck => (
                 <div
                   key={deck.id}

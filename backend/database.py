@@ -1144,6 +1144,73 @@ def get_quizlet_daily_counts() -> dict[str, int]:
         return {row[0]: row[1] for row in cursor.fetchall()}
 
 
+def search_quizlet_cards(user_id: int, query: str, limit: int = 40) -> list[dict]:
+    """Accent/case-insensitive search over Quizlet cards in the active account, best matches first."""
+    import json, re, unicodedata
+
+    def fold(s: str) -> str:
+        s = re.sub(r"<[^>]+>", " ", s or "").replace("&nbsp;", " ")
+        s = unicodedata.normalize("NFD", s.lower())
+        s = "".join(c for c in s if unicodedata.category(c) != "Mn").replace("œ", "oe").replace("æ", "ae").replace("’", "'")
+        return re.sub(r"\s+", " ", s).strip()
+
+    q = fold(query)
+    if not q:
+        return []
+    container_id = _active_container_id()
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT qc.id, qc.deck_id, qc.front, qc.back, qc.image, qd.title
+            FROM quizlet_cards qc JOIN quizlet_decks qd ON qc.deck_id = qd.id
+            WHERE qd.container_id = ?
+        """, (container_id,))
+        rows = [dict(r) for r in cursor.fetchall()]
+        cursor.execute("SELECT ref_id, state FROM study_sessions WHERE user_id = ? AND container_id = ? AND kind = 'quizlet-learn'",
+                       (user_id, container_id))
+        levels: dict[int, int] = {}
+        for _ref, raw in cursor.fetchall():
+            try:
+                for cid, t in ((json.loads(raw) or {}).get("terms") or {}).items():
+                    levels[int(cid)] = int(t.get("level", 0))
+            except (ValueError, TypeError, AttributeError):
+                continue
+
+    def rank(r) -> int | None:
+        f, b = fold(r["front"]), fold(r["back"])
+        # strip leading articles so "le chat" counts as an exact hit for "chat"
+        bare = re.sub(r"^(le |la |les |l'|un |une |des |the |a |an |to )", "", f)
+        if q in (f, bare): return 0
+        if f.startswith(q) or bare.startswith(q): return 1
+        if q in f: return 2
+        if q == b or b.startswith(q): return 3
+        if q in b: return 4
+        return None
+
+    hits = []
+    for r in rows:
+        k = rank(r)
+        if k is not None:
+            hits.append((k, len(r["front"]), r))
+    hits.sort(key=lambda x: (x[0], x[1]))
+    return [{**r, "level": levels.get(r["id"], 0)} for _k, _l, r in hits[:limit]]
+
+
+def add_quizlet_card(deck_id: int, front: str, back: str) -> Optional[int]:
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM quizlet_decks WHERE id = ? AND container_id = ?", (deck_id, _active_container_id()))
+        if not cursor.fetchone():
+            return None
+        cursor.execute("SELECT COALESCE(MAX(position), -1) + 1 FROM quizlet_cards WHERE deck_id = ?", (deck_id,))
+        pos = cursor.fetchone()[0]
+        cursor.execute("INSERT INTO quizlet_cards (deck_id, front, back, position) VALUES (?, ?, ?, ?)", (deck_id, front, back, pos))
+        card_id = cursor.lastrowid
+        cursor.execute("UPDATE quizlet_decks SET card_count = (SELECT COUNT(*) FROM quizlet_cards WHERE deck_id = ?) WHERE id = ?", (deck_id, deck_id))
+        conn.commit()
+        return card_id
+
+
 def get_quizlet_stats_data(user_id: int, deck_id: Optional[int] = None) -> tuple[list[tuple], list[dict], dict[int, int]]:
     """Quizlet answers, cards and Learn levels for the active account (optionally one set) — for the Stats tab."""
     import json

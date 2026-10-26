@@ -75,7 +75,7 @@ export function Stats() {
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative">
           <select value={filters.scope} onChange={e => set({ scope: e.target.value })}
-            className="input appearance-none h-9 py-0 pl-3 pr-9 text-sm cursor-pointer max-w-[16rem] truncate">
+            className="input appearance-none h-9 !py-0 !pl-3 !pr-9 text-sm cursor-pointer max-w-[16rem] truncate">
             <option value="all">Everything</option>
             <option value="anki">Everything in Anki</option>
             <option value="quizlet">Everything in Quizlet</option>

@@ -25,7 +25,7 @@ from database import (
     update_quizlet_card,
     get_quizlet_study_state, set_quizlet_study_state, delete_quizlet_study_state,
     list_study_sessions, get_study_session, upsert_study_session, delete_study_session,
-    get_quizlet_stats_data,
+    get_quizlet_stats_data, search_quizlet_cards, add_quizlet_card,
     get_setting, set_setting, get_user_accent, set_user_accent, clear_user_accent,
     get_server_base_colors, set_server_base_colors,
     get_user_base_colors, set_user_base_colors, clear_user_base_colors,
@@ -886,6 +886,149 @@ async def search_cards(
         return {"notes": notes, "total": len(note_ids)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Search tab: dictionary + your cards ---------------------------------------
+
+def _anki_escape(text: str) -> str:
+    """Make free text safe inside an Anki search: quote it and escape wildcards."""
+    t = text.replace("\\", "\\\\").replace('"', '\\"').replace("*", "\\*").replace("_", "\\_")
+    return f'"nc:{t}"'
+
+
+@app.get("/api/search/cards")
+async def search_your_cards(
+    q: str,
+    limit: int = 40,
+    client: AnkiConnectClient = Depends(get_anki_client),
+    user: dict = Depends(require_auth),
+):
+    """Find a word in your Anki notes and Quizlet cards — accent-insensitive, best matches first."""
+    import re
+    import dictionary as dic
+
+    q = q.strip()[:200]
+    if not q:
+        return {"anki": [], "quizlet": [], "anki_error": None}
+    result = {"anki": [], "quizlet": search_quizlet_cards(user["user_id"], q, limit), "anki_error": None, "anki_total": 0}
+    try:
+        note_ids = await client.find_notes(_anki_escape(q))
+        result["anki_total"] = len(note_ids)
+        notes = await client.get_notes_info(note_ids[:200]) if note_ids else []
+        target = dic.fold(q)
+
+        def plain(v: str) -> str:
+            return dic.fold(re.sub(r"<[^>]+>|\[sound:[^\]]+\]", " ", v or ""))
+
+        def rank(n) -> tuple:
+            fields = sorted(n["fields"].items(), key=lambda kv: kv[1]["order"])
+            first = plain(fields[0][1]["value"]) if fields else ""
+            if first == target: return (0, len(first))
+            if first.startswith(target): return (1, len(first))
+            if target in first: return (2, len(first))
+            return (3, len(first))
+
+        notes.sort(key=rank)
+        notes = notes[:limit]
+        first_cards = [n["cards"][0] for n in notes if n.get("cards")]
+        infos = {c["cardId"]: c for c in (await client.get_cards_info(first_cards) if first_cards else [])}
+        for n in notes:
+            card = infos.get(n["cards"][0]) if n.get("cards") else None
+            state = None
+            if card:
+                if card.get("queue") == -1: state = "suspended"
+                elif card.get("type") == 0: state = "new"
+                elif card.get("type") in (1, 3): state = "learning"
+                else: state = "mature" if (card.get("interval") or 0) >= 21 else "young"
+            result["anki"].append({
+                "note_id": n["noteId"],
+                "model": n["modelName"],
+                "tags": n.get("tags", []),
+                "fields": [{"name": k, "value": v["value"]} for k, v in sorted(n["fields"].items(), key=lambda kv: kv[1]["order"])],
+                "deck": card.get("deckName") if card else None,
+                "deck_id": None,
+                "state": state,
+            })
+        try:
+            ids = await client.get_deck_names_and_ids()
+            for r in result["anki"]:
+                r["deck_id"] = ids.get(r["deck"])
+        except Exception:
+            pass
+    except Exception as e:
+        result["anki_error"] = f"Couldn't search Anki: {e}"
+    return result
+
+
+@app.get("/api/dictionary")
+async def dictionary_lookup(q: str, lang: str = "", _: dict = Depends(require_auth)):
+    """Wiktionary entry (any language) for a word, plus Jisho for Japanese."""
+    import dictionary as dic
+
+    q = q.strip()[:100]
+    if not q:
+        raise HTTPException(status_code=400, detail="Empty query")
+    out: dict = {"wiktionary": None, "jisho": [], "error": None}
+    try:
+        out["wiktionary"] = await dic.lookup(q, lang or None)
+    except Exception as e:
+        out["error"] = f"Dictionary unavailable: {e}"
+    if dic.has_japanese(q) or lang == "Japanese":
+        try:
+            out["jisho"] = await dic.jisho(q)
+        except Exception:
+            pass
+    return out
+
+
+class NoteFieldsUpdate(BaseModel):
+    fields: dict[str, str]
+
+
+@app.put("/api/notes/{note_id}/fields")
+async def update_note_fields(note_id: int, request: NoteFieldsUpdate,
+                             client: AnkiConnectClient = Depends(get_anki_client), _: dict = Depends(require_auth)):
+    try:
+        await client.update_note_fields(note_id, request.fields)
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class QuickCardRequest(BaseModel):
+    front: str
+    back: str
+
+
+@app.post("/api/notes/basic")
+async def add_basic_note(deck: str, request: QuickCardRequest,
+                         client: AnkiConnectClient = Depends(get_anki_client), _: dict = Depends(require_auth)):
+    """Add a front/back note to an Anki deck (uses the 'Basic' note type, or the first with 2+ fields)."""
+    try:
+        models = await client.get_model_names()
+        model = "Basic" if "Basic" in models else None
+        names: list[str] = []
+        for m in ([model] if model else []) + [m for m in models if m != model]:
+            names = await client.get_model_field_names(m)
+            if len(names) >= 2:
+                model = m
+                break
+        if not model or len(names) < 2:
+            raise HTTPException(status_code=400, detail="No note type with two fields found")
+        note_id = await client.add_note(deck, model, {names[0]: request.front, names[1]: request.back})
+        return {"success": True, "note_id": note_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/quizlet/decks/{deck_id}/cards")
+async def quizlet_add_card(deck_id: int, request: QuickCardRequest, _: dict = Depends(require_auth)):
+    card_id = add_quizlet_card(deck_id, request.front, request.back)
+    if card_id is None:
+        raise HTTPException(status_code=404, detail="Set not found")
+    return {"success": True, "card_id": card_id}
 
 
 # Story generation endpoints

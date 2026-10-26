@@ -212,6 +212,44 @@ export const search = {
     }),
 };
 
+// Dictionary + "in your cards" search (Search tab)
+export interface DictSegment { t: string; w?: string }
+export interface DictSense { segments: DictSegment[]; examples: { text: string; translation: string | null }[] }
+export interface DictEntry {
+  pos: string; headword: string | null; gender: string | null;
+  forms: { label: string; form: string }[]; senses: DictSense[];
+  related: Partial<Record<'synonyms' | 'antonyms' | 'derived' | 'related', string[]>>;
+}
+export interface DictLanguage { language: string; ipa: string[]; audio: string[]; etymology: string | null; entries: DictEntry[] }
+export interface JishoEntry {
+  word: string; reading: string; other_forms: string[]; common: boolean; jlpt: string[];
+  senses: { pos: string[]; glosses: string[]; info: string[] }[];
+}
+export interface DictionaryResult {
+  wiktionary: { query: string; word: string; corrected: boolean; languages: DictLanguage[]; variants: string[]; source_url: string } | null;
+  jisho: JishoEntry[];
+  error: string | null;
+}
+export interface AnkiHit {
+  note_id: number; model: string; tags: string[]; fields: { name: string; value: string }[];
+  deck: string | null; deck_id: number | null; state: 'new' | 'learning' | 'young' | 'mature' | 'suspended' | null;
+}
+export interface QuizletHit { id: number; deck_id: number; front: string; back: string; image: string | null; title: string; level: number }
+export interface CardSearchResult { anki: AnkiHit[]; quizlet: QuizletHit[]; anki_total: number; anki_error: string | null }
+
+export const dictionary = {
+  lookup: (q: string, lang: string) =>
+    fetchAPI<DictionaryResult>(`/dictionary?${new URLSearchParams({ q, lang })}`),
+  searchCards: (q: string) =>
+    fetchAPI<CardSearchResult>(`/search/cards?${new URLSearchParams({ q })}`),
+  updateNote: (noteId: number, fields: Record<string, string>) =>
+    fetchAPI<{ success: boolean }>(`/notes/${noteId}/fields`, { method: 'PUT', body: JSON.stringify({ fields }) }),
+  addAnki: (deck: string, front: string, back: string) =>
+    fetchAPI<{ success: boolean; note_id: number }>(`/notes/basic?${new URLSearchParams({ deck })}`, { method: 'POST', body: JSON.stringify({ front, back }) }),
+  addQuizlet: (deckId: number, front: string, back: string) =>
+    fetchAPI<{ success: boolean; card_id: number }>(`/quizlet/decks/${deckId}/cards`, { method: 'POST', body: JSON.stringify({ front, back }) }),
+};
+
 // Story generation result
 export interface StoryGenerateResult {
   story: string;

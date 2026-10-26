@@ -172,6 +172,10 @@ class AnkiConnectClient:
         """Move cards to a different deck."""
         return await self.request("changeDeck", cards=card_ids, deck=deck_name)
 
+    async def update_note_fields(self, note_id: int, fields: dict) -> None:
+        """Update some fields of an existing note."""
+        return await self.request("updateNoteFields", note={"id": note_id, "fields": fields})
+
     # Review history
     async def get_card_reviews(self, deck: str, start_id: int = 0) -> list:
         """Get review history for a deck."""

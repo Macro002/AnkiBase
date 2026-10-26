@@ -2,42 +2,34 @@
 title: Overview
 ---
 
-import Image from 'next/image'
-
 # AnkiBase
 
-**Self-hosted web interface for Anki** — study flashcards, sync with AnkiWeb, import from Quizlet, and generate AI vocabulary stories. Runs entirely on your own server.
+**Anki, Quizlet and AI, on your own server.** AnkiBase runs your real Anki collection in the browser, plays Quizlet sets in every Quizlet mode, and turns the words you're learning into AI-written stories with tap-to-translate.
 
-![AnkiBase desktop view](/AnkiBase/desktop.png)
+<video src="/AnkiBase/media/ankibase-demo.mp4" poster="/AnkiBase/media/hero.webp" controls muted playsInline style={{ width: '100%', borderRadius: 12, marginTop: 24 }} />
 
-## Features
+## What's inside
 
-| Feature | Description |
+| | |
 |---|---|
-| **Study** | Review cards with ease ratings, undo, progress tracking, and learn mode |
-| **Quizlet Import** | Paste any Quizlet URL to import decks with images |
-| **AI Stories** | Generate vocabulary stories from deck words (OpenAI, Anthropic, Gemini) |
-| **AnkiWeb Sync** | Sync to/from AnkiWeb with conflict resolution |
-| **Search** | Full-text search across all notes |
-| **Import** | Drag-and-drop `.apkg` file import |
-| **Stats** | Activity heatmap filterable by Anki or Quizlet reviews |
-| **Multi-user** | Admin panel with per-user container access control |
-| **Multi-account** | Each account gets its own isolated Anki container |
-| **In-app updates** | Pull the latest version without touching the server |
+| **Anki study** | Anki's own reviewer (exact order and daily limits). Every note type renders with its own HTML and CSS, plus audio, MathJax, cloze and type-in answers |
+| **Quizlet** | Import sets from a link. Flashcards, Learn, Write, Test, Match, Blast and Blocks, with resumable sessions |
+| **AI stories** | Claude, ChatGPT or Gemini write at your CEFR level using your words |
+| **Reading** | Every word comes pre-annotated (dictionary form, meaning, grammar). Highlight a sentence to have it explained |
+| **Search** | Dictionary entries plus "in your cards" matches across Anki and Quizlet |
+| **Stats** | Anki-style statistics for Anki decks and Quizlet sets together |
+| **Themes** | Nine built-in themes, custom colours, import/export |
+| **Self-hosting** | One-line install, in-app updates, multiple users, one Anki container per account, AnkiWeb sync |
 
-## Mobile
+See [Features](/features) for a tour with screenshots, or jump straight to [Getting Started](/getting-started).
 
-AnkiBase is fully responsive with a bottom navigation bar and safe-area aware layout.
-
-![AnkiBase mobile view](/AnkiBase/mobile.png)
+![How AnkiBase fits together](/AnkiBase/media/architecture.webp)
 
 ## Stack
 
 | Layer | Tech |
 |---|---|
-| Backend | FastAPI + Uvicorn |
-| Frontend | React 19, TypeScript, TailwindCSS v4 |
-| Anki runtime | headless-anki (Docker + AnkiConnect) |
-| Database | SQLite |
-| AI providers | OpenAI, Anthropic, Google Gemini |
-
+| Frontend | React 19, TypeScript, Vite, Tailwind CSS v4 |
+| Backend | FastAPI + Uvicorn, SQLite |
+| Anki runtime | headless Anki + AnkiConnect (Docker, one container per account) |
+| AI providers | Anthropic Claude, OpenAI, Google Gemini (optional, bring your own key) |

@@ -19,7 +19,17 @@ export interface FrameEvents {
 function themeVars() {
   const cs = getComputedStyle(document.documentElement);
   const v = (n: string, d: string) => cs.getPropertyValue(n).trim() || d;
-  return { text: v('--text-primary', '#eee'), muted: v('--text-secondary', '#aaa'), accent: v('--accent', '#e94560'), surface: v('--bg-tertiary', '#0f3460') };
+  const card = v('--bg-secondary', '#16213e');
+  return { text: v('--text-primary', '#eee'), muted: v('--text-secondary', '#aaa'), accent: v('--accent', '#e94560'), surface: v('--bg-tertiary', '#0f3460'), dark: isDark(card) };
+}
+
+/** Light themes get Anki's day mode; `nightMode` would apply the deck's dark-mode colours on a light card. */
+function isDark(color: string): boolean {
+  const m = color.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+  if (!m) return true;
+  const h = m[1].length === 3 ? [...m[1]].map(c => c + c).join('') : m[1];
+  const [r, g, b] = [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16) / 255);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b < 0.5;
 }
 
 const esc = (s: string) => s.replace(/[&"<>]/g, c => ({ '&': '&amp;', '"': '&quot;', '<': '&lt;', '>': '&gt;' }[c]!));
@@ -51,13 +61,13 @@ function buildDoc(html: string, css: string, token: string, frameId: string, sid
     img{max-width:100%;height:auto}
     video{max-width:100%}
     a{color:${t.accent}}
-    hr,hr#answer{border:0;border-top:1px solid rgba(255,255,255,.14);margin:22px 0}
+    hr,hr#answer{border:0;border-top:1px solid ${t.dark ? 'rgba(255,255,255,.14)' : 'rgba(0,0,0,.12)'};margin:22px 0}
     .cloze{font-weight:bold;color:#5ea2ff}
     table{margin:0 auto;border-collapse:collapse}
     td,th{padding:4px 8px}
     .ab-play{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;margin:0 4px;vertical-align:middle;border:0;border-radius:999px;background:${t.surface};color:${t.text};font-size:13px;cursor:pointer}
     .ab-play:hover{background:${t.accent};color:#fff}
-    #typeans{font:inherit;font-size:18px;width:min(100%,420px);padding:8px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.18);background:rgba(0,0,0,.25);color:inherit;text-align:center}
+    #typeans{font:inherit;font-size:18px;width:min(100%,420px);padding:8px 12px;border-radius:10px;border:1px solid ${t.dark ? 'rgba(255,255,255,.18)' : 'rgba(0,0,0,.18)'};background:${t.dark ? 'rgba(0,0,0,.25)' : 'rgba(255,255,255,.7)'};color:inherit;text-align:center}
   `;
   const bridge = `
     (function(){
@@ -84,7 +94,7 @@ function buildDoc(html: string, css: string, token: string, frameId: string, sid
     : '';
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <base target="_blank"><style>${base}</style><style>${rewriteMedia(css, token)}</style>${math}</head>
-<body class="card nightMode night_mode" data-side="${side}"><div id="qa">${body}</div><script>${bridge}</script></body></html>`;
+<body class="card${t.dark ? ' nightMode night_mode' : ''}" data-side="${side}"><div id="qa">${body}</div><script>${bridge}</script></body></html>`;
 }
 
 export function CardFrame({ html, css, token, side, events, minHeight = 220 }: {

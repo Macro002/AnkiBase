@@ -12,10 +12,12 @@ The installer generates a `.env` file at `/opt/ankibase/backend/.env`. You can e
 
 | Variable | Description | Default |
 |---|---|---|
-| `SECRET_KEY` | Session signing key — keep secret | Auto-generated |
-| `ENCRYPTION_KEY` | Fernet key for credential encryption | Auto-generated |
-| `PORT` | Backend listen port | `8000` |
-| `DATA_DIR` | Directory for per-account SQLite databases | `./data` |
+| `APP_SECRET_KEY` | Signs sessions and media links. Keep it secret | Auto-generated |
+| `ANKIWEB_ENCRYPTION_KEY` | Fernet key that encrypts stored credentials | Auto-generated |
+| `APP_PORT` | Backend listen port | First free port from `8000` |
+| `CORS_ORIGINS` | Allowed browser origins | `http://localhost:<port>` |
+
+Per-account data (stories, API keys) lives in `backend/data/<account>/`.
 
 After editing, restart the service:
 
@@ -25,13 +27,15 @@ systemctl restart ankibase
 
 ## AI Providers
 
-API keys are managed in-app via **Settings → API Keys**. Supported providers:
+API keys are managed in the app under **Settings → AI** (or **AI settings** on the Story tab). Each provider has a default model, and you can switch models per story:
 
-| Provider | Model used |
-|---|---|
-| OpenAI | `gpt-4o-mini` |
-| Anthropic | `claude-haiku-3-5` |
-| Google Gemini | `gemini-1.5-flash` |
+| Provider | Default model | Also available |
+|---|---|---|
+| Anthropic (Claude) | `claude-opus-5-5` | `claude-sonnet-5-5`, `claude-haiku-5-5` |
+| OpenAI (ChatGPT) | `gpt-4o-mini` | `gpt-4o`, `gpt-4-turbo`, `gpt-3.5-turbo` |
+| Google Gemini | `gemini-2.0-flash` | `gemini-2.0-flash-lite`, `gemini-1.5-flash-8b`, `gemini-1.5-pro` |
+
+AI is optional. Studying, Quizlet, search and stats all work without a key.
 
 Keys are encrypted at rest using the `ENCRYPTION_KEY` from `.env`.
 
@@ -80,7 +84,7 @@ AnkiBase supports multiple users, each with their own Anki container.
 
 ## AnkiWeb Sync
 
-AnkiWeb credentials are stored encrypted in the database. Each account can have its own AnkiWeb credentials configured via **Settings → AnkiWeb**.
+AnkiWeb credentials are stored encrypted in the database. Each account can have its own AnkiWeb login, set with the **AnkiWeb** button in the header.
 
 Sync modes available:
 - **Normal sync** — incremental, merges changes

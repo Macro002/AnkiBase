@@ -1,0 +1,373 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="fonts/local.css">
+<style>
+  :root { --accent: #e94560; --accent2: #ff8a7a; --ink: #f3f1ff; --muted: #a9a8c7; --bg: #0d0e1f; }
+  * { box-sizing: border-box; margin: 0; padding: 0 }
+  html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); font-family: Inter, sans-serif; color: var(--ink); -webkit-font-smoothing: antialiased }
+  .abs { position: absolute }
+  #bg { position: absolute; inset: 0; overflow: hidden }
+  .glow { position: absolute; width: 1400px; height: 1400px; border-radius: 50%; filter: blur(40px) }
+  #g1 { background: radial-gradient(circle, rgba(233,69,96,.30), transparent 62%) }
+  #g2 { background: radial-gradient(circle, rgba(72,92,255,.26), transparent 62%) }
+  #g3 { background: radial-gradient(circle, rgba(255,170,110,.12), transparent 60%) }
+  #dots { position: absolute; inset: -80px; background-image: radial-gradient(rgba(255,255,255,.07) 1.2px, transparent 1.3px); background-size: 36px 36px;
+          mask-image: radial-gradient(ellipse at center, #000 30%, transparent 80%) }
+  #vignette { position: absolute; inset: 0; background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.55)) }
+
+  .scene { position: absolute; inset: 0; opacity: 0; will-change: transform, opacity, filter }
+  .kicker { font: 600 18px/1 Inter; letter-spacing: .28em; text-transform: uppercase; color: var(--accent) }
+  .title { font: 700 76px/1.04 Inter; letter-spacing: -.035em }
+  .title i, .serif { font-family: "Instrument Serif", serif; font-style: italic; font-weight: 400; letter-spacing: -.01em;
+           background: linear-gradient(100deg, var(--accent), var(--accent2)); -webkit-background-clip: text; background-clip: text; color: transparent; padding-right: .06em }
+  .sub { font: 400 25px/1.5 Inter; color: var(--muted) }
+  .line { display: block; overflow: hidden; padding-bottom: .08em; margin-bottom: -.08em }
+  .word { display: inline-block; will-change: transform }
+  .chips { display: flex; flex-wrap: wrap; gap: 10px }
+  .chip { font: 500 19px/1 Inter; padding: 12px 18px; border-radius: 999px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.09); color: #dedcf5 }
+  .chip b { color: var(--accent); font-weight: 600 }
+
+  .browser { position: absolute; border-radius: 18px; overflow: hidden; background: #101126; border: 1px solid rgba(255,255,255,.1);
+             box-shadow: 0 60px 120px -30px rgba(0,0,0,.75), 0 0 0 1px rgba(0,0,0,.4), 0 0 120px -20px rgba(233,69,96,.25) }
+  .bar { height: 42px; display: flex; align-items: center; gap: 8px; padding: 0 16px; background: #15162e; border-bottom: 1px solid rgba(255,255,255,.06) }
+  .bar i { width: 12px; height: 12px; border-radius: 50%; background: #ff5f57 } .bar i:nth-child(2) { background: #febc2e } .bar i:nth-child(3) { background: #28c840 }
+  .url { margin-left: 18px; flex: 1; max-width: 520px; height: 26px; border-radius: 8px; background: rgba(255,255,255,.06); font: 500 14px/26px Inter; color: #9a99bb; padding-left: 14px }
+  .view { position: relative; overflow: hidden }
+  .view img { position: absolute; left: 0; top: 0; width: 100%; display: block }
+  .cam { position: absolute; inset: 0; transform-origin: 0 0 }
+
+  .cursor { position: absolute; width: 30px; height: 30px; z-index: 5; filter: drop-shadow(0 4px 8px rgba(0,0,0,.5)) }
+  .ripple { position: absolute; width: 80px; height: 80px; margin: -40px 0 0 -40px; border-radius: 50%; border: 3px solid rgba(255,255,255,.85); z-index: 4; opacity: 0 }
+
+  .float { position: absolute; display: flex; align-items: center; gap: 12px; padding: 16px 22px; border-radius: 16px; background: rgba(22,23,48,.92);
+           border: 1px solid rgba(255,255,255,.1); box-shadow: 0 24px 60px -12px rgba(0,0,0,.6); font: 600 21px/1.2 Inter; z-index: 6 }
+  .float small { display: block; font: 400 15px/1.3 Inter; color: var(--muted); margin-top: 3px }
+  .float .ic { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; background: rgba(233,69,96,.16); color: var(--accent); font-size: 22px }
+
+  .tile { position: absolute; border-radius: 16px; overflow: hidden; box-shadow: 0 30px 70px -20px rgba(0,0,0,.7); border: 1px solid rgba(255,255,255,.1) }
+  .tile img { width: 100%; display: block }
+  .tile span { position: absolute; left: 14px; bottom: 12px; font: 600 16px/1 Inter; padding: 8px 12px; border-radius: 999px; background: rgba(0,0,0,.55); backdrop-filter: blur(6px); color: #fff }
+
+  .phone { position: absolute; width: 330px; height: 714px; border-radius: 52px; padding: 11px; background: linear-gradient(160deg, #2a2b45, #0b0b16);
+           box-shadow: 0 50px 100px -25px rgba(0,0,0,.8), inset 0 0 0 1.5px rgba(255,255,255,.12) }
+  .phone .scr { width: 100%; height: 100%; border-radius: 42px; overflow: hidden; position: relative; background: #000 }
+  .phone img { width: 100%; display: block }
+  .phone .notch { position: absolute; top: 12px; left: 50%; width: 104px; height: 30px; margin-left: -52px; border-radius: 20px; background: #000; z-index: 2 }
+
+  .logo { fill: var(--accent); filter: drop-shadow(0 0 40px rgba(233,69,96,.55)) }
+  .brand { font: 800 132px/1 Inter; letter-spacing: -.05em }
+  .code { font: 500 26px/1 "JetBrains Mono", monospace; padding: 22px 30px; border-radius: 16px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); color: #d9d7f2; white-space: pre }
+  .code .p { color: var(--accent) }
+  .caret { display: inline-block; width: 13px; height: 28px; background: var(--accent); vertical-align: -5px; margin-left: 2px }
+</style>
+</head>
+<body>
+<div id="bg"><div class="glow" id="g1"></div><div class="glow" id="g2"></div><div class="glow" id="g3"></div><div id="dots"></div><div id="vignette"></div></div>
+
+<!-- 1 · intro -->
+<section class="scene" id="s-intro">
+  <svg class="logo abs" id="intro-logo" viewBox="0 0 24 24" style="left:860px;top:250px;width:200px;height:200px"><use href="#star"/></svg>
+  <div class="abs brand" id="intro-brand" style="left:0;right:0;top:500px;text-align:center"></div>
+  <div class="abs sub" id="intro-tag" style="left:0;right:0;top:675px;text-align:center;font-size:32px;color:#cfcde8"></div>
+</section>
+
+<!-- 2 · anki -->
+<section class="scene" id="s-anki">
+  <div class="abs" style="left:110px;top:270px;width:560px">
+    <div class="kicker" data-rise>01 · Anki</div>
+    <div class="title" style="margin-top:26px" data-title>Your decks,|<i>exactly</i> as Anki|shows them.</div>
+    <p class="sub" style="margin-top:28px" data-rise>Anki’s own scheduler, daily limits and your note types’ HTML, CSS, audio and math.</p>
+  </div>
+  <div class="browser" id="anki-browser" style="left:720px;top:160px;width:1100px">
+    <div class="bar"><i></i><i></i><i></i><div class="url">ankibase.home / anki / Français::Vocabulaire</div></div>
+    <div class="view" style="height:687.5px"><div class="cam">
+      <img src="shots/study-q.png" id="anki-q"><img src="shots/study.png" id="anki-a" style="opacity:0">
+    </div>
+      <svg class="cursor" viewBox="0 0 24 24"><path d="M4 2l16 10-7 1.5L9.5 21z" fill="#fff" stroke="#111" stroke-width="1.4" stroke-linejoin="round"/></svg><div class="ripple"></div>
+    </div>
+  </div>
+  <div class="float" id="anki-f1" style="left:1450px;top:880px"><div class="ic">⚡</div><div>0.15 s per card<small>straight from Anki’s reviewer</small></div></div>
+</section>
+
+<!-- 3 · quizlet -->
+<section class="scene" id="s-quizlet">
+  <div class="abs" style="left:110px;top:250px;width:560px">
+    <div class="kicker" data-rise>02 · Quizlet</div>
+    <div class="title" style="margin-top:26px" data-title>Every Quizlet|mode, <i>fully</i>|playable.</div>
+    <div class="chips" style="margin-top:34px;width:520px" id="q-chips">
+      <span class="chip">Flashcards</span><span class="chip"><b>Learn</b></span><span class="chip">Write</span><span class="chip">Test</span>
+      <span class="chip">Match</span><span class="chip">Blast</span><span class="chip">Blocks</span>
+    </div>
+  </div>
+  <div class="browser" id="q-browser" style="left:720px;top:160px;width:1100px">
+    <div class="bar"><i></i><i></i><i></i><div class="url">ankibase.home / quizlet / Au café</div></div>
+    <div class="view" style="height:687.5px"><div class="cam">
+      <img src="shots/quizlet-learn.png" id="q-a"><img src="shots/quizlet-match.png" id="q-b">
+    </div></div>
+  </div>
+</section>
+
+<!-- 4 · story -->
+<section class="scene" id="s-story">
+  <div class="abs" style="left:110px;top:250px;width:560px">
+    <div class="kicker" data-rise>03 · AI stories</div>
+    <div class="title" style="margin-top:26px" data-title>Read stories|built from|<i>your</i> words.</div>
+    <p class="sub" style="margin-top:28px" data-rise>Claude, ChatGPT or Gemini write at your level. Tap any word for its meaning and grammar, prepared in advance.</p>
+  </div>
+  <div class="browser" id="st-browser" style="left:720px;top:160px;width:1100px">
+    <div class="bar"><i></i><i></i><i></i><div class="url">ankibase.home / reading / Un dimanche au marché</div></div>
+    <div class="view" style="height:687.5px"><div class="cam" id="st-cam">
+      <img src="shots/story.png" id="st-a"><img src="shots/reading-plain.png" id="st-b"><img src="shots/reading.png" id="st-c" style="opacity:0">
+    </div>
+      <svg class="cursor" viewBox="0 0 24 24"><path d="M4 2l16 10-7 1.5L9.5 21z" fill="#fff" stroke="#111" stroke-width="1.4" stroke-linejoin="round"/></svg><div class="ripple"></div>
+    </div>
+  </div>
+</section>
+
+<!-- 5 · stats -->
+<section class="scene" id="s-stats">
+  <div class="abs" style="left:110px;top:270px;width:560px">
+    <div class="kicker" data-rise>04 · Stats</div>
+    <div class="title" style="margin-top:26px" data-title>Anki-grade|stats, for <i>both</i>.</div>
+    <p class="sub" style="margin-top:28px" data-rise>Heatmap, forecast, retention, intervals and answer buttons, for Anki and Quizlet together.</p>
+  </div>
+  <div class="browser" id="sx-browser" style="left:720px;top:160px;width:1100px">
+    <div class="bar"><i></i><i></i><i></i><div class="url">ankibase.home / stats</div></div>
+    <div class="view" style="height:687.5px"><img src="shots/stats.png" id="sx-img"></div>
+  </div>
+</section>
+
+<!-- 6 · themes -->
+<section class="scene" id="s-themes">
+  <div class="abs" style="left:0;right:0;top:70px;text-align:center">
+    <div class="kicker" data-rise>05 · Themes</div>
+    <div class="title" style="margin-top:20px;font-size:70px" data-title>Make it <i>yours</i>.</div>
+  </div>
+  <div id="themes-grid" class="abs" style="left:0;top:0;width:1920px;height:1080px"></div>
+</section>
+
+<!-- 7 · mobile -->
+<section class="scene" id="s-mobile">
+  <div class="abs" style="left:110px;top:330px;width:560px">
+    <div class="kicker" data-rise>06 · Everywhere</div>
+    <div class="title" style="margin-top:26px" data-title>Feels <i>native</i>|on your phone.</div>
+    <p class="sub" style="margin-top:28px" data-rise>Install it once on your server. Study from any browser.</p>
+  </div>
+  <div class="phone" id="ph1" style="left:760px;top:220px"><div class="scr"><div class="notch"></div><img src="shots/m-study.png"></div></div>
+  <div class="phone" id="ph2" style="left:1130px;top:180px"><div class="scr"><div class="notch"></div><img src="shots/m-reading.png"></div></div>
+  <div class="phone" id="ph3" style="left:1500px;top:220px"><div class="scr"><div class="notch"></div><img src="shots/m-learn.png"></div></div>
+</section>
+
+<!-- 8 · outro -->
+<section class="scene" id="s-outro">
+  <svg class="logo abs" id="out-logo" viewBox="0 0 24 24" style="left:880px;top:190px;width:160px;height:160px"><use href="#star"/></svg>
+  <div class="abs brand" style="left:0;right:0;top:390px;text-align:center;font-size:120px" id="out-brand">AnkiBase</div>
+  <div class="abs sub" style="left:0;right:0;top:545px;text-align:center;font-size:30px;color:#cfcde8" id="out-sub">Self-hosted <span style="color:var(--accent)">·</span> Open source <span style="color:var(--accent)">·</span> MIT</div>
+  <div class="abs" style="left:0;right:0;top:640px;display:flex;justify-content:center"><div class="code" id="out-code"></div></div>
+  <div class="abs" style="left:0;right:0;top:790px;text-align:center;font:600 28px Inter;color:#fff" id="out-gh">github.com/Macro002/AnkiBase</div>
+</section>
+
+<svg width="0" height="0" style="position:absolute"><defs><path id="star" d="m15.845 22.627l-.169.131l-.182.091a1.3 1.3 0 0 1-.362.079c-.27.021-.611-.036-.989-.16c-.686-.223-1.537-.67-2.256-.973c-.343-.145-.633-.281-.829-.254c-.197.027-.44.236-.73.467c-.611.486-1.311 1.145-1.91 1.546c-.331.22-.644.368-.91.42q-.196.038-.37.021l-.201-.038l-.196-.082l-.177-.119l-.143-.145a1.3 1.3 0 0 1-.187-.32c-.104-.25-.154-.593-.154-.99c.001-.721.164-1.669.23-2.447c.031-.37.07-.687-.016-.866s-.359-.345-.67-.55c-.65-.431-1.494-.893-2.06-1.34c-.312-.246-.548-.498-.681-.735a1.3 1.3 0 0 1-.134-.345l-.025-.202l.016-.213l.059-.205l.094-.18q.095-.147.246-.277c.207-.175.517-.33.895-.452c.685-.222 1.637-.361 2.397-.539c.362-.084.676-.145.819-.281c.144-.138.217-.45.316-.808c.209-.752.387-1.696.638-2.373c.138-.373.305-.676.489-.874q.137-.147.286-.235l.185-.086l.207-.051l.214-.006l.2.033q.17.045.339.148c.231.143.473.389.706.711c.424.584.85 1.446 1.253 2.114c.192.318.347.598.522.692c.174.094.494.068.865.052c.78-.034 1.734-.157 2.455-.128c.397.017.736.081.983.195q.18.083.31.201l.14.148l.112.181l.072.201l.03.202q.01.173-.036.368c-.063.263-.223.57-.457.891c-.425.583-1.113 1.254-1.623 1.845c-.244.281-.463.514-.498.71c-.035.194.089.49.219.838c.273.731.684 1.601.879 2.295c.108.382.151.725.119.995a1.3 1.3 0 0 1-.095.358l-.098.179zm-1.54-18.929c-.018-.057-.07-.226-.122-.346c-.17-.387-.418-.846-.544-1.216c-.166-.483-.099-.88.102-1.096c.201-.214.592-.308 1.086-.177c.377.1.851.316 1.249.458c.125.044.297.084.354.096c.047-.032.193-.134.291-.221c.316-.282.675-.659.988-.894c.408-.305.807-.366 1.074-.241c.266.124.476.468.504.977c.021.391-.037.909-.049 1.331c-.004.132.011.309.017.366c.046.035.187.142.301.209c.365.213.835.438 1.155.662c.417.294.597.655.56.947c-.035.293-.296.599-.773.782c-.365.141-.875.246-1.28.364c-.126.037-.29.106-.343.129c-.019.056-.077.223-.105.351c-.091.413-.159.93-.274 1.304c-.151.487-.438.77-.727.826s-.661-.098-.983-.494c-.246-.303-.504-.756-.742-1.105a3 3 0 0 0-.229-.287a4 4 0 0 0-.366.009c-.421.042-.933.135-1.324.141c-.51.008-.867-.177-1.011-.435c-.142-.257-.11-.659.167-1.088c.212-.328.563-.713.822-1.047c.08-.104.171-.256.202-.305"/></defs></svg>
+
+<script>
+// ── easing ──────────────────────────────────────────────────────────────────
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const prog = (t, a, b) => clamp((t - a) / (b - a));
+const out4 = p => 1 - Math.pow(1 - p, 4);
+const out5 = p => 1 - Math.pow(1 - p, 5);
+const io = p => p < .5 ? 16 * p ** 5 : 1 - Math.pow(-2 * p + 2, 5) / 2;
+const spring = p => p <= 0 ? 0 : p >= 1 ? 1 : 1 - Math.exp(-6.5 * p) * Math.cos(10.5 * p) * (1 - p) - 0 * p; // damped, settles at 1
+const lerp = (a, b, p) => a + (b - a) * p;
+const $ = s => document.querySelector(s);
+
+// ── scenes: [id, start, end] (overlapping cross-transitions) ────────────────
+const SCENES = [
+  ['s-intro', 0, 4.3], ['s-anki', 4.0, 11.4], ['s-quizlet', 11.1, 17.2], ['s-story', 16.9, 24.6],
+  ['s-stats', 24.3, 29.9], ['s-themes', 29.6, 35.0], ['s-mobile', 34.7, 39.8], ['s-outro', 39.5, 46],
+];
+const TOTAL = 46;
+
+// Titles: "|" splits lines, every word rises from its line mask.
+document.querySelectorAll('[data-title]').forEach(el => {
+  el.innerHTML = el.innerHTML.split('|').map(line =>
+    `<span class="line">${line.trim().replace(/(<i>.*?<\/i>|[^\s<]+)/g, w => `<span class="word">${w}</span>`)}</span>`).join('');
+});
+$('#intro-brand').innerHTML = [...'AnkiBase'].map(c => `<span class="word">${c}</span>`).join('');
+$('#intro-tag').innerHTML = 'Anki, Quizlet and AI, <span class="serif" style="font-size:40px">on your own server.</span>';
+
+// Theme gallery
+const THEMES = ['midnight', 'chalk', 'nord', 'sakura', 'claude', 'ocean'];
+const NAMES = { midnight: 'Midnight', chalk: 'Chalk', nord: 'Nord', sakura: 'Sakura', claude: 'Claude', ocean: 'Ocean' };
+THEMES.forEach((th, i) => {
+  const d = document.createElement('div'); d.className = 'tile';
+  d.innerHTML = `<img src="shots/theme-${i % 2 ? 'decks' : 'study'}-${th}.png"><span>${NAMES[th]}</span>`;
+  d.style.width = '540px'; d.dataset.i = i;
+  $('#themes-grid').appendChild(d);
+});
+
+function riseIn(scene, lt) {
+  // kicker / paragraphs / title words
+  const items = [...scene.querySelectorAll('[data-rise], [data-title] .word')];
+  items.forEach((el, i) => {
+    const p = out5(prog(lt, .15 + i * .055, .95 + i * .055));
+    el.style.transform = `translateY(${(1 - p) * (el.classList.contains('word') ? 105 : 30)}%)`;
+    el.style.opacity = el.classList.contains('word') ? 1 : p;
+  });
+}
+
+function sceneEnvelope(el, t, a, b) {
+  const pin = prog(t, a, a + .7), pout = prog(t, b - .55, b);
+  if (t < a || t > b) { el.style.opacity = 0; el.style.visibility = 'hidden'; return null; }
+  el.style.visibility = 'visible';
+  el.style.opacity = Math.min(out4(pin) * 1.4, 1) * (1 - io(pout));
+  const s = 1 - io(pout) * .06;
+  el.style.transform = `scale(${s}) translateY(${-io(pout) * 30}px)`;
+  el.style.filter = pout > 0 ? `blur(${io(pout) * 10}px)` : 'none';
+  return t - a;
+}
+
+function browserIn(el, lt, delay = .2) {
+  const p = spring(prog(lt, delay, delay + 1.5));
+  const q = out4(prog(lt, delay, delay + 1));
+  el.style.opacity = q;
+  el.style.transform = `perspective(2200px) translateX(${(1 - p) * 180}px) rotateY(${lerp(-18, -5, p) + Math.sin(lt * .6) * .6}deg) rotateX(${lerp(6, 1.5, p)}deg) translateY(${Math.sin(lt * .8) * 4}px)`;
+  el.style.transformOrigin = '0% 50%';
+}
+
+function cursor(view, lt, path) {
+  // path: [[t, x, y], ...] in fractions of the view; clicks: entries with c:true
+  const cur = view.querySelector('.cursor'), rip = view.querySelector('.ripple');
+  const W = view.clientWidth, H = view.clientHeight;
+  let x = path[0][1], y = path[0][2];
+  for (let i = 1; i < path.length; i++) {
+    const [t0, x0, y0] = path[i - 1], [t1, x1, y1] = path[i];
+    if (lt >= t0) { const p = io(prog(lt, t0, t1)); x = lerp(x0, x1, p); y = lerp(y0, y1, p); }
+  }
+  cur.style.opacity = out4(prog(lt, path[0][0] - .3, path[0][0]));
+  let press = 1, ro = 0, rs = 0;
+  path.filter(s => s[3]).forEach(([tc]) => {
+    const k = prog(lt, tc, tc + .5);
+    if (lt >= tc - .12 && lt < tc + .2) press = .82;
+    if (k > 0 && k < 1) { ro = 1 - k; rs = .3 + out4(k) * .9; }
+  });
+  cur.style.transform = `translate(${x * W - 6}px, ${y * H - 4}px) scale(${press})`;
+  rip.style.left = `${x * W}px`; rip.style.top = `${y * H}px`; rip.style.opacity = ro; rip.style.transform = `scale(${rs})`;
+}
+
+function floatCard(el, lt, at) {
+  const p = spring(prog(lt, at, at + 1.1));
+  el.style.opacity = out4(prog(lt, at, at + .4));
+  el.style.transform = `translateY(${(1 - p) * 40}px) scale(${lerp(.85, 1, p)})`;
+}
+
+function render(t) {
+  document.body.style.filter = "none";
+  // background drift
+  $('#g1').style.transform = `translate(${-300 + Math.sin(t * .23) * 260}px, ${-500 + Math.cos(t * .19) * 180}px)`;
+  $('#g2').style.transform = `translate(${900 + Math.cos(t * .17) * 300}px, ${100 + Math.sin(t * .21) * 200}px)`;
+  $('#g3').style.transform = `translate(${400 + Math.sin(t * .13) * 400}px, ${300 + Math.cos(t * .11) * 220}px)`;
+  $('#dots').style.transform = `translate(${(t * 6) % 36}px, ${(t * 3) % 36}px)`;
+
+  for (const [id, a, b] of SCENES) {
+    const el = document.getElementById(id);
+    const lt = sceneEnvelope(el, t, a, b);
+    if (lt === null) continue;
+    riseIn(el, lt);
+    SCENE_FN[id]?.(lt, el);
+  }
+}
+
+const SCENE_FN = {
+  's-intro'(lt) {
+    const p = spring(prog(lt, .1, 1.5));
+    $('#intro-logo').style.transform = `scale(${p}) rotate(${(1 - p) * -90}deg)`;
+    $('#intro-logo').style.opacity = out4(prog(lt, .1, .5));
+    [...$('#intro-brand').children].forEach((c, i) => {
+      const q = out5(prog(lt, .55 + i * .05, 1.35 + i * .05));
+      c.style.transform = `translateY(${(1 - q) * 60}px)`; c.style.opacity = q; c.style.filter = `blur(${(1 - q) * 8}px)`;
+    });
+    const q = out4(prog(lt, 1.4, 2.2));
+    $('#intro-tag').style.opacity = q; $('#intro-tag').style.transform = `translateY(${(1 - q) * 20}px)`;
+  },
+  's-anki'(lt) {
+    const br = $('#anki-browser'); browserIn(br, lt);
+    const view = br.querySelector('.view');
+    cursor(view, lt, [[1.5, .78, .9], [2.5, .5, .55], [2.6, .5, .55, 1], [3.6, .5, .55], [4.5, .566, .672], [4.6, .566, .672, 1], [5.6, .62, .8]]);
+    const rev = out4(prog(lt, 2.65, 2.95));
+    $('#anki-a').style.opacity = rev;
+    // gentle push-in on the card after the answer
+    const z = io(prog(lt, 3.0, 7.2));
+    br.querySelector('.cam').style.transform = `translate(${-z * 140}px, ${-z * 60}px) scale(${1 + z * .25})`;
+    floatCard($('#anki-f1'), lt, 4.9);
+  },
+  's-quizlet'(lt) {
+    browserIn($('#q-browser'), lt);
+    const s = io(prog(lt, 2.9, 3.6));
+    $('#q-a').style.transform = `translateX(${-s * 100}%)`;
+    $('#q-b').style.transform = `translateX(${(1 - s) * 100}%)`;
+    [...$('#q-chips').children].forEach((c, i) => {
+      const p = spring(prog(lt, .9 + i * .12, 1.9 + i * .12));
+      c.style.opacity = out4(prog(lt, .9 + i * .12, 1.2 + i * .12)); c.style.transform = `scale(${lerp(.6, 1, p)})`;
+      const hi = (i === 1 && lt < 3.2) || (i === 4 && lt >= 3.2);
+      c.style.background = hi ? 'rgba(233,69,96,.18)' : ''; c.style.borderColor = hi ? 'rgba(233,69,96,.5)' : '';
+    });
+  },
+  's-story'(lt) {
+    const br = $('#st-browser'); browserIn(br, lt);
+    const s = io(prog(lt, 2.0, 2.7));
+    $('#st-a').style.transform = `translateY(${-s * 100}%)`; $('#st-b').style.transform = `translateY(${(1 - s) * 100}%)`;
+    $('#st-c').style.opacity = out4(prog(lt, 3.75, 4.0));
+    const view = br.querySelector('.view');
+    cursor(view, lt, [[2.8, .8, .85], [3.6, .367, .42], [3.7, .367, .42, 1], [4.4, .29, .73]]);
+    const z = io(prog(lt, 4.2, 5.8));
+    br.querySelector('.cam').style.transform = `translate(${-z * 170}px, ${-z * 250}px) scale(${1 + z * .45})`;
+    view.querySelector('.cursor').style.visibility = lt > 4.3 ? 'hidden' : 'visible';
+  },
+  's-stats'(lt) {
+    browserIn($('#sx-browser'), lt);
+    const img = $('#sx-img'); const h = 1100 * 6688 / 2560;
+    const p = io(prog(lt, 1.2, 5.4));
+    img.style.transform = `translateY(${-p * (h - 687.5) * .72}px)`;
+  },
+  's-themes'(lt) {
+    const tiles = [...document.querySelectorAll('#themes-grid .tile')];
+    const pan = lt * 14;
+    tiles.forEach((d, i) => {
+      const col = i % 3, row = Math.floor(i / 3);
+      const p = spring(prog(lt, .35 + i * .13, 1.75 + i * .13));
+      const x = 120 + col * 580 - pan + (row ? 40 : 0), y = 300 + row * 380;
+      d.style.left = x + 'px'; d.style.top = y + 'px';
+      d.style.opacity = out4(prog(lt, .35 + i * .13, .75 + i * .13));
+      d.style.transform = `perspective(1600px) translateY(${(1 - p) * 120}px) rotateX(${(1 - p) * 30}deg) rotate(${(col - 1) * 1.2 * (1 - p * .5)}deg)`;
+    });
+  },
+  's-mobile'(lt) {
+    ['#ph1', '#ph2', '#ph3'].forEach((s, i) => {
+      const p = spring(prog(lt, .3 + i * .18, 1.8 + i * .18));
+      const el = $(s);
+      el.style.opacity = out4(prog(lt, .3 + i * .18, .7 + i * .18));
+      el.style.transform = `translateY(${(1 - p) * 260 + Math.sin(lt * 1.1 + i) * 6}px) rotate(${(i - 1) * 3 * (1 - p) + (i - 1) * 1.5}deg)`;
+    });
+  },
+  's-outro'(lt) {
+    const p = spring(prog(lt, .2, 1.6));
+    $('#out-logo').style.transform = `scale(${p}) rotate(${(1 - p) * 120}deg)`; $('#out-logo').style.opacity = out4(prog(lt, .2, .5));
+    const b = out5(prog(lt, .5, 1.3)); $('#out-brand').style.opacity = b; $('#out-brand').style.transform = `translateY(${(1 - b) * 40}px)`; $('#out-brand').style.filter = `blur(${(1 - b) * 10}px)`;
+    const s = out4(prog(lt, 1.0, 1.7)); $('#out-sub').style.opacity = s;
+    const cmd = 'curl -fsSL …/AnkiBase/main/install.sh | sudo bash';
+    const n = Math.floor(clamp((lt - 1.8) / 2.0) * cmd.length);
+    const caretOn = Math.floor(lt * 2.2) % 2 === 0 || n < cmd.length;
+    $('#out-code').innerHTML = `<span class="p">$</span> ${cmd.slice(0, n)}<span class="caret" style="opacity:${caretOn ? 1 : 0}"></span>`;
+    $('#out-code').parentElement.style.opacity = out4(prog(lt, 1.5, 1.9));
+    const g = out4(prog(lt, 3.9, 4.5)); $('#out-gh').style.opacity = g; $('#out-gh').style.transform = `translateY(${(1 - g) * 16}px)`;
+    // final fade to black
+    document.body.style.filter = `brightness(${1 - io(prog(lt, 5.9, 6.5))})`;
+  },
+};
+window.render = render; window.TOTAL = TOTAL;
+render(0);
+</script>
+</body>
+</html>

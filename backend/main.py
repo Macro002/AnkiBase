@@ -835,7 +835,8 @@ async def review_current(request: ReviewRequest, client: AnkiConnectClient = Dep
     import review
     try:
         out = await review.current(client, request.deck)
-    except Exception:
+    except Exception as e:
+        print(f"Reviewer unavailable for {request.deck!r}, using due-date fallback: {e}")
         try:
             out = await review.legacy_next(client, request.deck)
         except Exception as e:
@@ -853,7 +854,8 @@ async def review_answer(request: ReviewRequest, client: AnkiConnectClient = Depe
         raise HTTPException(status_code=400, detail="card_id and ease (1-4) required")
     try:
         out = await review.answer(client, request.deck, request.card_id, request.ease)
-    except Exception:
+    except Exception as e:
+        print(f"Reviewer answer failed for {request.deck!r}, using fallback: {e}")
         try:
             await client.answer_card(request.card_id, request.ease)
             out = await review.legacy_next(client, request.deck)

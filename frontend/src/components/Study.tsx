@@ -241,9 +241,9 @@ function Reviewer({ deckId }: { deckId: number }) {
               const b = BUTTONS[ease] ?? BUTTONS[3];
               return (
                 <button key={ease} onClick={() => answer(ease)} disabled={busy}
-                  className="h-14 rounded-xl flex flex-col items-center justify-center gap-0.5 font-semibold text-sm bg-(--bg-secondary) hover:brightness-125 active:scale-[0.97] transition disabled:opacity-60"
-                  style={{ boxShadow: `inset 0 -3px 0 ${b.color}` }}>
-                  <span>{b.label}</span>
+                  className="answer-btn h-14 rounded-xl flex flex-col items-center justify-center gap-0.5 font-semibold text-sm active:scale-[0.97] transition disabled:opacity-60"
+                  style={{ '--btn': b.color } as React.CSSProperties}>
+                  <span className="answer-btn-label">{b.label}</span>
                   <span className="text-[11px] font-normal text-(--text-secondary) tabular-nums">{labels[i] ?? ''}<span className="hidden sm:inline opacity-60">{labels[i] ? ' · ' : ''}{ease}</span></span>
                 </button>
               );

@@ -499,3 +499,9 @@ input[type="checkbox"]:checked::after {
   .fixed.inset-0, .fixed.inset-0 > :first-child, .options-panel, .options-panel-closing { animation: none !important }
   .motion-ghost { display: none !important }
 }
+
+/* Study answer buttons: a soft tint of the button's colour, label in the colour itself
+   (mixed with the text colour so it stays readable on dark and light themes). */
+.answer-btn { background: color-mix(in srgb, var(--btn) 13%, var(--bg-secondary)); border: 1px solid color-mix(in srgb, var(--btn) 22%, transparent) }
+.answer-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--btn) 22%, var(--bg-secondary)); border-color: color-mix(in srgb, var(--btn) 40%, transparent) }
+.answer-btn-label { color: color-mix(in srgb, var(--btn) 72%, var(--text-primary)) }

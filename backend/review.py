@@ -59,6 +59,17 @@ def _ordered_fields(fields: Optional[dict]) -> list[dict]:
     return [{"name": k, "value": v.get("value", "")} for k, v in items]
 
 
+async def _gui_card(client) -> Optional[dict]:
+    """The reviewer's current card, or None when Anki isn't reviewing (not opened yet, or
+    the deck is finished). AnkiConnect reports that as an error, not as an empty result."""
+    try:
+        return await client.request("guiCurrentCard")
+    except Exception as e:
+        if "not currently active" in str(e).lower():
+            return None
+        raise
+
+
 def _in_deck(card_deck: Optional[str], deck: str) -> bool:
     return bool(card_deck) and (card_deck == deck or card_deck.startswith(deck + "::"))
 
@@ -68,10 +79,11 @@ async def current(client, deck: str, restart: bool = False) -> dict:
     The reviewer's current card for `deck` (opening the deck in the reviewer when needed).
     Returns {"card": payload | None, "counts": {...}, "mode": "reviewer"}.
     """
-    cur = None if restart else await client.request("guiCurrentCard")
+    cur = None if restart else await _gui_card(client)
     if not cur or not _in_deck(cur.get("deckName"), deck):
-        await client.request("guiDeckReview", name=deck)
-        cur = await client.request("guiCurrentCard")
+        if not await client.request("guiDeckReview", name=deck):
+            raise RuntimeError(f"Anki couldn't open {deck!r} in the reviewer")
+        cur = await _gui_card(client)
     c = await counts(client, deck)
     return {"card": await _payload(client, cur, deck) if cur and _in_deck(cur.get("deckName"), deck) else None,
             "counts": c, "mode": "reviewer"}
@@ -79,7 +91,7 @@ async def current(client, deck: str, restart: bool = False) -> dict:
 
 async def answer(client, deck: str, card_id: int, ease: int) -> dict:
     """Answer the reviewer's current card (it must be `card_id`) and return the next one."""
-    cur = await client.request("guiCurrentCard")
+    cur = await _gui_card(client)
     if not cur or cur.get("cardId") != card_id:
         # The reviewer moved on (another tab, a restart…) — don't answer the wrong card.
         return await current(client, deck, restart=not cur)

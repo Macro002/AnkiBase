@@ -1,20 +1,26 @@
 import { useEffect, useState } from 'react';
 import { RefreshCw, AlertTriangle, ChevronDown } from 'lucide-react';
 import { decks, quizlet as quizletApi, stats, type StatsOverview, type StatsPeriod } from '../api';
-import { Segmented, CheckChip } from './quizlet/ui';
+import { Segmented } from './quizlet/ui';
 import {
   TodaySection, ReviewsChart, FutureDue, CalendarHeatmap, CardCounts, Intervals, Ease, Added,
   Hourly, AnswerButtons, Retention, QuizletInsights,
 } from './stats/charts';
 
-interface Filters { scope: string; anki: boolean; quizlet: boolean; period: StatsPeriod }
-const DEFAULT_FILTERS: Filters = { scope: 'all', anki: true, quizlet: true, period: '1m' };
+/** scope: 'all' | 'anki' | 'quizlet' (everything from one source) | 'a:<deck>' | 'q:<set id>' */
+interface Filters { scope: string; period: StatsPeriod }
+const DEFAULT_FILTERS: Filters = { scope: 'all', period: '1m' };
 const STORE_KEY = 'stats-filters';
 
 function loadFilters(): Filters {
   try {
     const raw = localStorage.getItem(STORE_KEY);
-    return raw ? { ...DEFAULT_FILTERS, ...JSON.parse(raw) } : DEFAULT_FILTERS;
+    if (!raw) return DEFAULT_FILTERS;
+    const saved = JSON.parse(raw);
+    // Older saves had separate Anki/Quizlet source switches.
+    if (saved.scope === 'all' && saved.anki === false) saved.scope = 'quizlet';
+    if (saved.scope === 'all' && saved.quizlet === false) saved.scope = 'anki';
+    return { scope: saved.scope ?? 'all', period: saved.period ?? '1m' };
   } catch { return DEFAULT_FILTERS; }
 }
 
@@ -39,8 +45,8 @@ export function Stats() {
     let cancelled = false;
     const { scope, period } = filters;
     const deck = scope.startsWith('a:') ? scope.slice(2) : '';
-    const quizletParam = scope.startsWith('q:') ? scope.slice(2) : scope === 'all' && filters.quizlet ? 'all' : 'none';
-    const anki = scope.startsWith('a:') || (scope === 'all' && filters.anki);
+    const quizletParam = scope.startsWith('q:') ? scope.slice(2) : scope === 'all' || scope === 'quizlet' ? 'all' : 'none';
+    const anki = scope.startsWith('a:') || scope === 'all' || scope === 'anki';
     stats.overview({ deck, anki, quizlet: quizletParam, period, refresh: refreshTick > 0 })
       .then(r => { if (!cancelled) { setData(r); setError(null); } })
       .catch(e => { if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load statistics'); })
@@ -50,10 +56,6 @@ export function Stats() {
   }, [filters, refreshTick, requestKey]);
 
   const set = (patch: Partial<Filters>) => setFilters(f => ({ ...f, ...patch }));
-  const toggleSource = (k: 'anki' | 'quizlet') => setFilters(f => {
-    const next = { ...f, [k]: !f[k] };
-    return next.anki || next.quizlet ? next : f; // keep at least one source
-  });
 
   const anki = data?.anki ?? null;
   const qz = data?.quizlet ?? null;
@@ -75,6 +77,8 @@ export function Stats() {
           <select value={filters.scope} onChange={e => set({ scope: e.target.value })}
             className="input appearance-none h-9 py-0 pl-3 pr-9 text-sm cursor-pointer max-w-[16rem] truncate">
             <option value="all">Everything</option>
+            <option value="anki">Everything in Anki</option>
+            <option value="quizlet">Everything in Quizlet</option>
             {ankiDecks.length > 0 && (
               <optgroup label="Anki decks">
                 {ankiDecks.map(d => {
@@ -91,13 +95,6 @@ export function Stats() {
           </select>
           <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-(--text-secondary)" />
         </div>
-        {filters.scope === 'all' && (
-          <div className="inline-flex gap-2">
-            {(['anki', 'quizlet'] as const).map(k => (
-              <CheckChip key={k} on={filters[k]} onChange={() => toggleSource(k)}>{k === 'anki' ? 'Anki' : 'Quizlet'}</CheckChip>
-            ))}
-          </div>
-        )}
         <Segmented size="md" value={filters.period} onChange={v => set({ period: v })}
           options={[{ value: '1m', label: '1 month' }, { value: '3m', label: '3 months' }, { value: '1y', label: '1 year' }, { value: 'all', label: 'All' }]} />
       </div>

@@ -1,6 +1,6 @@
 import { useCallback, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Minus, Plus, Check } from 'lucide-react';
+import { X, Minus, Plus, ChevronLeft, ChevronRight } from 'lucide-react';
 import { ACCENT_CHARS } from './shared';
 import { useSpring } from '../../hooks/useSpring';
 
@@ -82,22 +82,6 @@ export function Segmented<T extends string>({ value, options, onChange, size = '
   );
 }
 
-/** Multi-select option chip (e.g. data sources) — independent on/off, with a check that pops in. */
-export function CheckChip({ on, onChange, children, disabled }: { on: boolean; onChange: (v: boolean) => void; children: ReactNode; disabled?: boolean }) {
-  return (
-    <button type="button" role="checkbox" aria-checked={on} disabled={disabled} onClick={() => onChange(!on)}
-      className={`h-9 px-3 rounded-lg inline-flex items-center gap-2 text-xs font-medium border transition-colors duration-200 ${
-        on ? 'bg-(--accent)/15 border-(--accent)/60 text-white' : 'bg-(--bg-tertiary) border-transparent text-(--text-secondary) hover:text-white'
-      } ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}>
-      <span className={`w-4 h-4 rounded-[5px] flex items-center justify-center transition-all duration-200 ${on ? 'bg-(--accent)' : 'bg-white/10'}`}>
-        <Check className={`w-3 h-3 text-white transition-transform duration-300 ${on ? 'scale-100' : 'scale-0'}`}
-          style={{ transitionTimingFunction: 'cubic-bezier(0.34, 1.56, 0.64, 1)' }} strokeWidth={3} />
-      </span>
-      {children}
-    </button>
-  );
-}
-
 /** Small ‹ value › switcher (e.g. year), styled like the other controls. */
 export function PrevNext({ label, onPrev, onNext, prevDisabled, nextDisabled }: {
   label: ReactNode; onPrev: () => void; onNext: () => void; prevDisabled?: boolean; nextDisabled?: boolean;
@@ -105,9 +89,9 @@ export function PrevNext({ label, onPrev, onNext, prevDisabled, nextDisabled }: 
   const btn = 'w-[26px] h-[26px] rounded-md flex items-center justify-center text-(--text-secondary) hover:text-white hover:bg-white/8 transition-colors disabled:opacity-30 disabled:hover:bg-transparent';
   return (
     <div className="inline-flex items-center h-8 p-[3px] rounded-lg bg-(--bg-tertiary)">
-      <button type="button" className={btn} onClick={onPrev} disabled={prevDisabled} aria-label="Previous">‹</button>
+      <button type="button" className={btn} onClick={onPrev} disabled={prevDisabled} aria-label="Previous"><ChevronLeft className="w-4 h-4" /></button>
       <span className="px-2 text-xs font-semibold tabular-nums">{label}</span>
-      <button type="button" className={btn} onClick={onNext} disabled={nextDisabled} aria-label="Next">›</button>
+      <button type="button" className={btn} onClick={onNext} disabled={nextDisabled} aria-label="Next"><ChevronRight className="w-4 h-4" /></button>
     </div>
   );
 }

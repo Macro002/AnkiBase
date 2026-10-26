@@ -6,6 +6,7 @@ import {
   type AnkiHit, type CardSearchResult, type DictEntry, type DictionaryResult, type DictLanguage, type DictSegment, type QuizletHit,
 } from '../api';
 import { createPortal } from 'react-dom';
+import { Segmented } from './quizlet/ui';
 
 const LANGUAGES = ['French', 'Japanese', 'German', 'Spanish', 'Italian', 'Portuguese', 'English', 'Korean', 'Chinese', 'Russian', 'Dutch', 'Latin'];
 const RECENT_KEY = 'search-recent';
@@ -264,7 +265,7 @@ function DictionaryPanel({ data, lang, onSearch, onAdd }: {
           {w.corrected && (
             <p className="text-xs text-(--text-secondary)">Showing <span className="text-white font-medium">{w.word}</span> — no {lang || 'matching'} entry for “{w.query}”.</p>
           )}
-          {lang && active.language !== lang && (
+          {lang && !languages.some(l => l.language === lang) && (
             <p className="text-xs text-(--text-secondary)">No {lang} entry — showing {active.language}.</p>
           )}
           <header className="flex items-start justify-between gap-4">
@@ -286,15 +287,9 @@ function DictionaryPanel({ data, lang, onSearch, onAdd }: {
 
           {w.variants.length > 0 && <Chips label={w.corrected ? 'Other spellings' : 'Did you mean'} words={w.variants.slice(0, 6)} onSearch={onSearch} />}
 
-          {languages.length > 1 && (
-            <div className="flex flex-wrap gap-1.5">
-              {languages.slice(0, 8).map(l => (
-                <button key={l.language} onClick={() => setPicked(l.language)}
-                  className={`h-7 px-2.5 rounded-md text-xs font-medium transition-colors ${l === active ? 'bg-(--accent) text-white' : 'bg-(--bg-tertiary) text-(--text-secondary) hover:text-white'}`}>
-                  {l.language}
-                </button>
-              ))}
-            </div>
+          {languages.length > 1 && active && (
+            <Segmented wrap value={active.language} onChange={setPicked}
+              options={languages.slice(0, 8).map(l => ({ value: l.language, label: l.language }))} className="!h-auto" />
           )}
 
           <div className="space-y-6">
@@ -424,14 +419,8 @@ function CardsPanel({ data, q, onSaved }: { data: CardSearchResult | null; q: st
     <div className="card space-y-3">
       <div className="flex items-center justify-between gap-2">
         <h2 className="font-semibold">In your cards {data && <span className="text-(--text-secondary) font-normal text-sm">· {count}{data.anki_total > anki.length && source !== 'quizlet' ? '+' : ''}</span>}</h2>
-        <div className="inline-flex rounded-lg bg-(--bg-tertiary) p-[3px] h-8">
-          {(['all', 'anki', 'quizlet'] as const).map(s => (
-            <button key={s} onClick={() => setSource(s)}
-              className={`px-2.5 rounded-md text-xs font-medium transition-colors ${source === s ? 'bg-(--accent) text-white' : 'text-(--text-secondary) hover:text-white'}`}>
-              {s === 'all' ? 'All' : s === 'anki' ? 'Anki' : 'Quizlet'}
-            </button>
-          ))}
-        </div>
+        <Segmented value={source} onChange={setSource}
+          options={[{ value: 'all', label: 'All' }, { value: 'anki', label: 'Anki' }, { value: 'quizlet', label: 'Quizlet' }]} />
       </div>
       {!data ? (
         <div className="space-y-2">{[0, 1, 2].map(i => <div key={i} className="skeleton h-14 rounded-lg" />)}</div>

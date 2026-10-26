@@ -28,25 +28,36 @@ export function Toggle({ on, onChange, disabled }: { on: boolean; onChange: (v: 
 }
 
 const SEG_SIZE = {
+  lg: { box: 'p-1.5 gap-1', btn: 'px-4 py-3 text-sm' },
   md: { box: 'h-9 p-1', btn: 'h-7 px-3 text-xs' },
   sm: { box: 'h-8 p-[3px]', btn: 'h-[26px] px-2.5 text-xs' },
 } as const;
 
-/** Single-choice slider: the highlight springs to the selected option. */
-export function Segmented<T extends string>({ value, options, onChange, size = 'sm' }: {
-  value: T; options: { value: T; label: string }[]; onChange: (v: T) => void; size?: keyof typeof SEG_SIZE;
+export interface SegOption<T extends string> { value: T; label: ReactNode; icon?: ReactNode; hint?: ReactNode }
+
+/**
+ * Single-choice slider: the highlight springs to the selected option (x, y, width
+ * and height, so it also follows options that wrap onto another line).
+ *   full — options stretch to fill the width    wrap — options may wrap
+ */
+export function Segmented<T extends string>({ value, options, onChange, size = 'sm', full = false, wrap = false, className = '' }: {
+  value: T; options: SegOption<T>[]; onChange: (v: T) => void; size?: keyof typeof SEG_SIZE; full?: boolean; wrap?: boolean; className?: string;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const pill = useRef<HTMLSpanElement>(null);
-  const spring = useSpring<'x' | 'w'>(({ x, w }) => {
-    if (pill.current) { pill.current.style.transform = `translateX(${x}px)`; pill.current.style.width = `${w}px`; }
+  const spring = useSpring<'x' | 'y' | 'w' | 'h'>(({ x, y, w, h }) => {
+    const el = pill.current;
+    if (!el) return;
+    el.style.transform = `translate(${x}px, ${y}px)`;
+    el.style.width = `${w}px`;
+    el.style.height = `${h}px`;
   });
   const first = useRef(true);
 
   const place = useCallback((immediate: boolean) => {
     const el = box.current?.querySelector<HTMLElement>(`[data-seg="${CSS.escape(value)}"]`);
     if (!el) return;
-    spring.set({ x: el.offsetLeft, w: el.offsetWidth }, immediate);
+    spring.set({ x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight }, immediate);
   }, [value, spring]);
 
   useLayoutEffect(() => {
@@ -54,8 +65,8 @@ export function Segmented<T extends string>({ value, options, onChange, size = '
     first.current = false;
   }, [place]);
 
-  // Re-measure on resize (fonts loading, panel opening) — subscribed once; a fresh
-  // observer fires immediately, which would otherwise cut the slide animation short.
+  // Re-measure on resize (fonts loading, panel opening, wrapping) — subscribed once; a
+  // fresh observer fires immediately, which would otherwise cut the slide short.
   const placeRef = useRef(place);
   useLayoutEffect(() => { placeRef.current = place; }, [place]);
   useLayoutEffect(() => {
@@ -67,17 +78,30 @@ export function Segmented<T extends string>({ value, options, onChange, size = '
   }, []);
 
   const sz = SEG_SIZE[size];
+  const big = size === 'lg';
   return (
-    <div ref={box} role="radiogroup" className={`relative inline-flex items-center rounded-lg bg-(--bg-tertiary) ${sz.box}`}>
-      <span ref={pill} aria-hidden className="absolute left-0 top-1/2 -translate-y-1/2 rounded-md bg-(--accent) shadow-sm pointer-events-none"
-        style={{ height: size === 'md' ? 28 : 26, width: 0 }} />
-      {options.map(o => (
-        <button key={o.value} type="button" role="radio" aria-checked={value === o.value} data-seg={o.value}
-          onClick={() => onChange(o.value)}
-          className={`relative z-10 rounded-md font-medium whitespace-nowrap transition-colors duration-200 ${sz.btn} ${value === o.value ? 'text-white' : 'text-(--text-secondary) hover:text-white'}`}>
-          {o.label}
-        </button>
-      ))}
+    <div ref={box} role="radiogroup"
+      className={`relative items-center ${big ? 'rounded-xl' : 'rounded-lg'} bg-(--bg-tertiary) ${full ? 'flex w-full' : 'inline-flex'} ${wrap ? 'flex-wrap' : ''} ${sz.box} ${className}`}>
+      <span ref={pill} aria-hidden className={`absolute left-0 top-0 ${big ? 'rounded-lg' : 'rounded-md'} bg-(--accent) shadow-sm pointer-events-none`}
+        style={{ width: 0, height: 0 }} />
+      {options.map(o => {
+        const on = value === o.value;
+        return (
+          <button key={o.value} type="button" role="radio" aria-checked={on} data-seg={o.value}
+            onClick={() => onChange(o.value)}
+            className={`relative z-10 ${big ? 'rounded-lg min-w-0' : 'rounded-md whitespace-nowrap'} font-medium transition-colors duration-200 ${sz.btn} ${full ? 'flex-1' : ''} ${
+              big ? 'flex items-center justify-center gap-3' : 'inline-flex items-center justify-center gap-1.5'} ${
+              on ? 'text-white' : 'text-(--text-secondary) hover:text-white'}`}>
+            {o.icon}
+            {o.hint ? (
+              <span className="text-left min-w-0">
+                <span className="block font-semibold">{o.label}</span>
+                <span className={`hidden sm:block text-xs font-normal truncate transition-colors duration-200 ${on ? 'text-white/80' : 'text-(--text-secondary)'}`}>{o.hint}</span>
+              </span>
+            ) : o.label}
+          </button>
+        );
+      })}
     </div>
   );
 }

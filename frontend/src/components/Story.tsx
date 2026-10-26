@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Loader2, BookOpen, Wand2, Settings2, Key, Trash2, Check, Eye, EyeOff, ExternalLink, Cpu, Info, Pencil } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import { Segmented } from './quizlet/ui';
 import { decks, story, settings } from '../api';
 import type { ProviderInfo, CardCategory, DeckWordsResponse, WordData } from '../api';
 
@@ -706,24 +707,8 @@ export function Story() {
             {/* Selection mode */}
             {wordsData && wordsData.words.length > 0 && (
               <div className="mb-4">
-                <div className="flex gap-2 p-1 bg-(--bg-secondary) rounded-lg">
-                  <button
-                    onClick={() => setSelectionMode('weighted')}
-                    className={`flex-1 py-2 px-3 rounded text-sm font-medium transition-colors ${
-                      selectionMode === 'weighted' ? 'bg-(--accent) text-white' : 'text-(--text-secondary)'
-                    }`}
-                  >
-                    Smart Selection
-                  </button>
-                  <button
-                    onClick={() => setSelectionMode('manual')}
-                    className={`flex-1 py-2 px-3 rounded text-sm font-medium transition-colors ${
-                      selectionMode === 'manual' ? 'bg-(--accent) text-white' : 'text-(--text-secondary)'
-                    }`}
-                  >
-                    Manual
-                  </button>
-                </div>
+                <Segmented size="md" full value={selectionMode} onChange={setSelectionMode}
+                  options={[{ value: 'weighted', label: 'Smart Selection' }, { value: 'manual', label: 'Manual' }]} />
               </div>
             )}
 

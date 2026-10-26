@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Upload, ExternalLink, Loader2, CheckCircle, AlertCircle, FileArchive, X, Link } from 'lucide-react';
+import { Upload, ExternalLink, Loader2, CheckCircle, AlertCircle, FileArchive, X, Link, Layers, GalleryVerticalEnd } from 'lucide-react';
+import { Segmented } from './quizlet/ui';
 import { importDeck, quizlet } from '../api';
 
 function AnkiUrlImport() {
@@ -39,7 +40,7 @@ function AnkiUrlImport() {
 
       <div className="flex gap-2">
         <input
-          className="input flex-1"
+          className="input flex-1 min-w-0"
           placeholder="https://ankiweb.net/shared/info/123456789"
           value={url}
           onChange={e => setUrl(e.target.value)}
@@ -170,7 +171,7 @@ function QuizletImport() {
 
       <div className="flex gap-2">
         <input
-          className="input flex-1"
+          className="input flex-1 min-w-0"
           placeholder="https://quizlet.com/123456/deck-name/"
           value={url}
           onChange={e => setUrl(e.target.value)}
@@ -620,29 +621,11 @@ export function Import() {
 
   return (
     <div className="space-y-5">
-      {/* Sliding tab bar */}
-      <div className="relative flex p-1 rounded-xl">
-        {/* Sliding pill */}
-        <div
-          className="absolute top-1 bottom-1 rounded-lg transition-all duration-200 ease-out"
-          style={{
-            width: 'calc(50% - 4px)',
-            left: tab === 'anki' ? '4px' : 'calc(50%)',
-            background: 'rgba(var(--accent-rgb), 0.15)',
-          }}
-        />
-        {(['anki', 'quizlet'] as const).map(id => (
-          <button
-            key={id}
-            onClick={() => setTab(id)}
-            className={`relative z-10 flex-1 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
-              tab === id ? 'text-(--accent)' : 'text-(--text-secondary) hover:text-white'
-            }`}
-          >
-            {id === 'anki' ? 'Anki' : 'Quizlet'}
-          </button>
-        ))}
-      </div>
+      {/* Big two-way switch: where are you importing from? */}
+      <Segmented size="lg" full value={tab} onChange={setTab} options={[
+        { value: 'anki', label: 'Anki', hint: '.apkg files & AnkiWeb shared decks', icon: <Layers className="w-6 h-6 shrink-0" /> },
+        { value: 'quizlet', label: 'Quizlet', hint: 'Any public set, by link', icon: <GalleryVerticalEnd className="w-6 h-6 shrink-0" /> },
+      ]} />
 
       {tab === 'anki' && (
         <div className="space-y-4">

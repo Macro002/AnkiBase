@@ -201,7 +201,7 @@ export function Heatmap({ className = '' }: HeatmapProps) {
     const yesterdayKey = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
 
     if (data.daily_counts[todayKey] > 0 || data.daily_counts[yesterdayKey] > 0) {
-      let checkDate = data.daily_counts[todayKey] > 0 ? new Date(today) : new Date(yesterday);
+      const checkDate = data.daily_counts[todayKey] > 0 ? new Date(today) : new Date(yesterday);
       currentStreak = 0;
 
       while (true) {
@@ -219,6 +219,19 @@ export function Heatmap({ className = '' }: HeatmapProps) {
   }, [data, year, currentYear]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Cells grow to fill wide cards (16px minimum; narrower screens scroll).
+  const gap = 3;
+  const [squareSize, setSquareSize] = useState(16);
+  const weekCount = yearData.weeks.length;
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const fit = () => setSquareSize(Math.max(16, Math.min(34, Math.floor((el.clientWidth + gap) / weekCount - gap))));
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [weekCount, loading]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -311,8 +324,6 @@ export function Heatmap({ className = '' }: HeatmapProps) {
     t('heatmap.sat'),
     t('heatmap.sun')
   ];
-  const squareSize = 16;
-  const gap = 3;
 
   const renderGrid = (targetYear: number, targetData: ReturnType<typeof buildWeeksForYear>) => (
     <div className="flex">
@@ -323,7 +334,7 @@ export function Heatmap({ className = '' }: HeatmapProps) {
           </div>
         ))}
       </div>
-      <div ref={scrollRef} className="overflow-x-auto pb-2">
+      <div ref={scrollRef} className="flex-1 min-w-0 overflow-x-auto pb-2">
         <div className="flex relative mb-1" style={{ height: '20px' }}>
           {targetData.monthLabels.map(({ month, weekIndex }, i) => (
             <span

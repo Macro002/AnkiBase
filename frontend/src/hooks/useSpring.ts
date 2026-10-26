@@ -67,7 +67,10 @@ export function useSpring<K extends string>(apply: (values: Record<K, number>) =
       if (!s.raf) { s.last = 0; s.raf = requestAnimationFrame(frame); }
     };
 
-    return { set };
+    /** True while animating (a resize mid-flight should retarget, not snap). */
+    const moving = () => !!engine.current?.raf;
+
+    return { set, moving };
   }, []);
 
   useEffect(() => () => { if (engine.current?.raf) cancelAnimationFrame(engine.current.raf); }, []);

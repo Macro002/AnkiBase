@@ -623,8 +623,8 @@ export function Import() {
     <div className="space-y-5">
       {/* Big two-way switch: where are you importing from? */}
       <Segmented size="lg" full value={tab} onChange={setTab} options={[
-        { value: 'anki', label: 'Anki', hint: '.apkg files & AnkiWeb shared decks', icon: <Layers className="w-6 h-6 shrink-0" /> },
-        { value: 'quizlet', label: 'Quizlet', hint: 'Any public set, by link', icon: <GalleryVerticalEnd className="w-6 h-6 shrink-0" /> },
+        { value: 'anki', label: 'Anki', icon: <Layers className="w-[18px] h-[18px] shrink-0" /> },
+        { value: 'quizlet', label: 'Quizlet', icon: <GalleryVerticalEnd className="w-[18px] h-[18px] shrink-0" /> },
       ]} />
 
       {tab === 'anki' && (

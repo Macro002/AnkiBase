@@ -91,7 +91,7 @@ function Library({ onOpen }: { onOpen: (id: number) => void }) {
   };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-5 pb-10">
+    <div className="max-w-6xl 2xl:max-w-[1600px] mx-auto space-y-5 pb-10">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-xl font-bold">Reading</h2>
@@ -118,7 +118,7 @@ function Library({ onOpen }: { onOpen: (id: number) => void }) {
       ) : shown.length === 0 ? (
         <p className="text-sm text-(--text-secondary) text-center py-10">No stories match “{q}”.</p>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 anim-stagger">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4 anim-stagger">
           {shown.map(s => {
             const p = progress[String(s.id)];
             const pct = p && p.progress_total ? (p.progress_done / p.progress_total) * 100 : 0;

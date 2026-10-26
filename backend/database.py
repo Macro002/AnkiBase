@@ -273,6 +273,12 @@ def init_account_db(container_name: str):
             cursor.execute("ALTER TABLE stories ADD COLUMN lookup_fields TEXT")
         except sqlite3.OperationalError:
             pass
+        # Story tab redesign: CEFR level and the inflected forms the AI used for each word
+        for col in ("level TEXT", "word_forms TEXT"):
+            try:
+                cursor.execute(f"ALTER TABLE stories ADD COLUMN {col}")
+            except sqlite3.OperationalError:
+                pass
         try:
             cursor.execute("ALTER TABLE stories ADD COLUMN lookup_language TEXT")
         except sqlite3.OperationalError:
@@ -444,6 +450,8 @@ def save_story(
     model: Optional[str],
     deck_name: Optional[str] = None,
     container_name: Optional[str] = None,
+    level: Optional[str] = None,
+    word_forms: Optional[dict] = None,
 ) -> int:
     """Save a generated story to the database."""
     # Use active account if not specified
@@ -463,15 +471,16 @@ def save_story(
             """
             INSERT INTO stories (name, content, words, word_data, lookup_fields, lookup_language,
                                 style, length, language, target_language,
-                                provider, model, deck_name)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                provider, model, deck_name, level, word_forms)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (name, content, json.dumps(words),
              json.dumps(word_data) if word_data else None,
              json.dumps(lookup_fields) if lookup_fields else None,
              lookup_language,
              style, length, language, target_language,
-             provider, model, deck_name)
+             provider, model, deck_name, level,
+             json.dumps(word_forms) if word_forms else None)
         )
         conn.commit()
         return cursor.lastrowid
@@ -511,6 +520,7 @@ def get_story(story_id: int, container_name: Optional[str] = None) -> Optional[d
             else:
                 result["word_data"] = {}
             result["lookup_fields"] = json.loads(row["lookup_fields"]) if row["lookup_fields"] else ["Meaning"]
+            result["word_forms"] = json.loads(row["word_forms"]) if "word_forms" in row.keys() and row["word_forms"] else {}
             return result
         return None
 
@@ -533,15 +543,24 @@ def get_all_stories(limit: int = 100, offset: int = 0, container_name: Optional[
         cursor.execute(
             """
             SELECT id, name, style, length, language, target_language,
-                   provider, model, deck_name, created_at,
-                   LENGTH(content) as content_length
+                   provider, model, deck_name, created_at, level, words,
+                   LENGTH(content) as content_length,
+                   SUBSTR(content, 1, 400) as preview
             FROM stories
             ORDER BY created_at DESC
             LIMIT ? OFFSET ?
             """,
             (limit, offset)
         )
-        return [dict(row) for row in cursor.fetchall()]
+        out = []
+        for row in cursor.fetchall():
+            d = dict(row)
+            try:
+                d["word_count"] = len(json.loads(d.pop("words") or "[]"))
+            except ValueError:
+                d["word_count"] = 0
+            out.append(d)
+        return out
 
 
 def delete_story(story_id: int, container_name: Optional[str] = None) -> bool:
@@ -1142,6 +1161,52 @@ def get_quizlet_daily_counts() -> dict[str, int]:
             GROUP BY day
         """, (container_id,))
         return {row[0]: row[1] for row in cursor.fetchall()}
+
+
+def get_quizlet_set_words(user_id: int, deck_id: int, side: str = "term") -> Optional[dict]:
+    """
+    A Quizlet set as story vocabulary — same shape as the Anki deck words endpoint.
+    Learn progress stands in for Anki's card states: not studied -> new,
+    still learning -> learning, familiar -> young, mastered -> mature.
+    """
+    import json, re
+    container_id = _active_container_id()
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT title FROM quizlet_decks WHERE id = ? AND container_id = ?", (deck_id, container_id))
+        deck = cursor.fetchone()
+        if not deck:
+            return None
+        cursor.execute("SELECT id, front, back FROM quizlet_cards WHERE deck_id = ? ORDER BY position", (deck_id,))
+        cards = cursor.fetchall()
+        cursor.execute("SELECT state FROM study_sessions WHERE user_id = ? AND container_id = ? AND kind = 'quizlet-learn' AND ref_id = ?",
+                       (user_id, container_id, str(deck_id)))
+        row = cursor.fetchone()
+    levels: dict[int, int] = {}
+    if row and row[0]:
+        try:
+            for cid, t in ((json.loads(row[0]) or {}).get("terms") or {}).items():
+                levels[int(cid)] = int(t.get("level", 0))
+        except (ValueError, TypeError, AttributeError):
+            pass
+    clean = lambda s: re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", s or "").replace("&nbsp;", " ")).strip()
+    cat_of = {0: "new", 1: "learning", 2: "young", 3: "mature"}
+    words, word_data, categories, counts = [], {}, {}, {}
+    for c in cards:
+        term, definition = clean(c["front"]), clean(c["back"])
+        word = definition if side == "definition" else term
+        if not word or word in word_data:
+            continue
+        cat = cat_of.get(levels.get(c["id"], 0), "new")
+        words.append(word)
+        categories[word] = cat
+        counts[cat] = counts.get(cat, 0) + 1
+        word_data[word] = {"fields": {"Term": term, "Definition": definition}, "category": cat}
+    return {
+        "words": words, "word_data": word_data, "categories": categories, "category_counts": counts,
+        "field_used": "Definition" if side == "definition" else "Term",
+        "available_fields": ["Term", "Definition"], "title": deck["title"],
+    }
 
 
 def search_quizlet_cards(user_id: int, query: str, limit: int = 40) -> list[dict]:

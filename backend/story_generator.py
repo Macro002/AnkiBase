@@ -46,20 +46,35 @@ class OpenAIProvider(AIProvider):
         return response.choices[0].message.content or ""
 
 
+# Current Claude models that accept server-side refusal fallbacks ("default" routing).
+CLAUDE_FALLBACK_MODELS = {"claude-opus-5-5", "claude-opus-5", "claude-fable-5-1", "claude-sonnet-5-5"}
+
+
 class AnthropicProvider(AIProvider):
     """Anthropic Claude provider."""
 
-    def __init__(self, api_key: str, model: str = "claude-3-5-sonnet-20241022"):
+    def __init__(self, api_key: str, model: str = "claude-opus-5-5"):
         self.client = anthropic.AsyncAnthropic(api_key=api_key)
         self.model = model
 
     async def generate(self, prompt: str) -> str:
-        response = await self.client.messages.create(
+        params = dict(
             model=self.model,
-            max_tokens=4096,
+            # Current models think before answering; leave room for that plus a long story.
+            max_tokens=16000,
             messages=[{"role": "user", "content": prompt}],
         )
-        return response.content[0].text
+        if self.model in CLAUDE_FALLBACK_MODELS:
+            # If a safety classifier declines, the API retries on a suitable model in the same call.
+            response = await self.client.beta.messages.create(
+                **params, betas=["server-side-fallback-2026-07-01"], fallbacks="default",
+            )
+        else:
+            response = await self.client.messages.create(**params)
+        if response.stop_reason == "refusal":
+            raise RuntimeError("Claude declined to write this story — try different words or instructions.")
+        # Responses can start with thinking blocks; only the text blocks are the story.
+        return "".join(b.text for b in response.content if b.type == "text")
 
 
 # Provider registry with available models
@@ -79,11 +94,11 @@ PROVIDERS = {
         "name": "Claude",
         "class": AnthropicProvider,
         "models": [
-            {"id": "claude-3-5-sonnet-20241022", "name": "Claude 3.5 Sonnet (best)"},
-            {"id": "claude-3-5-haiku-20241022", "name": "Claude 3.5 Haiku (fast)"},
-            {"id": "claude-3-opus-20240229", "name": "Claude 3 Opus (most capable)"},
+            {"id": "claude-opus-5-5", "name": "Claude Opus 5.5 (best)"},
+            {"id": "claude-sonnet-5-5", "name": "Claude Sonnet 5.5 (fast)"},
+            {"id": "claude-haiku-5-5", "name": "Claude Haiku 5.5 (fastest, cheapest)"},
         ],
-        "default_model": "claude-3-5-sonnet-20241022",
+        "default_model": "claude-opus-5-5",
     },
     "gemini": {
         "name": "Gemini",
@@ -164,6 +179,7 @@ class StoryGenerator:
         provider: Optional[str] = None,
         model: Optional[str] = None,
         word_categories: Optional[dict] = None,  # word -> category mapping
+        level: Optional[str] = None,  # CEFR level of the learner (A1..C2)
     ) -> dict:
         """
         Generate a story incorporating the given vocabulary words.
@@ -200,105 +216,103 @@ class StoryGenerator:
             length_guide = {"short": "about 200 words", "medium": "about 500 words", "long": "about 1000 words"}
             length_instruction = length_guide.get(length, 'about 500 words')
 
-        word_list = ", ".join(words)
+        word_list = "\n".join(f"- {w}" for w in words)
 
-        # Build language instruction
-        if language == "auto":
-            lang_instruction = "Detect the language of the vocabulary words and write the story in that same language."
-        else:
-            lang_instruction = f"Write the story in {language}."
+        # Story language: with a translation the story is in target_language and each
+        # paragraph is followed by its translation into `language`.
+        story_lang = target_language or (None if language == "auto" else language)
+        lang_instruction = (f"Write the story in {story_lang}." if story_lang
+                            else "Write the story in the language of the vocabulary words.")
 
-        # Build style instruction
-        if style == "custom" and custom_instructions:
-            style_instruction = f"Follow these custom instructions: {custom_instructions}"
-        else:
-            style_instruction = f"Style: {style}"
+        style_instruction = (f"Follow these instructions from the learner: {custom_instructions}"
+                             if style == "custom" and custom_instructions else f"Tone: {style}.")
 
-        # Build category context if available
-        category_context = ""
+        level_instruction = ""
+        if level:
+            level_instruction = (f"The reader is a language learner at CEFR level {level}. Keep grammar, sentence length "
+                                 f"and the other words in the story appropriate for {level}, so the vocabulary words "
+                                 "are the main challenge.")
+
+        priority = ""
         if word_categories:
             learning_words = [w for w, c in word_categories.items() if c in ("learning", "relearning")]
             if learning_words:
-                category_context = f"\nPriority words (currently learning, use these more prominently): {', '.join(learning_words[:10])}"
+                priority = ("Give these words (still being learned) the most prominent, memorable roles: "
+                            + ", ".join(learning_words[:12]) + ".")
 
+        translation_instruction = ""
         if target_language:
-            prompt = f"""Create a bilingual story for language learning.
+            translation_instruction = (f"After every paragraph, add its translation into {language if language != 'auto' else 'English'} "
+                                       "as a separate paragraph that starts with \">> \" (two greater-than signs and a space).")
 
-Target language: {target_language}
-Native language: {language if language != "auto" else "English"}
-Story length: {length_instruction}
-{style_instruction}
-{category_context}
-
-CRITICAL: You MUST use EVERY SINGLE ONE of these exact vocabulary words in your story (copy them exactly as written):
-{word_list}
-
-Format your response EXACTLY like this:
-TITLE: [A creative, memorable title for the story]
-
-STORY:
-[The story content with each paragraph in {target_language}, followed immediately by the translation]
-
-Use the vocabulary words MULTIPLE TIMES throughout the story when natural. Make the story engaging and memorable."""
-        else:
-            prompt = f"""Create an engaging story for vocabulary learning.
+        prompt = f"""Write a short story that helps a language learner practise vocabulary.
 
 {lang_instruction}
-Story length: {length_instruction}
+Length: {length_instruction}.
 {style_instruction}
-{category_context}
+{level_instruction}
+{priority}
+{translation_instruction}
 
-CRITICAL REQUIREMENT - READ CAREFULLY:
-You MUST include EVERY SINGLE vocabulary word from this list in your story. Copy them EXACTLY as written.
-Do NOT paraphrase or use similar words - use the EXACT words provided.
-Use each vocabulary word MULTIPLE TIMES if it fits naturally - repetition helps learning.
-
-VOCABULARY WORDS TO USE (all {word_count} words MUST appear in the story):
+Use every one of these vocabulary words at least once (more than once when it fits naturally):
 {word_list}
 
-Format your response EXACTLY like this:
-TITLE: [A creative, memorable title for the story in the same language as the story]
+Use the words the way a native speaker would: conjugate verbs, make adjectives and articles agree, and use
+plural forms wherever the sentence calls for it. Make the story coherent and enjoyable, with the vocabulary
+words carrying the meaning of the scenes. Don't add pronunciation guides or explanations inside the story.
+
+Reply in exactly this format and nothing else:
+TITLE: <a short title in the story's language>
 
 STORY:
-[The story content - must contain ALL vocabulary words listed above]
+<the story, paragraphs separated by blank lines>
 
-Requirements:
-- EVERY word from the vocabulary list MUST appear at least once (this is mandatory)
-- Use the exact form of each word as provided
-- The story should be coherent and enjoyable to read
-- The words should fit naturally into the narrative
-- Do NOT add furigana or pronunciation guides - write words as-is
+FORMS:
+<one line per vocabulary word: the word exactly as listed, then " => ", then every form of it that appears in the story, comma-separated>"""
 
-Double-check before responding: Have you included ALL {word_count} vocabulary words?"""
-
-        response, provider_used, model_used = await self.generate_with_provider(
-            prompt, provider, model
-        )
-
-        # Parse title and story from response
-        title = None
-        story = response
-
-        # Try to extract TITLE
-        if "TITLE:" in response:
-            title_start = response.find("TITLE:") + 6
-            title_end = response.find("\n", title_start)
-            if title_end > title_start:
-                title = response[title_start:title_end].strip().strip('"\'').strip()
-                if len(title) > 100:
-                    title = title[:97] + "..."
-
-        # Extract STORY
-        if "STORY:" in response:
-            story_start = response.find("STORY:") + 6
-            story = response[story_start:].strip()
-
+        response, provider_used, model_used = await self.generate_with_provider(prompt, provider, model)
+        title, story, word_forms = self._parse_story(response, words)
         return {
             "story": story,
             "title": title,
+            "word_forms": word_forms,
             "provider_used": provider_used,
             "model_used": model_used,
         }
+
+    @staticmethod
+    def _parse_story(response: str, words: list[str]) -> tuple[Optional[str], str, dict[str, list[str]]]:
+        """Split the model's reply into title, story text and {vocab word: [forms used]}."""
+        import re
+        text = response.strip()
+        title = None
+        m = re.search(r"^\s*\**TITLE:\**\s*(.+)$", text, re.M)
+        if m:
+            title = m.group(1).strip().strip('"\'*').strip()[:100] or None
+        story = text
+        sm = re.search(r"^\s*\**STORY:\**\s*$", text, re.M)
+        if sm:
+            story = text[sm.end():]
+        elif m:
+            story = text[m.end():]
+        word_forms: dict[str, list[str]] = {}
+        fm = re.search(r"^\s*\**FORMS:\**\s*$", story, re.M)
+        if fm:
+            forms_block = story[fm.end():]
+            story = story[:fm.start()]
+            known = {w.lower(): w for w in words}
+            for line in forms_block.splitlines():
+                if "=>" not in line:
+                    continue
+                left, right = line.split("=>", 1)
+                key = known.get(left.strip().lstrip("-*• ").strip().lower())
+                if not key:
+                    continue
+                forms = [f.strip().strip(".;\"'") for f in right.split(",")]
+                forms = [f for f in forms if f and f.lower() != key.lower()]
+                if forms:
+                    word_forms[key] = list(dict.fromkeys(forms))[:8]
+        return title, story.strip(), word_forms
 
     async def lookup_word_jisho(self, word: str) -> dict | None:
         """

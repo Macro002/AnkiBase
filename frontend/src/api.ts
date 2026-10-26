@@ -254,6 +254,8 @@ export const dictionary = {
 export interface StoryGenerateResult {
   story: string;
   story_id: number;
+  title?: string;
+  word_forms?: Record<string, string[]>;
   provider_used?: string;
   model_used?: string;
 }
@@ -273,6 +275,7 @@ export interface StoryGenerateOptions {
   name?: string;
   lookupFields?: string[];
   lookupLanguage?: string;
+  level?: string;
 }
 
 // Lookup result
@@ -307,6 +310,7 @@ export const story = {
         name: options.name,
         lookup_fields: options.lookupFields,
         lookup_language: options.lookupLanguage || 'auto',
+        level: options.level,
       }),
     }),
 };
@@ -347,6 +351,10 @@ export interface SavedStory {
   deck_name?: string;
   created_at: string;
   content_length?: number;
+  level?: string | null;
+  word_forms?: Record<string, string[]>;
+  preview?: string;
+  word_count?: number;
 }
 
 export const stories = {
@@ -726,6 +734,8 @@ export const quizlet = {
     }),
   deleteState: (deckId: number, mode: QuizletStateMode) =>
     fetchAPI<{ success: boolean }>(`/quizlet/decks/${deckId}/state/${mode}`, { method: 'DELETE' }),
+  getWords: (deckId: number, side: 'term' | 'definition' = 'term') =>
+    fetchAPI<DeckWordsResponse & { title: string }>(`/quizlet/decks/${deckId}/words?side=${side}`),
   fetchImage: (url: string) =>
     fetchAPI<{ data: string }>('/quizlet/fetch-image', {
       method: 'POST',

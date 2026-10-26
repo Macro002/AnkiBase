@@ -25,7 +25,7 @@ from database import (
     update_quizlet_card,
     get_quizlet_study_state, set_quizlet_study_state, delete_quizlet_study_state,
     list_study_sessions, get_study_session, upsert_study_session, delete_study_session,
-    get_quizlet_stats_data, search_quizlet_cards, add_quizlet_card,
+    get_quizlet_stats_data, search_quizlet_cards, add_quizlet_card, get_quizlet_set_words,
     get_setting, set_setting, get_user_accent, set_user_accent, clear_user_accent,
     get_server_base_colors, set_server_base_colors,
     get_user_base_colors, set_user_base_colors, clear_user_base_colors,
@@ -1023,6 +1023,15 @@ async def add_basic_note(deck: str, request: QuickCardRequest,
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/quizlet/decks/{deck_id}/words")
+async def quizlet_set_words(deck_id: int, side: str = "term", user: dict = Depends(require_auth)):
+    """A Quizlet set's terms (or definitions) as story vocabulary, with Learn progress as categories."""
+    data = get_quizlet_set_words(user["user_id"], deck_id, "definition" if side == "definition" else "term")
+    if data is None:
+        raise HTTPException(status_code=404, detail="Set not found")
+    return data
+
+
 @app.post("/api/quizlet/decks/{deck_id}/cards")
 async def quizlet_add_card(deck_id: int, request: QuickCardRequest, _: dict = Depends(require_auth)):
     card_id = add_quizlet_card(deck_id, request.front, request.back)
@@ -1046,6 +1055,7 @@ class StoryRequest(BaseModel):
     name: Optional[str] = None  # Story name for saving (auto-generated if not provided)
     lookup_fields: Optional[list[str]] = None  # Fields to use for word lookup (e.g., ["Meaning", "Reading"])
     lookup_language: str = "auto"  # Language for AI-generated lookups
+    level: Optional[str] = None  # CEFR level (A1..C2) of the learner
 
 
 class LookupRequest(BaseModel):
@@ -1083,6 +1093,7 @@ async def generate_story_endpoint(
             provider=request.provider,
             model=request.model,
             word_categories=word_categories,
+            level=request.level,
         )
 
         story_name = request.name or result.get("title") or f"Story with {len(request.words)} words"
@@ -1100,11 +1111,15 @@ async def generate_story_endpoint(
             provider=result.get("provider_used"),
             model=result.get("model_used"),
             deck_name=request.deck_name,
+            level=request.level,
+            word_forms=result.get("word_forms"),
         )
 
         return {
             "story": result["story"],
             "story_id": story_id,
+            "title": story_name,
+            "word_forms": result.get("word_forms") or {},
             "provider_used": result.get("provider_used"),
             "model_used": result.get("model_used"),
         }
@@ -1502,7 +1517,8 @@ async def get_provider_models_endpoint(provider: str, _: str = Depends(require_a
                     {"id": m["id"], "name": m.get("display_name", m["id"])}
                     for m in data.get("data", [])
                 ]
-                return {"models": models, "default_model": models[0]["id"] if models else "claude-3-5-sonnet-20241022"}
+                ids = [m["id"] for m in models]
+                return {"models": models, "default_model": "claude-opus-5-5" if "claude-opus-5-5" in ids or not ids else ids[0]}
 
             elif provider == "gemini":
                 response = await client.get(

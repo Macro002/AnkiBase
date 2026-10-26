@@ -1,1000 +1,508 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { useTranslation } from 'react-i18next';
-import { BookOpen, Trash2, Edit2, Check, X, ChevronLeft, Clock, Cpu, FileText, Loader2, Volume2, Sparkles } from 'lucide-react';
-import { stories, lookup, media, studySessions } from '../api';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import {
+  ArrowLeft, BookOpen, Check, Languages, Loader2, MoreHorizontal, Pause, Pencil, Play, Plus, Search as SearchIcon,
+  Sparkles, Trash2, Volume2, Wand2, X,
+} from 'lucide-react';
+import {
+  dictionary, lookup, media, stories, studySessions,
+  type DictionaryResult, type SavedStory, type StudySession, type WordData,
+} from '../api';
 import { useSessionSaver } from '../hooks/useSessionSaver';
-import type { SavedStory } from '../api';
+import { Segmented } from './quizlet/ui';
+import { AddCardDialog } from './AddCardDialog';
+import { buildVocab, fold, LANG_CODE, paragraphs, splitLine, stripArticle, type Vocab } from './story/text';
 
-// Cache for word lookups
-const lookupCache = new Map<string, { meaning: string; reading?: string; provider?: string }>();
+const clean = (v: string) => v.replace(/\[sound:[^\]]+\]/g, '').replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+const soundOf = (fields: Record<string, string>) => Object.values(fields).map(v => /\[sound:([^\]]+)\]/.exec(v)?.[1]).find(Boolean) ?? null;
 
-// Extract sound filename from field value like [sound:audio.mp3]
-function extractSoundFile(fieldValue: string): string | null {
-  const match = fieldValue.match(/\[sound:([^\]]+)\]/);
-  return match ? match[1] : null;
+const store = {
+  get<T>(k: string, d: T): T { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
+  set(k: string, v: unknown) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage unavailable */ } },
+};
+
+function storyLanguage(s: SavedStory): string | null {
+  const l = s.target_language || (s.language && s.language !== 'auto' ? s.language : null);
+  return l || null;
 }
 
-// Tokenize text into individual clickable units
-function tokenizeText(text: string): { text: string; start: number }[] {
-  const tokens: { text: string; start: number }[] = [];
-  const hasCJK = /[\u3000-\u9fff\uac00-\ud7af\u3040-\u309f\u30a0-\u30ff]/.test(text);
-
-  if (hasCJK) {
-    const cjkPattern = /([一-龯]+|[ぁ-んー]+|[ァ-ヴー]+|[a-zA-ZÀ-ÿ]+|[0-9]+|[\s]+|.)/g;
-    let match;
-    while ((match = cjkPattern.exec(text)) !== null) {
-      tokens.push({ text: match[0], start: match.index });
-    }
-  } else {
-    const wordPattern = /([a-zA-ZÀ-ÿ]+|[0-9]+|[\s]+|.)/g;
-    let match;
-    while ((match = wordPattern.exec(text)) !== null) {
-      tokens.push({ text: match[0], start: match.index });
-    }
-  }
-
-  return tokens;
+function speak(text: string, lang: string | null, onEnd?: () => void) {
+  if (!('speechSynthesis' in window)) return false;
+  const u = new SpeechSynthesisUtterance(text);
+  if (lang && LANG_CODE[lang]) u.lang = LANG_CODE[lang];
+  u.rate = 0.95;
+  if (onEnd) { u.onend = onEnd; u.onerror = onEnd; }
+  window.speechSynthesis.speak(u);
+  return true;
 }
 
-function isClickableWord(token: string): boolean {
-  return /[a-zA-ZÀ-ÿ0-9一-龯ぁ-んァ-ヴー]/.test(token);
+function ago(ts: string): string {
+  const t = Date.parse(ts.includes('T') ? ts : ts.replace(' ', 'T') + 'Z');
+  if (Number.isNaN(t)) return '';
+  const d = Math.round((Date.now() - t) / 86400000);
+  return d <= 0 ? 'today' : d === 1 ? 'yesterday' : d < 30 ? `${d} days ago` : new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-interface StoryContentProps {
-  content: string;
-  words: string[];
-  onWordClick: (word: string, isVocab: boolean, rect: DOMRect) => void;
+export function Reading() {
+  const [params, setParams] = useSearchParams();
+  const id = Number(params.get('story')) || null;
+  return id
+    ? <Reader key={id} id={id} onBack={() => setParams({})} />
+    : <Library onOpen={sid => setParams({ story: String(sid) })} />;
 }
 
-function StoryContent({ content, words, onWordClick }: StoryContentProps) {
-  const vocabSet = useMemo(() => {
-    const set = new Set<string>();
-    for (const word of words) {
-      set.add(word.toLowerCase());
-    }
-    return set;
-  }, [words]);
+// --- Library ----------------------------------------------------------------------
 
-  const isVocabWord = useCallback((token: string): boolean => {
-    return vocabSet.has(token.toLowerCase());
-  }, [vocabSet]);
+function Library({ onOpen }: { onOpen: (id: number) => void }) {
+  const navigate = useNavigate();
+  const [list, setList] = useState<SavedStory[] | null>(null);
+  const [progress, setProgress] = useState<Record<string, StudySession>>({});
+  const [q, setQ] = useState('');
+  const [menu, setMenu] = useState<number | null>(null);
+  const [renaming, setRenaming] = useState<{ id: number; name: string } | null>(null);
+  const [deleting, setDeleting] = useState<SavedStory | null>(null);
 
-  const handleClick = useCallback((token: string, isVocab: boolean, event: React.MouseEvent) => {
-    const rect = (event.target as HTMLElement).getBoundingClientRect();
-    onWordClick(token, isVocab, rect);
-  }, [onWordClick]);
-
-  const processLine = useCallback((line: string, lineKey: number): React.ReactNode => {
-    const tokens = tokenizeText(line);
-
-    return tokens.map((token, idx) => {
-      const isWord = isClickableWord(token.text);
-      const isVocab = isWord && isVocabWord(token.text);
-
-      if (!isWord) {
-        return <span key={`${lineKey}-${idx}`}>{token.text}</span>;
-      }
-
-      return (
-        <span
-          key={`${lineKey}-${idx}-${token.start}`}
-          className={`word-btn ${isVocab ? 'vocab' : ''}`}
-          onClick={(e) => handleClick(token.text, isVocab, e)}
-        >
-          {token.text}
-        </span>
-      );
-    });
-  }, [isVocabWord, handleClick]);
-
-  const renderContent = useCallback(() => {
-    const lines = content.split('\n');
-    return lines.map((line, i) => {
-      if (!line.trim()) {
-        return <br key={`br-${i}`} />;
-      }
-      return (
-        <p key={`p-${i}`} className="mb-3 leading-relaxed">
-          {processLine(line, i)}
-        </p>
-      );
-    });
-  }, [content, processLine]);
-
-  return (
-    <div className="story-content prose prose-invert max-w-none">
-      {renderContent()}
-      <style>{`
-        .word-btn {
-          cursor: pointer;
-          transition: all 0.15s;
-        }
-        .word-btn:hover {
-          background: var(--bg-tertiary);
-          border-radius: 2px;
-        }
-        .word-btn.vocab {
-          color: var(--accent);
-          font-weight: 600;
-        }
-        .word-btn.vocab:hover {
-          background: rgba(233, 69, 96, 0.2);
-        }
-      `}</style>
-    </div>
-  );
-}
-
-// Tooltip component for word lookup
-interface WordTooltipProps {
-  word: string;
-  isVocab: boolean;
-  fields: Record<string, string> | null;
-  lookupFields: string[];
-  lookupLanguage: string;
-  position: { x: number; y: number };
-  onClose: () => void;
-}
-
-function WordTooltip({ word, isVocab, fields, lookupFields, lookupLanguage, position, onClose }: WordTooltipProps) {
-  const [jishoLookup, setJishoLookup] = useState<{ meaning: string; reading?: string; provider?: string } | null>(null);
-  const [aiLookup, setAiLookup] = useState<any | null>(null);  // Can contain any fields from AI lookup
-  const [loading, setLoading] = useState(false);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [showAI, setShowAI] = useState(false);
-  const [playingAudio, setPlayingAudio] = useState(false);
-  const tooltipRef = useRef<HTMLDivElement>(null);
-
-  // Find sound file in fields
-  const soundFile = useMemo(() => {
-    if (!fields) return null;
-    for (const value of Object.values(fields)) {
-      const sound = extractSoundFile(value);
-      if (sound) return sound;
-    }
-    return null;
-  }, [fields]);
-
-  // Clear old lookup data when word changes
   useEffect(() => {
-    setJishoLookup(null);
-    setAiLookup(null);
-    setError(null);
-    setShowAI(false);
-  }, [word]);
+    stories.list().then(d => setList(d.stories)).catch(() => setList([]));
+    studySessions.list().then(d => setProgress(Object.fromEntries(d.sessions.filter(s => s.kind === 'reading').map(s => [s.ref_id, s])))).catch(() => {});
+  }, []);
+  useEffect(() => {
+    if (menu == null) return;
+    const close = () => setMenu(null);
+    window.addEventListener('click', close);
+    return () => window.removeEventListener('click', close);
+  }, [menu]);
 
-  // Play audio
-  const playAudio = async () => {
-    if (!soundFile || playingAudio) return;
-    setPlayingAudio(true);
-    try {
-      const result = await media.get(soundFile);
-      if (result.data) {
-        // Determine mime type
-        const ext = soundFile.split('.').pop()?.toLowerCase();
-        const mimeType = ext === 'mp3' ? 'audio/mpeg' : ext === 'ogg' ? 'audio/ogg' : 'audio/wav';
-        const audio = new Audio(`data:${mimeType};base64,${result.data}`);
-        audio.play();
-        audio.onended = () => setPlayingAudio(false);
-      }
-    } catch (err) {
-      console.error('Failed to play audio:', err);
-    } finally {
-      setPlayingAudio(false);
-    }
+  const shown = (list ?? []).filter(s => !q || fold(`${s.name} ${s.preview ?? ''} ${s.deck_name ?? ''}`).includes(fold(q)));
+
+  const rename = async () => {
+    if (!renaming?.name.trim()) return;
+    await stories.update(renaming.id, { name: renaming.name.trim() });
+    setList(l => l?.map(s => (s.id === renaming.id ? { ...s, name: renaming.name.trim() } : s)) ?? null);
+    setRenaming(null);
+  };
+  const remove = async () => {
+    if (!deleting) return;
+    await stories.delete(deleting.id);
+    setList(l => l?.filter(s => s.id !== deleting.id) ?? null);
+    setDeleting(null);
   };
 
-  // Fetch lookup for non-vocab words
-  useEffect(() => {
-    if (!isVocab && !fields) {
-      const cached = lookupCache.get(word);
-      if (cached) {
-        setJishoLookup(cached);
-        return;
-      }
-
-      setLoading(true);
-      setError(null);
-      lookup.word(word, lookupLanguage)
-        .then(result => {
-          const data = { meaning: result.meaning, reading: result.reading, provider: result.provider_used };
-          lookupCache.set(word, data);
-          setJishoLookup(data);
-        })
-        .catch(err => {
-          setError('Failed to lookup');
-          console.error('Lookup failed:', err);
-        })
-        .finally(() => setLoading(false));
-    }
-  }, [word, isVocab, fields, lookupLanguage]);
-
-  // Fetch AI lookup when requested
-  const fetchAILookup = async () => {
-    if (aiLoading || aiLookup) return;
-    setAiLoading(true);
-    try {
-      const result = await lookup.word(
-        word,
-        lookupLanguage,
-        undefined,  // provider - let backend choose based on configured keys
-        undefined,  // model - let backend choose default
-        lookupFields.length > 0 ? lookupFields : undefined,  // pass lookup fields
-        true  // force_ai - skip Jisho and use AI directly
-      );
-      setAiLookup(result);
-    } catch (err) {
-      console.error('AI lookup failed:', err);
-    } finally {
-      setAiLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      // Don't close if clicking on a word button (for instant lookup)
-      const target = e.target as HTMLElement;
-      if (target.closest('.word-btn')) return;
-      onClose();
-    };
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-
-    const timer = setTimeout(() => {
-      document.addEventListener('click', handleClickOutside);
-      document.addEventListener('keydown', handleEsc);
-    }, 100);
-
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener('click', handleClickOutside);
-      document.removeEventListener('keydown', handleEsc);
-    };
-  }, [onClose]);
-
-  // Get fields to display
-  const displayFields = useMemo(() => {
-    if (!fields) return [];
-
-    if (lookupFields.length > 0) {
-      return lookupFields
-        .filter(f => fields[f] && fields[f].trim())
-        .map(f => ({ name: f, value: fields[f].replace(/\[sound:[^\]]+\]/g, '').replace(/<[^>]+>/g, '').trim() }))
-        .filter(({ value }) => value);  // Only show fields that have content after removing tags
-    }
-
-    return Object.entries(fields)
-      .filter(([_, v]) => v && v.trim())
-      .map(([k, v]) => ({ name: k, value: v.replace(/\[sound:[^\]]+\]/g, '').replace(/<[^>]+>/g, '').trim() }))
-      .filter(({ value }) => value);  // Only show fields that have content after removing tags
-  }, [fields, lookupFields]);
-
-  // Calculate tooltip position - below the word
-  const tooltipStyle = useMemo(() => {
-    const tooltipWidth = 280;
-    const maxHeight = 300;
-
-    let left = position.x - tooltipWidth / 2;
-    // Position below the word (position.y is the top of the word, add ~25px for word height)
-    let top = position.y + 25;
-
-    // Keep within horizontal bounds
-    if (left < 10) left = 10;
-    if (left + tooltipWidth > window.innerWidth - 10) {
-      left = window.innerWidth - tooltipWidth - 10;
-    }
-
-    // If tooltip would go off bottom, limit maxHeight
-    const availableHeight = window.innerHeight - top - 10;
-    const effectiveMaxHeight = Math.min(maxHeight, availableHeight);
-
-    return { left, top, maxHeight: effectiveMaxHeight };
-  }, [position]);
-
   return (
-    <div
-      ref={tooltipRef}
-      className="word-tooltip"
-      style={{
-        position: 'fixed',
-        left: tooltipStyle.left,
-        top: tooltipStyle.top,
-        maxHeight: tooltipStyle.maxHeight,
-        overflowY: 'auto',
-        zIndex: 1000,
-      }}
-      onClick={(e) => e.stopPropagation()}
-    >
-      {/* Header */}
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
-          <span className="font-semibold text-lg">{word}</span>
-          {isVocab && (
-            <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--accent)', color: 'white' }}>
-              vocab
-            </span>
-          )}
+    <div className="max-w-6xl mx-auto space-y-5 pb-10">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-bold">Reading</h2>
+          <p className="text-sm text-(--text-secondary) mt-0.5">Your stories — tap any word while reading to look it up.</p>
         </div>
-        {soundFile && (
-          <button
-            onClick={playAudio}
-            className="icon-btn"
-            disabled={playingAudio}
-            title="Play audio"
-          >
-            <Volume2 className={`w-4 h-4 ${playingAudio ? 'animate-pulse' : ''}`} />
-          </button>
-        )}
+        <div className="flex gap-2 w-full sm:w-auto">
+          <div className="relative flex-1 sm:w-64">
+            <SearchIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-(--text-secondary) pointer-events-none" />
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search stories" className="input w-full h-9 !py-0 !pl-9 text-sm" />
+          </div>
+          <button onClick={() => navigate('/story')} className="btn btn-primary h-9 !py-0 inline-flex items-center gap-2 shrink-0"><Wand2 className="w-4 h-4" /> New story</button>
+        </div>
       </div>
 
-      {/* Vocab word fields */}
-      {displayFields.length > 0 && (
-        <div className="space-y-2 mb-2">
-          {displayFields.map(({ name, value }) => {
-            // Highlight the vocab word in the field value
-            const highlightWord = (text: string) => {
-              const regex = new RegExp(`(${word})`, 'gi');
-              const parts = text.split(regex);
-              return parts.map((part, i) =>
-                regex.test(part)
-                  ? <span key={i} style={{ color: 'var(--accent)', fontWeight: 600 }}>{part}</span>
-                  : part
-              );
-            };
-
+      {list == null ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">{[0, 1, 2].map(i => <div key={i} className="skeleton h-48 rounded-xl" />)}</div>
+      ) : list.length === 0 ? (
+        <div className="card text-center py-14 space-y-3">
+          <BookOpen className="w-10 h-10 mx-auto text-(--text-secondary)" />
+          <p className="font-semibold">No stories yet</p>
+          <p className="text-sm text-(--text-secondary)">Write one from your Anki or Quizlet words in the Story tab.</p>
+          <button onClick={() => navigate('/story')} className="btn btn-primary inline-flex items-center gap-2"><Wand2 className="w-4 h-4" /> Write a story</button>
+        </div>
+      ) : shown.length === 0 ? (
+        <p className="text-sm text-(--text-secondary) text-center py-10">No stories match “{q}”.</p>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {shown.map(s => {
+            const p = progress[String(s.id)];
+            const pct = p && p.progress_total ? (p.progress_done / p.progress_total) * 100 : 0;
+            const lang = storyLanguage(s);
+            const preview = paragraphs(s.preview ?? '')[0]?.text ?? '';
             return (
-              <div key={name} className="text-sm">
-                <span style={{ color: 'var(--text-secondary)' }}>{name}:</span>
-                <span className="ml-2">{highlightWord(value)}</span>
-              </div>
+              <article key={s.id} role="link" tabIndex={0} onClick={() => onOpen(s.id)} onKeyDown={e => { if (e.key === 'Enter' && e.target === e.currentTarget) onOpen(s.id); }}
+                className="group relative rounded-xl bg-(--bg-secondary) hover:bg-(--bg-tertiary) transition-colors p-4 cursor-pointer flex flex-col gap-3 min-h-44">
+                <div className="flex items-start gap-2">
+                  {renaming?.id === s.id ? (
+                    <form className="flex-1 flex gap-1.5" onClick={e => e.stopPropagation()} onSubmit={e => { e.preventDefault(); rename(); }}>
+                      <input autoFocus value={renaming.name} onChange={e => setRenaming({ id: s.id, name: e.target.value })} onKeyDown={e => { if (e.key === 'Escape') setRenaming(null); }}
+                        className="input flex-1 min-w-0 h-8 !py-0 text-sm" />
+                      <button className="icon-btn" title="Save"><Check className="w-4 h-4" /></button>
+                    </form>
+                  ) : (
+                    <h3 className="font-semibold leading-snug flex-1 min-w-0 line-clamp-2">{s.name}</h3>
+                  )}
+                  <div className="relative shrink-0" onClick={e => e.stopPropagation()}>
+                    <button onClick={() => setMenu(m => (m === s.id ? null : s.id))} className="w-7 h-7 rounded-md flex items-center justify-center text-(--text-secondary) hover:text-white hover:bg-white/10 sm:opacity-0 group-hover:opacity-100 transition" aria-label="Story options">
+                      <MoreHorizontal className="w-4 h-4" />
+                    </button>
+                    {menu === s.id && (
+                      <div className="absolute right-0 top-8 z-20 w-36 rounded-lg bg-(--bg-primary) border border-white/10 shadow-xl p-1 text-sm">
+                        <button onClick={() => { setRenaming({ id: s.id, name: s.name }); setMenu(null); }} className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md hover:bg-white/8"><Pencil className="w-3.5 h-3.5" /> Rename</button>
+                        <button onClick={() => { setDeleting(s); setMenu(null); }} className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md hover:bg-white/8 text-(--error)"><Trash2 className="w-3.5 h-3.5" /> Delete</button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <p className="text-sm text-(--text-secondary) line-clamp-3 leading-relaxed flex-1">{preview}</p>
+                <div className="flex flex-wrap gap-1.5 text-[11px]">
+                  {lang && <span className="px-2 py-0.5 rounded-full bg-white/5 text-(--text-secondary)">{lang}</span>}
+                  {s.level && <span className="px-2 py-0.5 rounded-full bg-white/5 text-(--text-secondary)">{s.level}</span>}
+                  {s.word_count ? <span className="px-2 py-0.5 rounded-full bg-white/5 text-(--text-secondary)">{s.word_count} words</span> : null}
+                  {s.deck_name && <span className="px-2 py-0.5 rounded-full bg-white/5 text-(--text-secondary) truncate max-w-40">{s.deck_name.split('::').pop()}</span>}
+                </div>
+                <div className="flex items-center gap-3 text-[11px] text-(--text-secondary)">
+                  <div className="flex-1 h-1 rounded-full bg-(--bg-primary)/60 overflow-hidden">{pct > 0 && <div className="h-full bg-(--accent)" style={{ width: `${pct}%` }} />}</div>
+                  <span className="shrink-0">{pct > 0 ? `${Math.round(pct)}% read` : ago(s.created_at)}</span>
+                </div>
+              </article>
             );
           })}
         </div>
       )}
 
-      {/* Non-vocab word - Jisho/AI lookup */}
-      {!isVocab && !fields && (
-        <div className="space-y-2">
-          {loading && (
-            <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Looking up...
+      {deleting && createPortal(
+        <div className="fixed inset-0 z-[200] bg-black/60 flex items-center justify-center p-4" onClick={() => setDeleting(null)}>
+          <div className="bg-(--bg-secondary) rounded-xl max-w-md w-full p-6 space-y-4" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-bold">Delete “{deleting.name}”?</h3>
+            <p className="text-sm text-(--text-secondary)">The story is removed for good. Your cards aren’t affected.</p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setDeleting(null)} className="btn btn-secondary">Cancel</button>
+              <button onClick={remove} className="btn btn-error">Delete</button>
             </div>
-          )}
-          {error && (
-            <div className="text-sm" style={{ color: 'var(--error)' }}>{error}</div>
-          )}
-          {jishoLookup && (
-            <div className="space-y-1.5">
-              {jishoLookup.reading && (
-                <div className="text-sm">
-                  <span style={{ color: 'var(--text-secondary)' }}>Reading:</span>
-                  <span className="ml-2">{jishoLookup.reading}</span>
-                </div>
-              )}
-              <div className="text-sm">
-                <span style={{ color: 'var(--text-secondary)' }}>Meaning:</span>
-                <span className="ml-2">{jishoLookup.meaning}</span>
-              </div>
-              <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                via {jishoLookup.provider}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Vocab word but no field data */}
-      {isVocab && displayFields.length === 0 && (
-        <div className="text-sm italic" style={{ color: 'var(--text-secondary)' }}>
-          No field data available
-        </div>
-      )}
-
-      {/* Ask AI button */}
-      {jishoLookup && jishoLookup.provider === 'jisho' && !showAI && (
-        <button
-          onClick={() => {
-            setShowAI(true);
-            fetchAILookup();
-          }}
-          className="mt-2 flex items-center gap-1.5 text-xs px-2 py-1 rounded transition-colors"
-          style={{ background: 'var(--bg-tertiary)', color: 'var(--text-secondary)' }}
-        >
-          <Sparkles className="w-3 h-3" />
-          Ask AI
-        </button>
-      )}
-
-      {/* AI lookup result */}
-      {showAI && (
-        <div className="mt-2 pt-2 border-t" style={{ borderColor: 'var(--bg-tertiary)' }}>
-          <div className="flex items-center gap-1 text-xs mb-1" style={{ color: 'var(--accent)' }}>
-            <Sparkles className="w-3 h-3" />
-            AI Response
           </div>
-          {aiLoading && (
-            <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Looking up...
-            </div>
-          )}
-          {aiLookup && (
-            <>
-              <div className="space-y-1.5 text-sm">
-                {aiLookup.reading && (
-                  <div>
-                    <span style={{ color: 'var(--text-secondary)' }}>Reading:</span>
-                    <span className="ml-2">{aiLookup.reading}</span>
-                  </div>
-                )}
-                {aiLookup.meaning && (
-                  <div>
-                    <span style={{ color: 'var(--text-secondary)' }}>Meaning:</span>
-                    <span className="ml-2">{aiLookup.meaning}</span>
-                  </div>
-                )}
-                {aiLookup.furigana && (
-                  <div>
-                    <span style={{ color: 'var(--text-secondary)' }}>Furigana:</span>
-                    <span className="ml-2">{aiLookup.furigana}</span>
-                  </div>
-                )}
-                {aiLookup.part_of_speech && (
-                  <div>
-                    <span style={{ color: 'var(--text-secondary)' }}>Part of Speech:</span>
-                    <span className="ml-2">{aiLookup.part_of_speech}</span>
-                  </div>
-                )}
-                {aiLookup.example && (
-                  <div>
-                    <span style={{ color: 'var(--text-secondary)' }}>Example:</span>
-                    <span className="ml-2">{aiLookup.example}</span>
-                  </div>
-                )}
-                {aiLookup.notes && (
-                  <div>
-                    <span style={{ color: 'var(--text-secondary)' }}>Notes:</span>
-                    <span className="ml-2">{aiLookup.notes}</span>
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-        </div>
-      )}
-
-      <style>{`
-        .word-tooltip {
-          background: var(--bg-secondary);
-          border: 1px solid var(--bg-tertiary);
-          border-radius: 8px;
-          padding: 12px 16px;
-          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-          min-width: 220px;
-          max-width: 300px;
-        }
-      `}</style>
+        </div>, document.body)}
     </div>
   );
 }
 
-export function Reading() {
-  const { t } = useTranslation();
-  const [storyList, setStoryList] = useState<SavedStory[]>([]);
-  const [selectedStory, setSelectedStory] = useState<SavedStory | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [editingStoryId, setEditingStoryId] = useState<number | null>(null);
-  const [newName, setNewName] = useState('');
-  const [deletingStory, setDeletingStory] = useState<SavedStory | null>(null);
+// --- Reader ------------------------------------------------------------------------
 
-  // Active lookup fields (can be toggled by user)
-  const [activeLookupFields, setActiveLookupFields] = useState<string[]>([]);
+interface Picked { text: string; vocab: string | null; rect: DOMRect }
 
-  const [tooltip, setTooltip] = useState<{
-    word: string;
-    isVocab: boolean;
-    fields: Record<string, string> | null;
-    position: { x: number; y: number };
-  } | null>(null);
+function Reader({ id, onBack }: { id: number; onBack: () => void }) {
+  const [story, setStory] = useState<SavedStory | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [size, setSize] = useState<'s' | 'm' | 'l'>(() => store.get('reading-size', 'm'));
+  const [showTr, setShowTr] = useState<boolean>(() => store.get('reading-translation', true));
+  const [picked, setPicked] = useState<Picked | null>(null);
+  const [flash, setFlash] = useState<string | null>(null);
+  const [speaking, setSpeaking] = useState<number | null>(null);
+  const [adding, setAdding] = useState<{ front: string; back: string } | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const stopRef = useRef(false);
 
   useEffect(() => {
-    loadStories();
+    stories.get(id).then(r => setStory(r.story)).catch(() => setFailed(true));
+    return () => { stopRef.current = true; window.speechSynthesis?.cancel(); };
+  }, [id]);
+  useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 2500); return () => clearTimeout(t); }, [toast]);
 
-    const params = new URLSearchParams(window.location.search);
-    const storyId = params.get('story');
-    if (storyId) {
-      loadStory(parseInt(storyId, 10));
-    }
-  }, []);
+  const words = useMemo(() => story?.words ?? [], [story]);
+  const vocab = useMemo<Vocab>(() => buildVocab(words, story?.word_forms ?? {}), [words, story]);
+  const paras = useMemo(() => paragraphs(story?.content ?? ''), [story]);
+  const hasTr = paras.some(p => p.translation);
+  const lang = story ? storyLanguage(story) : null;
 
-  // Save lookup fields to story when they change
+  // How often each vocab word appears (for the side list).
+  const freq = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const p of paras) for (const x of splitLine(p.text, vocab)) if (x.vocab) m[x.vocab] = (m[x.vocab] ?? 0) + 1;
+    return m;
+  }, [paras, vocab]);
+
+  // Reading progress for the Study hub (scroll position, restored on open).
+  const readSession = useSessionSaver('reading', story ? story.id : null, 1000);
+  const storyName = story?.name ?? '';
   useEffect(() => {
-    if (!selectedStory) return;
-
-    // Don't save on initial load - only when user toggles
-    const currentFields = JSON.stringify(activeLookupFields.sort());
-    const storyFields = JSON.stringify((selectedStory.lookup_fields || []).sort());
-    if (currentFields === storyFields) return;
-
-    const saveTimeout = setTimeout(async () => {
-      try {
-        await stories.update(selectedStory.id, { lookup_fields: activeLookupFields });
-      } catch (err) {
-        console.error('Failed to save lookup fields:', err);
-      }
-    }, 500); // Debounce to avoid too many API calls
-
-    return () => clearTimeout(saveTimeout);
-  }, [activeLookupFields, selectedStory]);
-
-  // Remember how far into a story you've read, so the Study hub can bring you back.
-  const storyId = selectedStory?.id ?? null;
-  const storyName = selectedStory?.name ?? '';
-  const readSession = useSessionSaver('reading', storyId, 1000);
-  useEffect(() => {
-    if (storyId == null) return;
-    let cancelled = false;
-    let tracking = false; // don't record the scroll we do ourselves while restoring
-    let finished = false;
+    if (!story) return;
+    let cancelled = false, tracking = false, finished = false;
     const maxScroll = () => document.documentElement.scrollHeight - window.innerHeight;
-
-    studySessions.get<{ pct: number }>('reading', storyId).then(({ session }) => {
+    studySessions.get<{ pct: number }>('reading', story.id).then(({ session }) => {
       const pct = session?.status === 'active' ? session.state?.pct : undefined;
       if (cancelled) return;
       if (!pct) { tracking = true; return; }
-      requestAnimationFrame(() => {
-        window.scrollTo({ top: pct * maxScroll(), behavior: 'smooth' });
-        setTimeout(() => { tracking = true; }, 700);
-      });
+      requestAnimationFrame(() => { window.scrollTo({ top: pct * maxScroll(), behavior: 'smooth' }); setTimeout(() => { tracking = true; }, 700); });
     }).catch(() => { tracking = true; });
-
     const onScroll = () => {
       if (!tracking) return;
       const max = maxScroll();
-      if (max < 200) return; // the whole story fits on screen
+      if (max < 200) return;
       const pct = window.scrollY / max;
-      if (pct >= 0.95) {
-        if (!finished) { finished = true; readSession.remove(); }
-        return;
-      }
+      if (pct >= 0.95) { if (!finished) { finished = true; readSession.remove(); } return; }
       finished = false;
       if (pct < 0.03) return;
-      readSession.save({
-        title: storyName, detail: `${Math.round(pct * 100)}% read`,
-        progress_done: Math.round(pct * 100), progress_total: 100, state: { pct },
-      });
+      readSession.save({ title: storyName, detail: `${Math.round(pct * 100)}% read`, progress_done: Math.round(pct * 100), progress_total: 100, state: { pct } });
     };
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => { cancelled = true; window.removeEventListener('scroll', onScroll); };
-  }, [storyId, storyName, readSession]);
+  }, [story, storyName, readSession]);
 
-  const loadStories = async () => {
-    setLoading(true);
-    try {
-      const data = await stories.list();
-      setStoryList(data.stories);
-    } catch (err) {
-      console.error('Failed to load stories:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadStory = async (id: number) => {
-    try {
-      const data = await stories.get(id);
-      setSelectedStory(data.story);
-      // Initialize active lookup fields from story
-      setActiveLookupFields(data.story.lookup_fields || []);
-      window.history.pushState({}, '', `/reading?story=${id}`);
-    } catch (err) {
-      console.error('Failed to load story:', err);
-    }
-  };
-
-  const confirmDelete = async () => {
-    if (!deletingStory) return;
-    try {
-      await stories.delete(deletingStory.id);
-      setStoryList((prev) => prev.filter((s) => s.id !== deletingStory.id));
-      if (selectedStory?.id === deletingStory.id) {
-        setSelectedStory(null);
-        window.history.replaceState({}, '', '/reading');
-      }
-      setDeletingStory(null);
-    } catch (err) {
-      console.error('Failed to delete story:', err);
-      setDeletingStory(null);
-    }
-  };
-
-  const handleRename = async (id: number, name: string) => {
-    if (!name.trim()) return;
-    try {
-      await stories.update(id, { name: name.trim() });
-      setStoryList((prev) =>
-        prev.map((s) => (s.id === id ? { ...s, name: name.trim() } : s))
-      );
-      if (selectedStory?.id === id) {
-        setSelectedStory((prev) => (prev ? { ...prev, name: name.trim() } : null));
-      }
-      setEditingStoryId(null);
-      setNewName('');
-    } catch (err) {
-      console.error('Failed to rename story:', err);
-    }
-  };
-
-  const startEditing = (story: SavedStory, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    setEditingStoryId(story.id);
-    setNewName(story.name);
-  };
-
-  const handleWordClick = useCallback(
-    (word: string, isVocab: boolean, rect: DOMRect) => {
-      const wordData = selectedStory?.word_data || {};
-      const data = wordData[word] || wordData[word.toLowerCase()];
-      const fields = data ? data.fields : null;
-
-      setTooltip({
-        word,
-        isVocab,
-        fields,
-        position: { x: rect.left + rect.width / 2, y: rect.top },
-      });
-    },
-    [selectedStory]
-  );
-
-  const closeTooltip = useCallback(() => {
-    setTooltip(null);
-  }, []);
-
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
-
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        {/* Header skeleton */}
-        <div className="flex items-center justify-between">
-          <div className="skeleton h-8 w-32"></div>
-          <div className="skeleton h-9 w-24 rounded"></div>
-        </div>
-
-        {/* Story grid skeleton */}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="card card-hover">
-              <div className="skeleton h-6 w-40 mb-3"></div>
-              <div className="skeleton h-4 w-full mb-2"></div>
-              <div className="skeleton h-4 w-3/4 mb-4"></div>
-              <div className="flex justify-between items-center">
-                <div className="skeleton h-4 w-24"></div>
-                <div className="flex gap-1">
-                  <div className="skeleton h-8 w-8 rounded"></div>
-                  <div className="skeleton h-8 w-8 rounded"></div>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  // Story detail view
-  if (selectedStory) {
-    const words = selectedStory.words || [];
-    const lookupLanguage = selectedStory.lookup_language || 'auto';
-
-    // Get available fields from story's word_data (actual fields from the deck)
-    const fieldSet = new Set<string>();
-    if (selectedStory?.word_data) {
-      for (const wordData of Object.values(selectedStory.word_data)) {
-        if (wordData.fields) {
-          Object.keys(wordData.fields).forEach(field => fieldSet.add(field));
-        }
-      }
-    }
-    const availableFields = Array.from(fieldSet).sort();
-
-    const toggleLookupField = (field: string) => {
-      setActiveLookupFields(prev =>
-        prev.includes(field) ? prev.filter(f => f !== field) : [...prev, field]
-      );
+  const readAloud = (from = 0) => {
+    window.speechSynthesis?.cancel();
+    if (speaking != null && from === 0) { stopRef.current = true; setSpeaking(null); return; }
+    stopRef.current = false;
+    const next = (i: number) => {
+      if (stopRef.current || i >= paras.length) { setSpeaking(null); return; }
+      setSpeaking(i);
+      document.getElementById(`para-${i}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (!speak(paras[i].text, lang, () => next(i + 1))) setSpeaking(null);
     };
+    next(from);
+  };
 
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => {
-              setSelectedStory(null);
-              setEditingStoryId(null);
-              setActiveLookupFields([]);
-              window.history.replaceState({}, '', '/reading');
-            }}
-            className="btn btn-secondary flex items-center gap-2"
-          >
-            <ChevronLeft className="w-4 h-4" />
-            Back
+  const jumpTo = (w: string) => {
+    const el = bodyRef.current?.querySelector<HTMLElement>(`[data-vocab="${CSS.escape(w)}"]`);
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setFlash(w);
+    setTimeout(() => setFlash(null), 1600);
+  };
+
+  if (failed) return <div className="max-w-2xl mx-auto card text-center py-10 space-y-3"><p>This story couldn’t be found.</p><button onClick={onBack} className="btn btn-secondary">Back to stories</button></div>;
+  if (!story) return <div className="max-w-2xl mx-auto space-y-3">{[50, 90, 80, 95, 70].map((w, i) => <div key={i} className="skeleton h-5 rounded" style={{ width: `${w}%` }} />)}</div>;
+
+  const textSize = size === 's' ? 'text-base' : size === 'l' ? 'text-xl' : 'text-lg';
+  const meaningOf = (w: string) => {
+    const f = story.word_data?.[w]?.fields;
+    if (!f) return '';
+    const keys = (story.lookup_fields?.length ? story.lookup_fields : Object.keys(f)).filter(k => f[k] && clean(f[k]) && clean(f[k]) !== w);
+    return keys.map(k => clean(f[k])).join(' · ');
+  };
+
+  return (
+    <div className="max-w-6xl mx-auto pb-16">
+      {/* Top bar */}
+      <div className="sticky top-0 z-20 -mx-4 px-4 py-2.5 mb-5 bg-(--bg-primary)/90 backdrop-blur flex items-center gap-2">
+        <button onClick={onBack} className="icon-btn shrink-0" title="All stories"><ArrowLeft className="w-4 h-4" /></button>
+        <div className="flex-1" />
+        <Segmented value={size} onChange={v => { setSize(v); store.set('reading-size', v); }}
+          options={[{ value: 's', label: <span className="text-[11px]">A</span> }, { value: 'm', label: <span className="text-sm">A</span> }, { value: 'l', label: <span className="text-base">A</span> }]} />
+        {hasTr && (
+          <button onClick={() => { setShowTr(t => { store.set('reading-translation', !t); return !t; }); }} aria-pressed={showTr}
+            className={`h-8 px-2.5 rounded-lg text-xs inline-flex items-center gap-1.5 transition-colors ${showTr ? 'bg-(--accent)/15 text-white' : 'bg-(--bg-tertiary) text-(--text-secondary) hover:text-white'}`}>
+            <Languages className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Translation</span>
           </button>
+        )}
+        {'speechSynthesis' in window && (
+          <button onClick={() => readAloud(0)}
+            className={`h-8 px-2.5 rounded-lg text-xs inline-flex items-center gap-1.5 transition-colors ${speaking != null ? 'bg-(--accent) text-white' : 'bg-(--bg-tertiary) text-(--text-secondary) hover:text-white'}`}>
+            {speaking != null ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />} <span className="hidden sm:inline">{speaking != null ? 'Stop' : 'Read aloud'}</span>
+          </button>
+        )}
+      </div>
 
-          {editingStoryId === selectedStory.id ? (
-            <div className="flex items-center gap-2 flex-1">
-              <input
-                type="text"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                className="input flex-1"
-                autoFocus
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleRename(selectedStory.id, newName);
-                  if (e.key === 'Escape') setEditingStoryId(null);
-                }}
-              />
-              <button onClick={() => handleRename(selectedStory.id, newName)} className="btn btn-primary p-2">
-                <Check className="w-4 h-4" />
-              </button>
-              <button onClick={() => setEditingStoryId(null)} className="btn btn-secondary p-2">
-                <X className="w-4 h-4" />
-              </button>
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_17rem] gap-8 items-start">
+        <article className="max-w-2xl w-full mx-auto lg:mx-0 lg:justify-self-end">
+          <header className="mb-6 space-y-2">
+            <h1 className="text-2xl sm:text-3xl font-bold leading-tight">{story.name}</h1>
+            <div className="flex flex-wrap gap-1.5 text-[11px] text-(--text-secondary)">
+              {lang && <span className="px-2 py-0.5 rounded-full bg-white/5">{lang}</span>}
+              {story.level && <span className="px-2 py-0.5 rounded-full bg-white/5">{story.level}</span>}
+              {story.deck_name && <span className="px-2 py-0.5 rounded-full bg-white/5">{story.deck_name.split('::').pop()}</span>}
+              <span className="px-2 py-0.5">{ago(story.created_at)}</span>
             </div>
-          ) : (
-            <h2 className="text-xl font-bold flex-1">{selectedStory.name}</h2>
-          )}
-
-          {editingStoryId !== selectedStory.id && (
-            <div className="flex items-center gap-2">
-              <button onClick={() => startEditing(selectedStory)} className="btn btn-secondary p-2" title="Rename">
-                <Edit2 className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => setDeletingStory(selectedStory)}
-                className="btn btn-secondary p-2"
-                style={{ color: 'var(--error)' }}
-                title="Delete"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
-          )}
-        </div>
-
-        <div className="flex flex-wrap gap-4 text-sm" style={{ color: 'var(--text-secondary)' }}>
-          <div className="flex items-center gap-1">
-            <Clock className="w-4 h-4" />
-            {formatDate(selectedStory.created_at)}
-          </div>
-          {selectedStory.provider && selectedStory.model && (
-            <div className="flex items-center gap-1">
-              <Cpu className="w-4 h-4" />
-              {selectedStory.provider} / {selectedStory.model}
-            </div>
-          )}
-          {selectedStory.deck_name && (
-            <div className="flex items-center gap-1">
-              <FileText className="w-4 h-4" />
-              {selectedStory.deck_name}
-            </div>
-          )}
-          <div className="flex items-center gap-1">
-            {words.length} vocabulary words
-          </div>
-        </div>
-
-        {/* Lookup fields toggle */}
-        <div className="card">
-          <h3 className="text-sm font-semibold mb-2" style={{ color: 'var(--text-secondary)' }}>AI Lookup Fields</h3>
-          <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>
-            Select which fields AI should return when looking up non-vocabulary words
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {availableFields.map(field => (
-              <button
-                key={field}
-                onClick={() => toggleLookupField(field)}
-                className={`text-xs px-3 py-1.5 rounded transition-colors ${
-                  activeLookupFields.includes(field)
-                    ? 'bg-(--accent) text-white'
-                    : 'bg-(--bg-tertiary) hover:bg-(--bg-tertiary)/80'
-                }`}
-              >
-                {field}
-              </button>
+          </header>
+          <div ref={bodyRef} className={`${textSize} leading-[1.85] space-y-5`}>
+            {paras.map((p, i) => (
+              <div key={i} id={`para-${i}`} className={`rounded-lg transition-colors -mx-3 px-3 py-1 ${speaking === i ? 'bg-(--accent)/10' : ''}`}>
+                <p>
+                  {splitLine(p.text, vocab).map((x, j) => {
+                    if (!x.word) return <span key={j}>{x.text}</span>;
+                    const isVocab = !!x.vocab;
+                    return (
+                      <span key={j} role="button" tabIndex={0} data-vocab={x.vocab ?? undefined}
+                        onClick={e => setPicked({ text: x.text, vocab: x.vocab ?? null, rect: (e.currentTarget as HTMLElement).getBoundingClientRect() })}
+                        onKeyDown={e => { if (e.key === 'Enter') setPicked({ text: x.text, vocab: x.vocab ?? null, rect: (e.currentTarget as HTMLElement).getBoundingClientRect() }); }}
+                        className={`cursor-pointer rounded-[4px] transition-colors ${isVocab
+                          ? `text-(--accent) font-semibold decoration-(--accent)/40 underline decoration-dotted underline-offset-4 hover:bg-(--accent)/15 ${flash === x.vocab ? 'bg-(--accent)/30' : ''}`
+                          : 'hover:bg-white/8'} ${picked?.text === x.text ? 'bg-white/10' : ''}`}>
+                        {x.text}
+                      </span>
+                    );
+                  })}
+                </p>
+                {p.translation && showTr && <p className="text-[0.85em] text-(--text-secondary) italic mt-1.5">{p.translation}</p>}
+              </div>
             ))}
           </div>
-        </div>
-
-        <div className="card">
-          {selectedStory.content ? (
-            <StoryContent
-              content={selectedStory.content}
-              words={words}
-              onWordClick={handleWordClick}
-            />
-          ) : (
-            <p style={{ color: 'var(--text-secondary)' }}>Story content not available.</p>
-          )}
-        </div>
-
-        {tooltip && (
-          <WordTooltip
-            word={tooltip.word}
-            isVocab={tooltip.isVocab}
-            fields={tooltip.fields}
-            lookupFields={activeLookupFields}
-            lookupLanguage={lookupLanguage}
-            position={tooltip.position}
-            onClose={closeTooltip}
-          />
-        )}
-
-        {/* Delete Confirmation Modal */}
-        {deletingStory && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="card max-w-md w-full mx-4">
-              <h3 className="text-lg font-semibold mb-2">Delete Story</h3>
-              <p className="text-(--text-secondary) mb-4">
-                Are you sure you want to delete "<span className="text-white">{deletingStory.name}</span>"?
-              </p>
-              <div className="flex gap-2 justify-end">
-                <button
-                  onClick={() => setDeletingStory(null)}
-                  className="btn btn-secondary"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={confirmDelete}
-                  className="btn btn-error"
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
+          <div className="mt-10 pt-6 border-t border-white/8 flex flex-wrap gap-2">
+            <Link to="/story" className="btn btn-secondary inline-flex items-center gap-2"><Wand2 className="w-4 h-4" /> Write another</Link>
+            <button onClick={onBack} className="btn btn-secondary">All stories</button>
           </div>
+        </article>
+
+        {words.length > 0 && (
+          <aside className="lg:sticky lg:top-20 card space-y-2 max-h-[calc(100vh-7rem)] overflow-y-auto" style={{ padding: '1rem' }}>
+            <p className="text-xs font-semibold uppercase tracking-wider text-(--text-secondary) px-1">Words in this story · {words.length}</p>
+            <div className="space-y-0.5">
+              {words.map(w => (
+                <button key={w} onClick={() => jumpTo(w)} disabled={!freq[w]}
+                  className="w-full text-left rounded-lg px-2 py-1.5 hover:bg-white/5 disabled:opacity-50 disabled:hover:bg-transparent transition-colors">
+                  <span className="flex items-baseline justify-between gap-2">
+                    <span className="font-medium text-sm truncate">{w}</span>
+                    <span className="text-[10px] text-(--text-secondary) shrink-0">{freq[w] ? `${freq[w]}×` : 'not used'}</span>
+                  </span>
+                  {meaningOf(w) && <span className="block text-xs text-(--text-secondary) truncate">{meaningOf(w)}</span>}
+                </button>
+              ))}
+            </div>
+          </aside>
         )}
       </div>
-    );
-  }
 
-  // Story list view
-  return (
-    <div className="space-y-6">
-      <h2 className="text-xl font-bold">{t('reading.title')}</h2>
+      {picked && (
+        <WordCard key={`${picked.text}-${Math.round(picked.rect.left)}-${Math.round(picked.rect.top)}`} picked={picked} story={story} lang={lang} onClose={() => setPicked(null)}
+          onAdd={p => { setPicked(null); setAdding(p); }} />
+      )}
+      {adding && <AddCardDialog prefill={adding} onClose={() => setAdding(null)} onAdded={d => { setAdding(null); setToast(`Added to ${d}`); }} />}
+      {toast && createPortal(
+        <div className="fixed bottom-20 sm:bottom-6 left-1/2 -translate-x-1/2 z-[300] rounded-lg bg-(--bg-secondary) border border-white/10 shadow-xl px-4 py-2.5 text-sm flex items-center gap-2">
+          <Check className="w-4 h-4 text-green-400" /> {toast}
+        </div>, document.body)}
+    </div>
+  );
+}
 
-      <p style={{ color: 'var(--text-secondary)' }}>
-        Your saved stories for vocabulary practice. Click any word to see its meaning.
-      </p>
+// --- Word card (tap a word) --------------------------------------------------------------
 
-      {storyList.length === 0 ? (
-        <div className="card text-center py-12">
-          <BookOpen className="w-12 h-12 mx-auto mb-4" style={{ color: 'var(--text-secondary)' }} />
-          <p style={{ color: 'var(--text-secondary)' }}>No stories yet.</p>
-          <p className="text-sm mt-2" style={{ color: 'var(--text-secondary)' }}>
-            Generate your first story in the Story Generator!
-          </p>
+const dictCache = new Map<string, DictionaryResult>();
+
+function WordCard({ picked, story, lang, onClose, onAdd }: {
+  picked: Picked; story: SavedStory; lang: string | null; onClose: () => void; onAdd: (p: { front: string; back: string }) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ left: number; top: number; above: boolean } | null>(null);
+  const lemma = picked.vocab ?? picked.text;
+  const lookupWord = picked.vocab ? stripArticle(picked.vocab) || picked.vocab : picked.text.replace(/['’]$/, '');
+  const key = `${lookupWord}|${lang ?? ''}`;
+  const [dict, setDict] = useState<{ key: string; data: DictionaryResult | null } | null>(() => (dictCache.has(key) ? { key, data: dictCache.get(key)! } : null));
+  const [ai, setAi] = useState<{ loading: boolean; text?: string; error?: string } | null>(null);
+  const card: WordData | undefined = picked.vocab ? story.word_data?.[picked.vocab] : undefined;
+
+  useEffect(() => {
+    if (dictCache.has(key)) return;
+    let cancelled = false;
+    dictionary.lookup(lookupWord, lang ?? '').then(d => { dictCache.set(key, d); if (!cancelled) setDict({ key, data: d }); })
+      .catch(() => { if (!cancelled) setDict({ key, data: null }); });
+    return () => { cancelled = true; };
+  }, [key, lookupWord, lang]);
+
+  // Place next to the word, flipping above when there's no room below.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const r = picked.rect, w = el.offsetWidth, h = el.offsetHeight;
+    const left = Math.max(12, Math.min(window.innerWidth - w - 12, r.left + r.width / 2 - w / 2));
+    const above = r.bottom + h + 16 > window.innerHeight && r.top - h - 16 > 0;
+    setPos({ left, top: above ? r.top - h - 10 : r.bottom + 10, above });
+  }, [picked, dict, ai]);
+
+  useEffect(() => {
+    const onDown = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node) && !(e.target as HTMLElement).closest('[role=button]')) onClose(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const onScroll = () => onClose();
+    window.addEventListener('pointerdown', onDown);
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('scroll', onScroll, { passive: true, once: true });
+    return () => { window.removeEventListener('pointerdown', onDown); window.removeEventListener('keydown', onKey); window.removeEventListener('scroll', onScroll); };
+  }, [onClose]);
+
+  const data = dict?.key === key ? dict.data : undefined;
+  const lang0 = data?.wiktionary?.languages[0];
+  const entry = lang0?.entries[0];
+  const sense = entry?.senses.map(s => s.segments.map(x => x.t).join('')) ?? [];
+  const jisho = data?.jisho?.[0];
+  const fields = card ? Object.entries(card.fields)
+    .filter(([k, v]) => clean(v) && (story.lookup_fields?.length ? story.lookup_fields.includes(k) : true) && clean(v) !== picked.vocab) : [];
+  const sound = card ? soundOf(card.fields) : null;
+  const meaning = jisho ? jisho.senses[0]?.glosses.join('; ') : sense[0] ?? (fields[0] ? clean(fields[0][1]) : ai?.text ?? '');
+
+  const askAi = async () => {
+    setAi({ loading: true });
+    try {
+      const r = await lookup.word(lookupWord, story.lookup_language || 'auto', undefined, undefined, undefined, true);
+      setAi({ loading: false, text: [r.meaning, r.reading && `(${r.reading})`].filter(Boolean).join(' ') });
+    } catch { setAi({ loading: false, error: 'AI lookup failed — check your API key in Story → AI settings.' }); }
+  };
+
+  const playCardAudio = async () => {
+    if (!sound) return;
+    try {
+      const r = await media.get(sound);
+      const ext = sound.split('.').pop()?.toLowerCase();
+      new Audio(`data:${ext === 'ogg' ? 'audio/ogg' : ext === 'wav' ? 'audio/wav' : 'audio/mpeg'};base64,${r.data}`).play().catch(() => {});
+    } catch { /* no audio */ }
+  };
+
+  return createPortal(
+    <div ref={ref} className="fixed z-[150] w-[min(22rem,calc(100vw-24px))] rounded-xl bg-(--bg-secondary) border border-white/10 shadow-2xl p-4 space-y-3 section-pop"
+      style={pos ? { left: pos.left, top: pos.top } : { left: -9999, top: 0 }}>
+      <div className="flex items-start gap-2">
+        <div className="flex-1 min-w-0">
+          <p className="text-lg font-bold leading-tight break-words">{picked.text}</p>
+          {picked.vocab && fold(picked.vocab) !== fold(picked.text) && <p className="text-xs text-(--text-secondary)">from <span className="text-white">{picked.vocab}</span></p>}
+          <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-(--text-secondary)">
+            {jisho?.reading && <span>{jisho.reading}</span>}
+            {lang0?.ipa[0] && <span className="font-mono">{lang0.ipa[0]}</span>}
+            {entry && <span className="text-(--accent) uppercase tracking-wide text-[10px] font-semibold">{entry.pos}</span>}
+            {entry?.gender && <span className="px-1.5 rounded bg-white/5">{entry.gender}</span>}
+            {picked.vocab && <span className="px-1.5 rounded bg-(--accent)/15 text-(--accent)">in your cards</span>}
+          </div>
         </div>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {storyList.map((story) => (
-            <div
-              key={story.id}
-              className="card card-hover cursor-pointer relative group"
-              onClick={() => {
-                if (editingStoryId !== story.id) {
-                  loadStory(story.id);
-                }
-              }}
-            >
-              {/* Edit/Delete buttons - always visible in top right */}
-              <div className="absolute top-3 right-3 flex items-center gap-1">
-                <button
-                  onClick={(e) => startEditing(story, e)}
-                  className="icon-btn"
-                  title="Rename"
-                >
-                  <Edit2 className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setDeletingStory(story);
-                  }}
-                  className="icon-btn icon-btn-danger"
-                  title="Delete"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
+        <button onClick={() => { if (sound) playCardAudio(); else if (lang0?.audio[0]) new Audio(lang0.audio[0]).play().catch(() => {}); else speak(picked.text, lang); }}
+          className="icon-btn shrink-0" title="Listen"><Volume2 className="w-4 h-4" /></button>
+        <button onClick={onClose} className="icon-btn shrink-0" title="Close"><X className="w-4 h-4" /></button>
+      </div>
 
-              {editingStoryId === story.id ? (
-                <div className="flex items-center gap-2 pr-16" onClick={(e) => e.stopPropagation()}>
-                  <input
-                    type="text"
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    className="input flex-1 text-sm"
-                    autoFocus
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleRename(story.id, newName);
-                      if (e.key === 'Escape') setEditingStoryId(null);
-                    }}
-                  />
-                  <button onClick={() => handleRename(story.id, newName)} className="btn btn-primary p-1.5">
-                    <Check className="w-4 h-4" />
-                  </button>
-                </div>
-              ) : (
-                <h3 className="font-semibold line-clamp-2 pr-20 group-hover-accent transition-colors">
-                  {story.name}
-                </h3>
-              )}
-
-              <div className="mt-3 space-y-1 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                <div className="flex items-center gap-1">
-                  <Clock className="w-3 h-3" />
-                  {new Date(story.created_at).toLocaleDateString()}
-                </div>
-                {story.provider && (
-                  <div className="flex items-center gap-1">
-                    <Cpu className="w-3 h-3" />
-                    {story.provider}
-                  </div>
-                )}
-                {story.deck_name && (
-                  <div className="flex items-center gap-1">
-                    <FileText className="w-3 h-3" />
-                    <span className="truncate">{story.deck_name}</span>
-                  </div>
-                )}
-              </div>
-
-              {story.style && (
-                <div className="mt-3">
-                  <span className="text-xs px-2 py-0.5 rounded" style={{ background: 'var(--bg-tertiary)' }}>
-                    {story.style}
-                  </span>
-                </div>
-              )}
-            </div>
+      {fields.length > 0 && (
+        <div className="rounded-lg bg-(--bg-tertiary)/60 p-2.5 space-y-1">
+          {fields.slice(0, 4).map(([k, v]) => (
+            <p key={k} className="text-sm"><span className="text-[10px] uppercase tracking-wider text-(--text-secondary) mr-1.5">{k}</span>{clean(v)}</p>
           ))}
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
-      {deletingStory && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="card max-w-md w-full mx-4">
-            <h3 className="text-lg font-semibold mb-2">Delete Story</h3>
-            <p className="text-(--text-secondary) mb-4">
-              Are you sure you want to delete "<span className="text-white">{deletingStory.name}</span>"?
-            </p>
-            <div className="flex gap-2 justify-end">
-              <button
-                onClick={() => setDeletingStory(null)}
-                className="btn btn-secondary"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmDelete}
-                className="btn btn-error"
-              >
-                Delete
-              </button>
-            </div>
-          </div>
+      {data === undefined ? (
+        <div className="space-y-1.5">{[80, 60].map(w => <div key={w} className="skeleton h-3.5 rounded" style={{ width: `${w}%` }} />)}</div>
+      ) : jisho ? (
+        <ol className="text-sm space-y-1 list-decimal list-inside marker:text-(--text-secondary)">
+          {jisho.senses.slice(0, 3).map((s, i) => <li key={i}>{s.glosses.join('; ')}</li>)}
+        </ol>
+      ) : sense.length ? (
+        <ol className="text-sm space-y-1 list-decimal list-inside marker:text-(--text-secondary)">
+          {sense.slice(0, 3).map((s, i) => <li key={i}>{s}</li>)}
+        </ol>
+      ) : (
+        <div className="text-sm space-y-2">
+          {!fields.length && !ai?.text && <p className="text-(--text-secondary)">No dictionary entry for this form.</p>}
+          {ai?.text && <p>{ai.text}</p>}
+          {ai?.error && <p className="text-xs text-(--error)">{ai.error}</p>}
+          {!ai?.text && (
+            <button onClick={askAi} disabled={ai?.loading} className="text-xs inline-flex items-center gap-1.5 text-(--accent) hover:underline">
+              {ai?.loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} Ask AI what it means here
+            </button>
+          )}
         </div>
       )}
-    </div>
+
+      <div className="flex gap-2 pt-1">
+        {!picked.vocab && (
+          <button onClick={() => onAdd({ front: entry?.headword || lookupWord, back: meaning })}
+            className="flex-1 h-8 rounded-lg bg-(--accent) text-white text-xs font-medium inline-flex items-center justify-center gap-1.5 hover:brightness-110">
+            <Plus className="w-3.5 h-3.5" /> Add as card
+          </button>
+        )}
+        <Link to={`/search?q=${encodeURIComponent(lemma)}`} className="flex-1 h-8 rounded-lg bg-(--bg-tertiary) text-xs text-(--text-secondary) hover:text-white inline-flex items-center justify-center gap-1.5">
+          <SearchIcon className="w-3.5 h-3.5" /> Full entry
+        </Link>
+      </div>
+      <style>{`@keyframes pop { from { opacity: 0; transform: translateY(${pos?.above ? 4 : -4}px) scale(.98) } to { opacity: 1; transform: none } } .section-pop { animation: pop .16s ease-out }`}</style>
+    </div>,
+    document.body,
   );
 }

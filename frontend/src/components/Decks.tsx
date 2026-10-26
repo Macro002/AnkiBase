@@ -173,8 +173,7 @@ export function Decks() {
   const currentPrefix = currentPath.length > 0 ? currentPath.join('::') : null;
   const visibleDecks = deckList.filter((deck) => {
     if (currentPrefix === null) {
-      // Show only top-level decks; like Anki, hide an empty "Default" once other decks exist
-      if (deck.name === 'Default' && !deck.hasSubdecks && deck.stats?.total_in_deck === 0 && deckList.length > 1) return false;
+      // Show only top-level decks
       return !deck.isSubdeck;
     } else {
       // Show direct children of current path
@@ -270,16 +269,15 @@ export function Decks() {
         {currentPath.length > 0 ? currentPath[currentPath.length - 1] : 'My Anki Decks'}
       </h2>
 
-      <div className="grid gap-4 [&>*]:min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,20rem),1fr))] anim-stagger">
+      <div className="grid gap-4 [&>*]:min-w-0 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 3xl:grid-cols-5 anim-stagger">
         {visibleDecks.map((deck) => (
           <div
             key={deck.id}
-            className="card @container border border-(--bg-tertiary) hover-border-accent transition-all cursor-pointer relative group"
+            className="card border border-(--bg-tertiary) hover-border-accent transition-all cursor-pointer flex flex-col relative group"
             onClick={() => handleStudy(deck)}
           >
-            <div className="flex flex-col h-full @xl:flex-row @xl:items-center @xl:gap-6">
             {/* Edit/Delete buttons - always visible */}
-            <div className="absolute top-3 right-3 flex items-center gap-1 @xl:static @xl:order-last">
+            <div className="absolute top-3 right-3 flex items-center gap-1">
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -302,17 +300,16 @@ export function Decks() {
               </button>
             </div>
 
-            <div className="min-w-0 @xl:flex-1">
             {/* Deck name with tooltip */}
             <h3
-              className="font-semibold text-lg mb-3 truncate pr-8 @xl:pr-0 @xl:mb-1 group-hover-accent transition-colors"
+              className="font-semibold text-lg mb-3 truncate pr-8 group-hover-accent transition-colors"
               title={deck.name}
             >
               {deck.displayName}
             </h3>
 
             {/* Stats row */}
-            <div className="flex items-center gap-3 mb-4 @xl:mb-0 text-sm text-(--text-secondary) flex-wrap">
+            <div className="flex items-center gap-3 mb-4 text-sm text-(--text-secondary) flex-wrap">
               <span className="flex items-center gap-1">
                 <Plus className="w-3.5 h-3.5 text-(--accent)" />
                 {deck.stats?.new_count ?? 0} new
@@ -327,15 +324,13 @@ export function Decks() {
               </span>
             </div>
 
-            </div>
-
             {/* Action buttons */}
-            <div className="flex gap-2 mt-auto @xl:mt-0 @xl:shrink-0">
+            <div className="flex gap-2 mt-auto">
               {deck.hasSubdecks ? (
                 <>
                   <button
                     onClick={(e) => { e.stopPropagation(); handleViewDeck(deck.name); }}
-                    className="btn btn-secondary flex-1 @xl:flex-none flex items-center justify-center gap-2"
+                    className="btn btn-secondary flex-1 flex items-center justify-center gap-2"
                   >
                     <FolderOpen className="w-4 h-4" />
                     {t('common.view', 'View')}
@@ -351,12 +346,11 @@ export function Decks() {
               ) : (
                 <button
                   onClick={(e) => { e.stopPropagation(); handleStudy(deck); }}
-                  className="btn btn-primary flex-1 @xl:flex-none @xl:px-8"
+                  className="btn btn-primary flex-1"
                 >
                   {t('nav.study')}
                 </button>
               )}
-            </div>
             </div>
           </div>
         ))}
@@ -382,15 +376,14 @@ export function Decks() {
               </button>
             </div>
           ) : (
-            <div className="grid gap-4 [&>*]:min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,20rem),1fr))] anim-stagger">
+            <div className="grid gap-4 [&>*]:min-w-0 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 3xl:grid-cols-5 anim-stagger">
               {quizletDecks.map(deck => (
                 <div
                   key={deck.id}
-                  className="card @container border border-(--bg-tertiary) hover-border-accent transition-all cursor-pointer relative group"
+                  className="card border border-(--bg-tertiary) hover-border-accent transition-all cursor-pointer flex flex-col relative group"
                   onClick={() => navigate(`/quizlet/${deck.id}/study`)}
                 >
-                  <div className="flex flex-col h-full @xl:flex-row @xl:items-center @xl:gap-6">
-                  <div className="absolute top-3 right-3 flex items-center gap-1 @xl:static @xl:order-last">
+                  <div className="absolute top-3 right-3 flex items-center gap-1">
                     {deck.url && (
                       <a
                         href={deck.url}
@@ -425,8 +418,7 @@ export function Decks() {
                     </button>
                   </div>
 
-                  <div className="min-w-0 @xl:flex-1">
-                  <div className="flex items-center gap-2 mb-3 pr-16 @xl:pr-0 @xl:mb-1">
+                  <div className="flex items-center gap-2 mb-3 pr-16">
                     <div className="w-6 h-6 rounded flex items-center justify-center shrink-0" style={{ background: '#4257b2' }}>
                       <span className="text-white font-bold text-xs">Q</span>
                     </div>
@@ -435,7 +427,7 @@ export function Decks() {
                     </h3>
                   </div>
 
-                  <div className="flex items-center gap-3 text-sm text-(--text-secondary) mb-4 @xl:mb-0 flex-wrap">
+                  <div className="flex items-center gap-3 text-sm text-(--text-secondary) mb-4 flex-wrap">
                     <span className="flex items-center gap-1"><Layers className="w-3.5 h-3.5 text-(--accent)" />{deck.card_count} cards</span>
                     <span className="flex items-center gap-1">
                       <TrendingUp className="w-3.5 h-3.5 text-(--accent)" />
@@ -447,12 +439,9 @@ export function Decks() {
                     </span>
                   </div>
 
-                  </div>
-
-                  <button className="btn btn-primary mt-auto @xl:mt-0 @xl:shrink-0 @xl:px-8" onClick={e => { e.stopPropagation(); navigate(`/quizlet/${deck.id}/study`); }}>
+                  <button className="btn btn-primary mt-auto" onClick={e => { e.stopPropagation(); navigate(`/quizlet/${deck.id}/study`); }}>
                     Study
                   </button>
-                  </div>
                 </div>
               ))}
             </div>

@@ -9,6 +9,7 @@ import { AccountSwitcherModal } from './AccountSwitcherModal';
 import { SyncConflictModal } from './SyncConflictModal';
 import { UpdateModal } from './UpdateModal';
 import { createPortal } from 'react-dom';
+import { MotionLayer } from './MotionLayer';
 
 type SyncStatus = 'idle' | 'syncing' | 'success' | 'error';
 
@@ -254,7 +255,8 @@ export function Layout() {
 
       {/* Main Content */}
       <main className="safe-pb-main flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-4">
-        <Outlet />
+        <div key={location.pathname} className="anim-page"><Outlet /></div>
+        <MotionLayer />
       </main>
 
       {/* Mobile Bottom Navigation */}

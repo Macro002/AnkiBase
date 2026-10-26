@@ -118,7 +118,7 @@ function Library({ onOpen }: { onOpen: (id: number) => void }) {
       ) : shown.length === 0 ? (
         <p className="text-sm text-(--text-secondary) text-center py-10">No stories match “{q}”.</p>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 anim-stagger">
           {shown.map(s => {
             const p = progress[String(s.id)];
             const pct = p && p.progress_total ? (p.progress_done / p.progress_total) * 100 : 0;

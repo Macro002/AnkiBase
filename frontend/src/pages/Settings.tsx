@@ -1,7 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
-import { Key, Globe, Palette, RotateCcw, X, Download, Upload, Trash2 } from 'lucide-react';
-import { auth, theme as themeApi, type User } from '../api';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import { Globe, Palette, RotateCcw, X, Download, Upload, Trash2, Sparkles, Users, User as UserIcon, Check, ChevronRight } from 'lucide-react';
+import { Segmented } from '../components/quizlet/ui';
+import { AiPanel, type AiChoice } from '../components/story/AiPanel';
+import { useSpring } from '../hooks/useSpring';
+import { auth, theme as themeApi, settings as settingsApi, type User, type ProviderInfo } from '../api';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { UserManagement } from '../components/UserManagement';
 import { Logo } from '../components/Logo';
 import { useTranslation } from 'react-i18next';
@@ -171,7 +174,72 @@ function isValidThemeFile(data: unknown): data is ThemeFile {
     .every(k => typeof b[k] === 'string');
 }
 
+type SettingsTab = 'appearance' | 'language' | 'account' | 'ai' | 'users';
+
+/** Vertical section list (desktop) with the spring highlight. */
+function SectionNav({ sections, active, onChange }: { sections: { id: SettingsTab; label: string; icon: React.ReactNode }[]; active: SettingsTab; onChange: (t: SettingsTab) => void }) {
+  const box = useRef<HTMLDivElement>(null);
+  const pill = useRef<HTMLSpanElement>(null);
+  const spring = useSpring<'y' | 'h'>(({ y, h }) => { if (pill.current) { pill.current.style.transform = `translateY(${y}px)`; pill.current.style.height = `${h}px`; } });
+  const first = useRef(true);
+  useLayoutEffect(() => {
+    const el = box.current?.querySelector<HTMLElement>(`[data-tab="${active}"]`);
+    if (!el) return;
+    spring.set({ y: el.offsetTop, h: el.offsetHeight }, first.current);
+    first.current = false;
+  }, [active, spring, sections.length]);
+  return (
+    <nav ref={box} className="hidden lg:block relative card !p-2 lg:sticky lg:top-4">
+      <span ref={pill} aria-hidden className="absolute left-2 right-2 top-0 rounded-lg bg-(--accent)/15 pointer-events-none" style={{ height: 0 }} />
+      {sections.map(x => (
+        <button key={x.id} data-tab={x.id} onClick={() => onChange(x.id)}
+          className={`relative w-full flex items-center gap-2.5 px-3 h-10 rounded-lg text-sm font-medium transition-colors ${active === x.id ? 'text-white' : 'text-(--text-secondary) hover:text-white'}`}>
+          <span className={active === x.id ? 'text-(--accent)' : ''}>{x.icon}</span>
+          <span className="flex-1 text-left">{x.label}</span>
+          {active === x.id && <ChevronRight className="w-3.5 h-3.5 opacity-60" />}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+/** AI writer + API keys (same panel as the Story tab). */
+function AiSection() {
+  const [providers, setProviders] = useState<Record<string, ProviderInfo>>({});
+  const [configured, setConfigured] = useState<Record<string, boolean>>({});
+  const [choice, setChoice] = useState<AiChoice>(() => { try { return JSON.parse(localStorage.getItem('story-ai') || '{}'); } catch { return { provider: '', model: '' }; } });
+  const [open, setOpen] = useState(false);
+  const load = () => Promise.all([settingsApi.getProviders(), settingsApi.getApiKeys()]).then(([p, k]) => { setProviders(p.providers); setConfigured(k.configured); }).catch(() => {});
+  useEffect(() => { load(); }, []);
+  const pick = (c: AiChoice) => { setChoice(c); try { localStorage.setItem('story-ai', JSON.stringify(c)); } catch { /* storage unavailable */ } };
+  const ready = Object.entries(providers).filter(([id]) => configured[id]);
+  return (
+    <section className="card space-y-4">
+      <div>
+        <h3 className="font-semibold">AI</h3>
+        <p className="text-xs text-(--text-secondary) mt-0.5">Used for stories, reading lookups and explanations.</p>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        {Object.entries(providers).map(([id, info]) => (
+          <div key={id} className="rounded-xl bg-(--bg-tertiary)/60 px-3 py-2.5 flex items-center justify-between gap-2">
+            <span className="text-sm font-medium">{info.name}</span>
+            <span className={`text-[11px] px-2 py-0.5 rounded-full ${configured[id] ? 'bg-green-500/15 text-green-400' : 'bg-white/5 text-(--text-secondary)'}`}>{configured[id] ? 'Connected' : 'Not set'}</span>
+          </div>
+        ))}
+      </div>
+      <p className="text-sm text-(--text-secondary)">
+        {ready.length ? <>Writing with <span className="text-white">{providers[choice.provider]?.name ?? ready[0][1].name}</span>{choice.model ? ` · ${choice.model}` : ''}.</> : 'No AI key yet — add one to write stories.'}
+      </p>
+      <button onClick={() => setOpen(true)} className="btn btn-primary">Manage AI & keys</button>
+      {open && <AiPanel providers={providers} configured={configured} choice={choice} onChoice={pick} onKeysChanged={load} onClose={() => setOpen(false)} />}
+    </section>
+  );
+}
+
 export function Settings() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = (searchParams.get('tab') as SettingsTab) || 'appearance';
+  const setTab = (t: SettingsTab) => setSearchParams(t === 'appearance' ? {} : { tab: t }, { replace: true });
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
   const [currentPassword, setCurrentPassword] = useState('');
@@ -452,219 +520,184 @@ export function Settings() {
     );
   };
 
+  const sections: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
+    { id: 'appearance', label: 'Appearance', icon: <Palette className="w-4 h-4" /> },
+    { id: 'language', label: t('settings.language'), icon: <Globe className="w-4 h-4" /> },
+    { id: 'account', label: 'Account', icon: <UserIcon className="w-4 h-4" /> },
+    { id: 'ai', label: 'AI', icon: <Sparkles className="w-4 h-4" /> },
+    ...(currentUser?.is_admin ? [{ id: 'users' as const, label: 'Users', icon: <Users className="w-4 h-4" /> }] : []),
+  ];
+  const active = sections.some(x => x.id === tab) ? tab : 'appearance';
+
+  const colorRow = (key: keyof BaseColors, label: string) => (
+    <label key={key} className="flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-white/5 cursor-pointer transition-colors">
+      <span className="color-swatch relative w-7 h-7 rounded-full shrink-0" style={{ background: activeBase[key], '--swatch-color': activeBase[key] } as React.CSSProperties}>
+        <input type="color" value={activeBase[key]} onChange={e => onChangeBase(key, e.target.value)}
+          disabled={baseColorsSaving} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full rounded-full" />
+      </span>
+      <span className="text-sm flex-1">{label}</span>
+      <span className="text-xs font-mono text-(--text-secondary)">{activeBase[key]}</span>
+    </label>
+  );
+
   return (
-    <div className={currentUser?.is_admin ? "max-w-7xl mx-auto" : "max-w-2xl mx-auto"}>
-      <div className="space-y-6">
+    <div className="max-w-5xl mx-auto pb-10 space-y-5">
+      <div>
+        <h2 className="text-xl font-bold">Settings</h2>
+        <p className="text-sm text-(--text-secondary) mt-0.5">{currentUser ? <>Signed in as <span className="text-white">{currentUser.username}</span>{currentUser.is_admin ? ' · admin' : ''}</> : ' '}</p>
+      </div>
 
-        {/* ── Theme card ─────────────────────────────────────────────────── */}
-        <div className="card space-y-8">
-          <div className="flex items-start justify-between">
-            <div className="flex items-center gap-2">
-              <Palette className="w-5 h-5 text-(--accent)" />
-              <h2 className="text-xl font-semibold">Theme</h2>
-            </div>
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-              <div className="flex gap-2">
-                <button onClick={handleExport} className="btn btn-secondary flex items-center gap-1.5 text-sm py-1.5 px-3">
-                  <Download className="w-3.5 h-3.5" />
-                  Export
-                </button>
-                <button onClick={() => fileInputRef.current?.click()} className="btn btn-secondary flex items-center gap-1.5 text-sm py-1.5 px-3">
-                  <Upload className="w-3.5 h-3.5" />
-                  Import
-                </button>
-                <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={handleImportFile} />
-              </div>
-              {canEditServer && (
-                <select
-                  value={mode}
-                  onChange={e => setMode(e.target.value as ThemeMode)}
-                  className="input text-sm py-1 px-2 h-auto w-full sm:w-auto"
-                >
-                  <option value="personal">Personal</option>
-                  <option value="server">Server default</option>
-                </select>
-              )}
-            </div>
-          </div>
+      {/* Phones: a slider of sections */}
+      <div className="lg:hidden overflow-x-auto -mx-4 px-4">
+        <Segmented size="md" value={active} onChange={v => setTab(v)} options={sections.map(x => ({ value: x.id, label: x.label, icon: x.icon }))} />
+      </div>
 
-          {/* Themes */}
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-(--text-secondary) mb-3">Themes</p>
-            <div className="flex flex-wrap gap-4">
-              {BUILTIN_THEMES.map(th => (
-                <ThemeCard key={th.name} th={th} />
-              ))}
-              {customThemes.map((th, i) => (
-                <ThemeCard key={`custom-${i}`} th={th} customIndex={i} />
-              ))}
-            </div>
-          </div>
+      <div className="grid grid-cols-1 lg:grid-cols-[13rem_minmax(0,1fr)] gap-6 items-start">
+        <SectionNav sections={sections} active={active} onChange={setTab} />
 
-          {/* Accent Color */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs font-semibold uppercase tracking-widest text-(--text-secondary)">Accent Color</p>
-              {!isServer && currentUser?.has_personal_accent && (
-                <button
-                  onClick={handleResetAccent}
-                  disabled={accentSaving}
-                  className="flex items-center gap-1.5 text-xs text-(--text-secondary) hover-accent transition-colors"
-                >
-                  <RotateCcw className="w-3 h-3" /> Reset
-                </button>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-3">
-              {ACCENT_PRESETS.map(p => (
-                <button
-                  key={p.name}
-                  onClick={() => onPickAccentPreset(p.accent, p.hover)}
-                  className="flex flex-col items-center gap-1 group w-10"
-                  disabled={accentSaving}
-                >
-                  <div
-                    className={`color-swatch w-7 h-7 rounded-full transition-all${activeAccent === p.accent ? ' color-swatch-active' : ''}`}
-                    style={{
-                      background: p.accent,
-                      '--swatch-color': p.accent,
-                    } as React.CSSProperties}
-                  />
-                  <span className="text-xs text-(--text-secondary) group-hover:text-(--text-primary) transition-colors leading-none">{p.name}</span>
-                </button>
-              ))}
-              {/* Custom — inline with presets */}
-              <div className="flex flex-col items-center gap-1 w-10">
-                <div
-                  className={`color-swatch relative w-7 h-7 rounded-full shrink-0 cursor-pointer${isCustomAccent ? ' color-swatch-active' : ''}`}
-                  style={{
-                    background: activeAccent,
-                    '--swatch-color': activeAccent,
-                  } as React.CSSProperties}
-                >
-                  <input
-                    type="color"
-                    value={activeAccent}
-                    onChange={e => onPickAccentPreset(e.target.value)}
-                    disabled={accentSaving}
-                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full rounded-full"
-                  />
+        <div key={active} className="space-y-5 min-w-0 anim-rise">
+          {active === 'appearance' && (<>
+            <section className="card space-y-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="font-semibold">Theme</h3>
+                  <p className="text-xs text-(--text-secondary) mt-0.5">{isServer ? 'Editing the default everyone sees until they pick their own.' : 'Only changes how AnkiBase looks for you.'}</p>
                 </div>
-                <span className="text-xs text-(--text-secondary) leading-none">Custom</span>
-                {isCustomAccent && (
-                  <span className="text-[10px] font-mono text-(--text-secondary) leading-none">{activeAccent}</span>
+                <div className="flex items-center gap-2">
+                  {canEditServer && (
+                    <Segmented value={mode} onChange={v => setMode(v)} options={[{ value: 'personal', label: 'Mine' }, { value: 'server', label: 'Server default' }]} />
+                  )}
+                  <button onClick={handleExport} title="Export theme" className="w-8 h-8 rounded-lg bg-(--bg-tertiary) flex items-center justify-center text-(--text-secondary) hover:text-white"><Download className="w-4 h-4" /></button>
+                  <button onClick={() => fileInputRef.current?.click()} title="Import theme" className="w-8 h-8 rounded-lg bg-(--bg-tertiary) flex items-center justify-center text-(--text-secondary) hover:text-white"><Upload className="w-4 h-4" /></button>
+                  <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={handleImportFile} />
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-4">
+                {BUILTIN_THEMES.map(th => <ThemeCard key={th.name} th={th} />)}
+                {customThemes.map((th, i) => <ThemeCard key={`custom-${i}`} th={th} customIndex={i} />)}
+              </div>
+            </section>
+
+            <section className="card space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold">Accent color</h3>
+                  <p className="text-xs text-(--text-secondary) mt-0.5">Buttons, highlights and charts.</p>
+                </div>
+                {!isServer && currentUser?.has_personal_accent && (
+                  <button onClick={handleResetAccent} disabled={accentSaving} className="flex items-center gap-1.5 text-xs text-(--text-secondary) hover-accent transition-colors">
+                    <RotateCcw className="w-3 h-3" /> Reset
+                  </button>
                 )}
               </div>
-            </div>
-          </div>
+              <div className="flex flex-wrap gap-3">
+                {ACCENT_PRESETS.map(p => (
+                  <button key={p.name} onClick={() => onPickAccentPreset(p.accent, p.hover)} className="flex flex-col items-center gap-1.5 group w-12" disabled={accentSaving}>
+                    <span className={`color-swatch w-8 h-8 rounded-full transition-all${activeAccent === p.accent ? ' color-swatch-active' : ''}`}
+                      style={{ background: p.accent, '--swatch-color': p.accent } as React.CSSProperties} />
+                    <span className="text-[11px] text-(--text-secondary) group-hover:text-(--text-primary) transition-colors leading-none">{p.name}</span>
+                  </button>
+                ))}
+                <label className="flex flex-col items-center gap-1.5 w-12 cursor-pointer">
+                  <span className={`color-swatch relative w-8 h-8 rounded-full shrink-0${isCustomAccent ? ' color-swatch-active' : ''}`}
+                    style={{ background: isCustomAccent ? activeAccent : 'conic-gradient(#f87171,#fbbf24,#4ade80,#60a5fa,#c084fc,#f87171)', '--swatch-color': activeAccent } as React.CSSProperties}>
+                    <input type="color" value={activeAccent} onChange={e => onPickAccentPreset(e.target.value)} disabled={accentSaving}
+                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full rounded-full" />
+                  </span>
+                  <span className="text-[11px] text-(--text-secondary) leading-none">{isCustomAccent ? activeAccent : 'Custom'}</span>
+                </label>
+              </div>
+            </section>
 
-          {/* Base Colors */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs font-semibold uppercase tracking-widest text-(--text-secondary)">Base Colors</p>
-              {!isServer && currentUser?.has_personal_base_colors && (
-                <button
-                  onClick={handleResetBase}
-                  disabled={baseColorsSaving}
-                  className="flex items-center gap-1.5 text-xs text-(--text-secondary) hover-accent transition-colors"
-                >
-                  <RotateCcw className="w-3 h-3" /> Reset
-                </button>
-              )}
-            </div>
-            <div className="space-y-4">
-              <div>
-                <p className="text-xs text-(--text-secondary) mb-2">Backgrounds</p>
-                <div className="space-y-2">
-                  {BG_FIELDS.map(({ key, label }) => (
-                    <div key={key} className="flex items-center gap-3">
-                      <div
-                        className="color-swatch relative w-7 h-7 rounded-full shrink-0 cursor-pointer"
-                        style={{ background: activeBase[key], '--swatch-color': activeBase[key] } as React.CSSProperties}
-                      >
-                        <input type="color" value={activeBase[key]} onChange={e => onChangeBase(key, e.target.value)}
-                          disabled={baseColorsSaving} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full rounded-full" />
+            <section className="card space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold">Colors</h3>
+                  <p className="text-xs text-(--text-secondary) mt-0.5">Fine-tune the backgrounds and text. Changes apply instantly.</p>
+                </div>
+                {!isServer && currentUser?.has_personal_base_colors && (
+                  <button onClick={handleResetBase} disabled={baseColorsSaving} className="flex items-center gap-1.5 text-xs text-(--text-secondary) hover-accent transition-colors">
+                    <RotateCcw className="w-3 h-3" /> Reset
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_14rem] gap-5 items-start">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+                  <p className="sm:col-span-2 text-[11px] font-semibold uppercase tracking-wider text-(--text-secondary) px-2 pt-1">Backgrounds</p>
+                  {BG_FIELDS.map(({ key, label }) => colorRow(key, label))}
+                  <p className="sm:col-span-2 text-[11px] font-semibold uppercase tracking-wider text-(--text-secondary) px-2 pt-3">Text</p>
+                  {TEXT_FIELDS.map(({ key, label }) => colorRow(key, label))}
+                </div>
+                {/* Live preview */}
+                <div className="rounded-xl overflow-hidden border border-white/10 text-left" style={{ background: activeBase.bg_primary }}>
+                  <div className="px-3 py-2 flex items-center gap-2" style={{ background: activeBase.bg_secondary }}>
+                    <Logo className="w-4 h-4" color={activeAccent} />
+                    <span className="text-xs font-semibold" style={{ color: activeAccent }}>AnkiBase</span>
+                  </div>
+                  <div className="p-3 space-y-2">
+                    <div className="rounded-lg p-3 space-y-1.5" style={{ background: activeBase.bg_secondary }}>
+                      <p className="text-sm font-semibold" style={{ color: activeBase.text_primary }}>le chat</p>
+                      <p className="text-xs" style={{ color: activeBase.text_secondary }}>the cat · noun, masculine</p>
+                      <div className="flex gap-1.5 pt-1">
+                        <span className="h-6 px-2.5 rounded-md text-[11px] font-medium flex items-center text-white" style={{ background: activeAccent }}>Good</span>
+                        <span className="h-6 px-2.5 rounded-md text-[11px] flex items-center" style={{ background: activeBase.bg_tertiary, color: activeBase.text_secondary }}>Again</span>
                       </div>
-                      <span className="text-sm text-(--text-secondary) w-28 shrink-0">{label}</span>
-                      <span className="text-xs font-mono text-(--text-secondary)">{activeBase[key]}</span>
                     </div>
-                  ))}
+                    <p className="text-[10px] text-center" style={{ color: activeBase.text_secondary }}>Preview</p>
+                  </div>
                 </div>
               </div>
-              <div>
-                <p className="text-xs text-(--text-secondary) mb-2">Text</p>
-                <div className="space-y-2">
-                  {TEXT_FIELDS.map(({ key, label }) => (
-                    <div key={key} className="flex items-center gap-3">
-                      <div
-                        className="color-swatch relative w-7 h-7 rounded-full shrink-0 cursor-pointer"
-                        style={{ background: activeBase[key], '--swatch-color': activeBase[key] } as React.CSSProperties}
-                      >
-                        <input type="color" value={activeBase[key]} onChange={e => onChangeBase(key, e.target.value)}
-                          disabled={baseColorsSaving} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full rounded-full" />
-                      </div>
-                      <span className="text-sm text-(--text-secondary) w-28 shrink-0">{label}</span>
-                      <span className="text-xs font-mono text-(--text-secondary)">{activeBase[key]}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+            </section>
+          </>)}
 
-        {/* Language */}
-        <div className="card">
-          <div className="flex items-center gap-2 mb-4">
-            <Globe className="w-5 h-5 text-(--accent)" />
-            <h2 className="text-xl font-semibold">{t('settings.language')}</h2>
-          </div>
-          <p className="text-(--text-secondary) text-sm mb-6">{t('settings.languageDescription')}</p>
-          {languageSuccess && (
-            <div className="mb-4 p-3 bg-green-500/10 border border-green-500/30 rounded text-green-400 text-sm">{languageSuccess}</div>
+          {active === 'language' && (
+            <section className="card space-y-4">
+              <div>
+                <h3 className="font-semibold">{t('settings.language')}</h3>
+                <p className="text-xs text-(--text-secondary) mt-0.5">{t('settings.languageDescription')}</p>
+              </div>
+              <Segmented size="md" value={currentUser?.language === 'de' ? 'de' : 'en'} onChange={v => handleLanguageChange(v)}
+                options={[{ value: 'en', label: 'English' }, { value: 'de', label: 'Deutsch' }]} />
+              {languageSuccess && <p className="text-sm text-green-400 flex items-center gap-2 anim-rise"><Check className="w-4 h-4" />{languageSuccess}</p>}
+            </section>
           )}
-          <div>
-            <label className="block text-sm font-medium mb-2">{t('settings.selectLanguage')}</label>
-            <select value={currentUser?.language || 'en'} onChange={e => handleLanguageChange(e.target.value)} className="input w-full">
-              <option value="en">English</option>
-              <option value="de">Deutsch</option>
-            </select>
-          </div>
-        </div>
 
-        {/* Password */}
-        <div className="card">
-          <div className="flex items-center gap-2 mb-4">
-            <Key className="w-5 h-5 text-(--accent)" />
-            <h2 className="text-xl font-semibold">{t('settings.changePassword')}</h2>
-          </div>
-          <p className="text-(--text-secondary) text-sm mb-6">{t('settings.passwordDescription')}</p>
-          {error && <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded text-red-400 text-sm">{error}</div>}
-          {success && <div className="mb-4 p-3 bg-green-500/10 border border-green-500/30 rounded text-green-400 text-sm">{success}</div>}
-          <form onSubmit={handlePasswordReset} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">{t('settings.currentPassword')}</label>
-              <input type="password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)}
-                placeholder={t('settings.currentPasswordPlaceholder')} className="input w-full" required disabled={loading} />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">{t('settings.newPassword')}</label>
-              <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)}
-                placeholder={t('settings.newPasswordPlaceholder')} className="input w-full" required disabled={loading} />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">{t('settings.confirmPassword')}</label>
-              <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
-                placeholder={t('settings.confirmPasswordPlaceholder')} className="input w-full" required disabled={loading} />
-            </div>
-            <button type="submit" disabled={loading} className="btn btn-primary w-full">
-              {loading ? t('settings.changingPassword') : t('settings.changePassword')}
-            </button>
-          </form>
-        </div>
+          {active === 'account' && (<>
+            <section className="card">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-full bg-(--accent)/15 text-(--accent) flex items-center justify-center text-lg font-bold uppercase shrink-0">
+                  {currentUser?.username?.[0] ?? '?'}
+                </div>
+                <div className="min-w-0">
+                  <p className="font-semibold truncate">{currentUser?.username}</p>
+                  <p className="text-xs text-(--text-secondary)">
+                    {currentUser?.is_admin ? 'Administrator' : 'Member'}{currentUser?.can_add_containers ? ' · can add Anki accounts' : ''}
+                  </p>
+                </div>
+              </div>
+            </section>
+            <section className="card space-y-4">
+              <div>
+                <h3 className="font-semibold">{t('settings.changePassword')}</h3>
+                <p className="text-xs text-(--text-secondary) mt-0.5">{t('settings.passwordDescription')}</p>
+              </div>
+              {error && <p className="text-sm text-(--error) anim-rise">{error}</p>}
+              {success && <p className="text-sm text-green-400 flex items-center gap-2 anim-rise"><Check className="w-4 h-4" />{success}</p>}
+              <form onSubmit={handlePasswordReset} className="space-y-3 max-w-md">
+                <input type="password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} autoComplete="current-password"
+                  placeholder={t('settings.currentPasswordPlaceholder')} className="input w-full" required disabled={loading} aria-label={t('settings.currentPassword')} />
+                <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} autoComplete="new-password"
+                  placeholder={t('settings.newPasswordPlaceholder')} className="input w-full" required disabled={loading} aria-label={t('settings.newPassword')} />
+                <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} autoComplete="new-password"
+                  placeholder={t('settings.confirmPasswordPlaceholder')} className="input w-full" required disabled={loading} aria-label={t('settings.confirmPassword')} />
+                <button type="submit" disabled={loading} className="btn btn-primary">{loading ? t('settings.changingPassword') : t('settings.changePassword')}</button>
+              </form>
+            </section>
+          </>)}
 
-        {/* User Management */}
-        {currentUser?.is_admin && <UserManagement />}
+          {active === 'ai' && <AiSection />}
+          {active === 'users' && currentUser?.is_admin && <UserManagement />}
+        </div>
       </div>
 
       {/* ── Delete custom theme confirmation ────────────────────────────── */}

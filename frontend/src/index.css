@@ -459,3 +459,43 @@ input[type="checkbox"]:checked::after {
 @keyframes panelSlideOut { from { transform: translateX(0); }    to { transform: translateX(100%); } }
 .options-panel         { animation: panelSlideIn  0.38s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
 .options-panel-closing { animation: panelSlideOut 0.2s  cubic-bezier(0.4,  0, 0.6, 1) forwards; }
+
+/* ── Motion system ─────────────────────────────────────────────────────────────
+   Springy pop for dialogs/popovers, soft rise for content, and exit animations
+   (see components/MotionLayer.tsx). Fill mode "backwards" so finished animations
+   never override inline styles. */
+@keyframes animFade    { from { opacity: 0 } to { opacity: 1 } }
+@keyframes animFadeOut { from { opacity: 1 } to { opacity: 0 } }
+@keyframes animPop     { from { opacity: 0; transform: translateY(8px) scale(.96) } to { opacity: 1; transform: none } }
+@keyframes animPopOut  { from { opacity: 1; transform: none } to { opacity: 0; transform: translateY(4px) scale(.97) } }
+@keyframes animRise    { from { opacity: 0; transform: translateY(10px) } to { opacity: 1; transform: none } }
+@keyframes animCard    { from { opacity: 0; transform: translateX(18px) scale(.985) } to { opacity: 1; transform: none } }
+
+.anim-fade  { animation: animFade .22s ease-out backwards }
+.anim-pop   { animation: animPop .34s cubic-bezier(.34, 1.56, .64, 1) backwards }
+.anim-rise  { animation: animRise .32s cubic-bezier(.22, 1, .36, 1) backwards }
+.anim-card  { animation: animCard .3s cubic-bezier(.22, 1, .36, 1) backwards }
+.anim-page  { animation: animFade .28s ease-out backwards }  /* opacity only: a transform would re-anchor fixed children */
+
+/* Every centred dialog: backdrop fades, the dialog pops (side panels have their own slide). */
+.fixed.inset-0:is(.bg-black\/50, .bg-black\/60) { animation: animFade .2s ease-out backwards }
+.fixed.inset-0.items-center.justify-center > :first-child { animation: animPop .34s cubic-bezier(.34, 1.56, .64, 1) backwards }
+
+/* Exit copies made by MotionLayer */
+.motion-ghost { pointer-events: none !important }
+.motion-ghost, .motion-ghost * { transition: none !important }
+.motion-ghost.fixed.inset-0 { animation: animFadeOut .18s ease-in forwards !important }
+.motion-ghost.fixed.inset-0.items-center.justify-center > :first-child { animation: animPopOut .18s ease-in forwards !important }
+
+/* Lists: children rise in one after another. */
+.anim-stagger > * { animation: animRise .38s cubic-bezier(.22, 1, .36, 1) backwards }
+.anim-stagger > :nth-child(2) { animation-delay: 30ms } .anim-stagger > :nth-child(3) { animation-delay: 60ms }
+.anim-stagger > :nth-child(4) { animation-delay: 90ms } .anim-stagger > :nth-child(5) { animation-delay: 120ms }
+.anim-stagger > :nth-child(6) { animation-delay: 150ms } .anim-stagger > :nth-child(7) { animation-delay: 170ms }
+.anim-stagger > :nth-child(8) { animation-delay: 190ms } .anim-stagger > :nth-child(n+9) { animation-delay: 210ms }
+
+@media (prefers-reduced-motion: reduce) {
+  .anim-fade, .anim-pop, .anim-rise, .anim-card, .anim-page, .anim-stagger > *,
+  .fixed.inset-0, .fixed.inset-0 > :first-child, .options-panel, .options-panel-closing { animation: none !important }
+  .motion-ghost { display: none !important }
+}

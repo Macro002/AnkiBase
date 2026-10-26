@@ -111,7 +111,7 @@ export function StudyHub() {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 anim-stagger">
             {sessions.map(s => {
               const isWrite = s.kind === 'quizlet-learn' && !!s.detail?.startsWith('Write');
               const { label, Icon } = isWrite ? { label: 'Write', Icon: WriteIcon } : KIND[s.kind];

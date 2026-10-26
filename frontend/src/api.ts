@@ -140,6 +140,7 @@ export interface DeckWordsResponse {
 
 export const decks = {
   list: () => fetchAPI<{ decks: Record<string, number>; stats: Record<string, DeckStats> }>('/decks'),
+  names: () => fetchAPI<{ decks: Record<string, number> }>('/decks/names'),
   getDueCards: (deckName: string) => fetchAPI<{ cards: Card[] }>(`/decks/${encodeURIComponent(deckName)}/due`),
   getNextCard: (deckName: string) => fetchAPI<{ card: Card | null; remaining: number }>(`/decks/${encodeURIComponent(deckName)}/next`),
   getWords: (deckName: string, limit = 200, field = '') =>
@@ -194,6 +195,22 @@ export const cards = {
 export const media = {
   get: (filename: string) =>
     fetchAPI<{ filename: string; data: string }>(`/media/${encodeURIComponent(filename)}`),
+};
+
+// Studying through Anki's reviewer
+export interface ReviewCard {
+  card_id: number; question: string; answer: string; css: string; model: string | null; deck: string | null;
+  buttons: number[]; next_reviews: string[]; fields: { name: string; value: string }[];
+}
+export interface ReviewState {
+  card: ReviewCard | null; counts: { new: number; learn: number; review: number };
+  mode: 'reviewer' | 'legacy'; media_token: string;
+}
+export const review = {
+  current: (deck: string) => fetchAPI<ReviewState>('/review/current', { method: 'POST', body: JSON.stringify({ deck }) }),
+  answer: (deck: string, cardId: number, ease: number) =>
+    fetchAPI<ReviewState>('/review/answer', { method: 'POST', body: JSON.stringify({ deck, card_id: cardId, ease }) }),
+  undo: (deck: string) => fetchAPI<ReviewState>('/review/undo', { method: 'POST', body: JSON.stringify({ deck }) }),
 };
 
 // Search
@@ -744,7 +761,7 @@ export const quizlet = {
   deleteState: (deckId: number, mode: QuizletStateMode) =>
     fetchAPI<{ success: boolean }>(`/quizlet/decks/${deckId}/state/${mode}`, { method: 'DELETE' }),
   getWords: (deckId: number, side: 'term' | 'definition' = 'term') =>
-    fetchAPI<DeckWordsResponse & { title: string }>(`/quizlet/decks/${deckId}/words?side=${side}`),
+    fetchAPI<DeckWordsResponse & { title: string; starred: string[]; missed: Record<string, number> }>(`/quizlet/decks/${deckId}/words?side=${side}`),
   fetchImage: (url: string) =>
     fetchAPI<{ data: string }>('/quizlet/fetch-image', {
       method: 'POST',

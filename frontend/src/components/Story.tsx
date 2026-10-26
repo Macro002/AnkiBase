@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Wand2, Settings2, Loader2, BookOpen, RefreshCw, Shuffle, X, ChevronDown, Sparkles, AlertTriangle, Search as SearchIcon, Layers, GalleryVerticalEnd, PencilLine } from 'lucide-react';
+import { Wand2, Settings2, Loader2, Star, BookOpen, RefreshCw, Shuffle, X, ChevronDown, Sparkles, AlertTriangle, Search as SearchIcon, Layers, GalleryVerticalEnd, PencilLine } from 'lucide-react';
 import { decks, quizlet as quizletApi, settings, story as storyApi, type DeckWordsResponse, type ProviderInfo, type WordData } from '../api';
-import { Segmented } from './quizlet/ui';
+import { Segmented, Toggle } from './quizlet/ui';
 import { AiPanel, Select, type AiChoice } from './story/AiPanel';
 import { buildVocab, paragraphs, splitLine } from './story/text';
 
@@ -32,10 +32,13 @@ const store = {
 interface Prefs {
   source: Source; deck: string; set: string; side: 'term' | 'definition'; field: string;
   mode: 'weighted' | 'manual'; count: number; weights: Record<Cat, number>;
+  /** Quizlet smart pick: starred terms first / most-missed terms first. */
+  qStarred: boolean; qMissed: boolean;
   language: string; level: string; translation: string; length: string; style: string;
 }
 const DEFAULT_PREFS: Prefs = {
   source: 'anki', deck: '', set: '', side: 'term', field: '', mode: 'weighted', count: 15, weights: DEFAULT_WEIGHTS,
+  qStarred: true, qMissed: true,
   language: '', level: 'B1', translation: '', length: 'auto', style: 'casual',
 };
 
@@ -53,6 +56,24 @@ function pickWeighted(data: DeckWordsResponse, weights: Record<Cat, number>, cou
   return cats.flatMap(c => [...(by[c] ?? [])].sort(() => Math.random() - 0.5).slice(0, take[c]));
 }
 
+type Words = DeckWordsResponse & { starred?: string[]; missed?: Record<string, number> };
+const MAX_WORDS = 150;
+const shuffled = <T,>(a: T[]) => [...a].sort(() => Math.random() - 0.5);
+
+/** Quizlet sets have no card states: starred terms first, then the ones you miss most, then random. */
+function pickQuizlet(data: Words, starredFirst: boolean, missedFirst: boolean, count: number): string[] {
+  const out: string[] = [];
+  const add = (ws: string[]) => { for (const w of ws) if (out.length < count && !out.includes(w)) out.push(w); };
+  if (starredFirst) add(shuffled(data.starred ?? []));
+  if (missedFirst) add(Object.entries(data.missed ?? {}).sort((a, b) => b[1] - a[1]).map(([w]) => w));
+  add(shuffled(data.words));
+  return out;
+}
+
+function pick(source: Source, data: Words, p: Prefs): string[] {
+  return source === 'quizlet' ? pickQuizlet(data, p.qStarred, p.qMissed, p.count) : pickWeighted(data, p.weights, p.count);
+}
+
 export function Story() {
   const navigate = useNavigate();
   const [prefs, setPrefs] = useState<Prefs>(() => store.get('story-prefs', DEFAULT_PREFS));
@@ -60,7 +81,7 @@ export function Story() {
 
   const [ankiDecks, setAnkiDecks] = useState<string[]>([]);
   const [sets, setSets] = useState<{ id: number; title: string; card_count: number }[]>([]);
-  const [words, setWords] = useState<{ key: string; data: DeckWordsResponse } | null>(null);
+  const [words, setWords] = useState<{ key: string; data: Words } | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [extra, setExtra] = useState('');
   const [filter, setFilter] = useState('');
@@ -103,7 +124,7 @@ export function Story() {
       if (cancelled) return;
       setWords({ key: wordsKey, data });
       setLookupFields(data.available_fields.filter(f => f !== data.field_used).slice(0, 2));
-      setSelected(prefs.mode === 'weighted' ? pickWeighted(data, prefs.weights, prefs.count) : data.words.slice(0, prefs.count));
+      setSelected(prefs.mode === 'weighted' ? pick(prefs.source, data, prefs) : data.words.slice(0, prefs.count));
     }).catch(() => { if (!cancelled) setWords({ key: wordsKey, data: { words: [], word_data: {}, total: 0, field_used: null, available_fields: [], categories: {}, category_counts: {} as DeckWordsResponse['category_counts'] } }); });
     return () => { cancelled = true; };
     // Re-pick only when the source changes; weight/count changes re-pick below.
@@ -116,7 +137,7 @@ export function Story() {
   const repick = (p: Partial<Prefs> = {}) => {
     const next = { ...prefs, ...p };
     set(p);
-    if (data && next.mode === 'weighted') setSelected(pickWeighted(data, next.weights, next.count));
+    if (data && next.mode === 'weighted') setSelected(pick(next.source, data, next));
   };
 
   const extraWords = extra.split(/[,\n;]/).map(w => w.trim()).filter(Boolean);
@@ -209,18 +230,30 @@ export function Story() {
                   <div className="space-y-3">
                     <label className="block">
                       <div className="flex justify-between text-sm mb-1"><span>How many words</span><span className="tabular-nums font-medium">{prefs.count}</span></div>
-                      <input type="range" min={3} max={Math.min(60, data.words.length)} value={Math.min(prefs.count, data.words.length)}
+                      <input type="range" min={Math.min(3, data.words.length)} max={Math.min(MAX_WORDS, data.words.length)} value={Math.min(prefs.count, data.words.length)}
                         onChange={e => repick({ count: Number(e.target.value) })} className="w-full accent-(--accent)" />
                     </label>
-                    <p className="text-xs text-(--text-secondary)">Favour words you’re still learning:</p>
-                    {(Object.keys(catLabels) as Cat[]).map(c => (
+                    {prefs.source === 'quizlet' ? (
+                      <div className="space-y-2.5">
+                        <div className="flex items-center justify-between gap-3 text-sm">
+                          <span>Starred terms first <span className="text-xs text-(--text-secondary)">· {data.starred?.length ?? 0} starred</span></span>
+                          <Toggle on={prefs.qStarred} disabled={!data.starred?.length} onChange={v => repick({ qStarred: v })} />
+                        </div>
+                        <div className="flex items-center justify-between gap-3 text-sm">
+                          <span>Terms I miss most first <span className="text-xs text-(--text-secondary)">· {Object.keys(data.missed ?? {}).length} missed</span></span>
+                          <Toggle on={prefs.qMissed} disabled={!Object.keys(data.missed ?? {}).length} onChange={v => repick({ qMissed: v })} />
+                        </div>
+                        <p className="text-xs text-(--text-secondary)">The rest are picked at random from the set.</p>
+                      </div>
+                    ) : <p className="text-xs text-(--text-secondary)">Favour words you’re still learning:</p>}
+                    {prefs.source === 'anki' && (Object.keys(catLabels) as Cat[]).filter(c => (counts as Record<string, number>)[c]).map(c => (
                       <label key={c} className="grid grid-cols-[8rem_1fr_2rem] items-center gap-3 text-sm">
                         <span className="flex items-center gap-2 text-(--text-secondary)">
                           <span className="w-2 h-2 rounded-full" style={{ background: CAT_COLOR[c] }} />{catLabels[c]}
                           <span className="text-xs opacity-70">{(counts as Record<string, number>)[c] ?? 0}</span>
                         </span>
                         <input type="range" min={0} max={5} value={prefs.weights[c]} onChange={e => repick({ weights: { ...prefs.weights, [c]: Number(e.target.value) } })}
-                          className="w-full accent-(--accent)" disabled={!((counts as Record<string, number>)[c])} />
+                          className="w-full accent-(--accent)" />
                         <span className="text-right tabular-nums text-xs text-(--text-secondary)">{prefs.weights[c]}</span>
                       </label>
                     ))}
@@ -243,7 +276,7 @@ export function Story() {
                         return (
                           <button key={w} onClick={() => setSelected(s => (on ? s.filter(x => x !== w) : [...s, w]))}
                             className={`h-7 px-2.5 rounded-md text-xs inline-flex items-center gap-1.5 transition-colors ${on ? 'bg-(--accent) text-white' : 'bg-(--bg-tertiary) text-(--text-secondary) hover:text-white'}`}>
-                            <span className="w-1.5 h-1.5 rounded-full" style={{ background: CAT_COLOR[c] ?? CAT_COLOR.new }} />{w}
+                            <WordMark word={w} data={data} source={prefs.source} cat={c} />{w}
                           </button>
                         );
                       })}
@@ -254,7 +287,7 @@ export function Story() {
                   <div className="flex flex-wrap gap-1.5">
                     {selected.map(w => (
                       <span key={w} className="h-7 pl-2.5 pr-1 rounded-md text-xs bg-(--bg-tertiary) inline-flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: CAT_COLOR[(data.categories[w] ?? 'new') as Cat] ?? CAT_COLOR.new }} />{w}
+                        <WordMark word={w} data={data} source={prefs.source} cat={(data.categories[w] ?? 'new') as Cat} />{w}
                         <button onClick={() => setSelected(s => s.filter(x => x !== w))} className="w-5 h-5 rounded flex items-center justify-center text-(--text-secondary) hover:text-white hover:bg-white/10" aria-label={`Remove ${w}`}><X className="w-3 h-3" /></button>
                       </span>
                     ))}
@@ -367,6 +400,12 @@ export function Story() {
       )}
     </div>
   );
+}
+
+/** Anki: a dot in the card-state color. Quizlet: a star on starred terms (sets have no card states). */
+function WordMark({ word, data, source, cat }: { word: string; data: Words; source: Source; cat: Cat }) {
+  if (source === 'quizlet') return data.starred?.includes(word) ? <Star className="w-3 h-3 fill-current text-(--warning)" /> : null;
+  return <span className="w-1.5 h-1.5 rounded-full" style={{ background: CAT_COLOR[cat] ?? CAT_COLOR.new }} />;
 }
 
 function Labeled({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {

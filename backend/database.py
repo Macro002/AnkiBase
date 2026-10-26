@@ -1206,6 +1206,10 @@ def get_quizlet_set_words(user_id: int, deck_id: int, side: str = "term") -> Opt
         cursor.execute("SELECT state FROM study_sessions WHERE user_id = ? AND container_id = ? AND kind = 'quizlet-learn' AND ref_id = ?",
                        (user_id, container_id, str(deck_id)))
         row = cursor.fetchone()
+        cursor.execute("SELECT card_id FROM quizlet_favorites WHERE deck_id = ?", (deck_id,))
+        starred_ids = {r[0] for r in cursor.fetchall()}
+        cursor.execute("SELECT card_id, COUNT(*) FROM quizlet_reviews WHERE deck_id = ? AND ease = 1 GROUP BY card_id", (deck_id,))
+        missed_ids = {r[0]: r[1] for r in cursor.fetchall()}
     levels: dict[int, int] = {}
     if row and row[0]:
         try:
@@ -1216,6 +1220,8 @@ def get_quizlet_set_words(user_id: int, deck_id: int, side: str = "term") -> Opt
     clean = lambda s: re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", s or "").replace("&nbsp;", " ")).strip()
     cat_of = {0: "new", 1: "learning", 2: "young", 3: "mature"}
     words, word_data, categories, counts = [], {}, {}, {}
+    starred: list[str] = []
+    missed: dict[str, int] = {}
     for c in cards:
         term, definition = clean(c["front"]), clean(c["back"])
         word = definition if side == "definition" else term
@@ -1226,10 +1232,15 @@ def get_quizlet_set_words(user_id: int, deck_id: int, side: str = "term") -> Opt
         categories[word] = cat
         counts[cat] = counts.get(cat, 0) + 1
         word_data[word] = {"fields": {"Term": term, "Definition": definition}, "category": cat}
+        if c["id"] in starred_ids:
+            starred.append(word)
+        if missed_ids.get(c["id"]):
+            missed[word] = missed_ids[c["id"]]
     return {
         "words": words, "word_data": word_data, "categories": categories, "category_counts": counts,
         "field_used": "Definition" if side == "definition" else "Term",
         "available_fields": ["Term", "Definition"], "title": deck["title"],
+        "starred": starred, "missed": missed,
     }
 
 

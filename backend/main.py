@@ -764,6 +764,15 @@ def get_anki_client(settings: Settings = Depends(get_settings)) -> AnkiConnectCl
 
 
 # Deck endpoints
+@app.get("/api/decks/names")
+async def get_deck_names(client: AnkiConnectClient = Depends(get_anki_client), _: str = Depends(require_auth)):
+    """Just deck names and ids — much cheaper than /api/decks (no per-deck counts)."""
+    try:
+        return {"decks": await client.get_deck_names_and_ids()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/decks")
 async def get_decks(client: AnkiConnectClient = Depends(get_anki_client), _: str = Depends(require_auth)):
     try:
@@ -809,6 +818,82 @@ async def get_next_card(
         return {"card": cards[0], "remaining": remaining}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Studying through Anki's reviewer ------------------------------------------------
+
+class ReviewRequest(BaseModel):
+    deck: str
+    card_id: Optional[int] = None
+    ease: Optional[int] = None
+
+
+@app.post("/api/review/current")
+async def review_current(request: ReviewRequest, client: AnkiConnectClient = Depends(get_anki_client),
+                         user: dict = Depends(require_auth)):
+    """Open (or continue) the deck in Anki's reviewer and return the current card."""
+    import review
+    try:
+        out = await review.current(client, request.deck)
+    except Exception:
+        try:
+            out = await review.legacy_next(client, request.deck)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    out["media_token"] = review.media_token(_settings.app_secret_key, user["user_id"])
+    return out
+
+
+@app.post("/api/review/answer")
+async def review_answer(request: ReviewRequest, client: AnkiConnectClient = Depends(get_anki_client),
+                        user: dict = Depends(require_auth)):
+    """Answer the current card and return the next one in the same round trip."""
+    import review
+    if request.card_id is None or request.ease not in (1, 2, 3, 4):
+        raise HTTPException(status_code=400, detail="card_id and ease (1-4) required")
+    try:
+        out = await review.answer(client, request.deck, request.card_id, request.ease)
+    except Exception:
+        try:
+            await client.answer_card(request.card_id, request.ease)
+            out = await review.legacy_next(client, request.deck)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    out["media_token"] = review.media_token(_settings.app_secret_key, user["user_id"])
+    return out
+
+
+@app.post("/api/review/undo")
+async def review_undo(request: ReviewRequest, client: AnkiConnectClient = Depends(get_anki_client),
+                      user: dict = Depends(require_auth)):
+    import review
+    try:
+        out = await review.undo(client, request.deck)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    out["media_token"] = review.media_token(_settings.app_secret_key, user["user_id"])
+    return out
+
+
+@app.get("/api/media-file/{filename:path}")
+async def media_file(filename: str, t: str = "", client: AnkiConnectClient = Depends(get_anki_client)):
+    """
+    A collection media file as a real (cacheable) file. Authorised by a signed token rather
+    than the session cookie, because cards render in a sandboxed frame without cookies.
+    """
+    import mimetypes
+    import review
+    from fastapi.responses import Response
+    if not review.check_media_token(_settings.app_secret_key, t):
+        raise HTTPException(status_code=401, detail="Invalid media token")
+    if "/" in filename or "\\" in filename or filename.startswith("."):
+        raise HTTPException(status_code=400, detail="Invalid file name")
+    data = await client.retrieve_media_file(filename)
+    if not data:
+        raise HTTPException(status_code=404, detail="Media file not found")
+    mime = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    return Response(review.decode_media(data), media_type=mime,
+                    headers={"Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff"})
 
 
 # Card endpoints

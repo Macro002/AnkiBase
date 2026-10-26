@@ -812,7 +812,7 @@ export function QuizletStudy() {
             <button className="flex items-center gap-2 text-sm shrink-0 sm:order-1" onClick={toggleTrackProgress}>
               <span className={trackProgress ? 'text-(--accent)' : 'text-(--text-secondary)'}>Track progress</span>
               <div className={`relative w-9 h-5 rounded-full transition-colors ${trackProgress ? 'bg-(--accent)' : 'bg-(--bg-tertiary)'}`}>
-                <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${trackProgress ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                <div className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${trackProgress ? 'translate-x-4' : 'translate-x-0'}`} />
               </div>
             </button>
             <div className="flex items-center gap-1 shrink-0 sm:order-3">
@@ -1009,7 +1009,7 @@ export function QuizletStudy() {
               </div>
               <button onClick={toggleTrackProgress} className="shrink-0">
                 <div className={`relative w-9 h-5 rounded-full transition-colors ${trackProgress ? 'bg-(--accent)' : 'bg-(--bg-tertiary)'}`}>
-                  <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${trackProgress ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                  <div className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${trackProgress ? 'translate-x-4' : 'translate-x-0'}`} />
                 </div>
               </button>
             </div>
@@ -1026,7 +1026,7 @@ export function QuizletStudy() {
                 className={`shrink-0 ${favorites.size === 0 ? 'opacity-40 cursor-not-allowed' : ''}`}
               >
                 <div className={`relative w-9 h-5 rounded-full transition-colors ${studyStarredOnly ? 'bg-(--accent)' : 'bg-(--bg-tertiary)'}`}>
-                  <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${studyStarredOnly ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                  <div className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${studyStarredOnly ? 'translate-x-4' : 'translate-x-0'}`} />
                 </div>
               </button>
             </div>

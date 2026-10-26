@@ -1,14 +1,14 @@
-import type { ReactNode, RefObject } from 'react';
+import { useState, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { X } from 'lucide-react';
+import { X, Minus, Plus } from 'lucide-react';
 import { ACCENT_CHARS } from './shared';
 
 export function Toggle({ on, onChange, disabled }: { on: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
     <button type="button" role="switch" aria-checked={on} disabled={disabled}
       onClick={() => onChange(!on)}
-      className={`relative w-9 h-5 rounded-full transition-colors shrink-0 ${on ? 'bg-(--accent)' : 'bg-(--bg-tertiary)'} ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}>
-      <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${on ? 'translate-x-4' : 'translate-x-0.5'}`} />
+      className={`relative w-9 h-5 p-0 rounded-full transition-colors shrink-0 ${on ? 'bg-(--accent)' : 'bg-(--bg-tertiary)'} ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}>
+      <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${on ? 'translate-x-4' : 'translate-x-0'}`} />
     </button>
   );
 }
@@ -40,15 +40,37 @@ export function SettingRow({ title, hint, children }: { title: string; hint?: st
   );
 }
 
-/** Right-hand slide-in settings panel, same look as the Flashcards options panel. */
+/** Number input with themed −/+ buttons instead of the browser's spinner. */
+export function Stepper({ value, min, max, onChange }: { value: number; min: number; max: number; onChange: (v: number) => void }) {
+  const clamp = (v: number) => Math.max(min, Math.min(max, v));
+  const btn = 'w-8 h-8 rounded-md flex items-center justify-center text-(--text-secondary) hover:text-white hover:bg-white/8 transition-colors disabled:opacity-30 disabled:hover:bg-transparent';
+  return (
+    <div className="inline-flex items-center rounded-lg bg-(--bg-tertiary) p-0.5">
+      <button type="button" className={btn} disabled={value <= min} onClick={() => onChange(clamp(value - 1))} aria-label="Fewer"><Minus className="w-3.5 h-3.5" /></button>
+      <input type="text" inputMode="numeric" value={value}
+        onChange={e => { const n = parseInt(e.target.value.replace(/\D/g, ''), 10); onChange(clamp(Number.isNaN(n) ? min : n)); }}
+        onFocus={e => e.target.select()}
+        className="w-12 bg-transparent text-center text-sm font-semibold tabular-nums outline-none" />
+      <button type="button" className={btn} disabled={value >= max} onClick={() => onChange(clamp(value + 1))} aria-label="More"><Plus className="w-3.5 h-3.5" /></button>
+    </div>
+  );
+}
+
+/** Right-hand slide-in settings panel, same look and open/close animation as the Flashcards options panel. */
 export function SidePanel({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  const [closing, setClosing] = useState(false);
+  const close = () => {
+    if (closing) return;
+    setClosing(true);
+    setTimeout(onClose, 200);
+  };
   return createPortal(
-    <div className="fixed inset-0 z-[100] flex justify-end bg-black/50" onClick={onClose}>
-      <div className="options-panel bg-(--bg-secondary) border-l border-(--bg-tertiary) w-full max-w-sm h-screen overflow-y-auto shadow-2xl flex flex-col divide-y divide-white/8"
+    <div className="fixed inset-0 z-[100] flex justify-end bg-black/50 transition-opacity duration-200" style={{ opacity: closing ? 0 : 1 }} onClick={close}>
+      <div className={`${closing ? 'options-panel-closing' : 'options-panel'} bg-(--bg-secondary) border-l border-(--bg-tertiary) w-full max-w-sm h-screen overflow-y-auto shadow-2xl flex flex-col divide-y divide-white/8`}
         onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between p-6 shrink-0" style={{ paddingTop: 'calc(1.5rem + env(safe-area-inset-top, 0px))' }}>
           <h2 className="text-xl font-bold">{title}</h2>
-          <button className="icon-btn" onClick={onClose} title="Close"><X className="w-5 h-5" /></button>
+          <button className="icon-btn" onClick={close} title="Close"><X className="w-5 h-5" /></button>
         </div>
         {children}
         <div style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }} />

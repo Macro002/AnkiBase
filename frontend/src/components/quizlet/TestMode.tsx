@@ -6,7 +6,7 @@ import {
   answerOf, gradeAnswer, mcOptions, pickDistractors, promptOf, resolveSide, shuffle, usesLatinAccents, formatTime,
   type AnswerWith, type Grading, type Side,
 } from './shared';
-import { AccentBar, Html, Segmented, Toggle } from './ui';
+import { AccentBar, Html, Segmented, Stepper, Toggle } from './ui';
 
 type Kind = 'tf' | 'mc' | 'matching' | 'written';
 
@@ -207,9 +207,7 @@ export function TestMode({ deckId, cards, favorites, onReviewed, onOpenMode }: T
           {!onlyIds && (
             <div className="py-4 flex items-center justify-between gap-4">
               <p className="text-sm font-medium">Questions <span className="text-(--text-secondary) font-normal">(max {max})</span></p>
-              <input type="number" min={1} max={max} value={Math.min(cfg.count, max)}
-                onChange={e => setCfg(c => ({ ...c, count: Math.max(1, Math.min(max, Number(e.target.value) || 1)) }))}
-                className="input w-20 text-center py-1.5" />
+              <Stepper value={Math.min(cfg.count, max)} min={1} max={max} onChange={v => setCfg(c => ({ ...c, count: v }))} />
             </div>
           )}
           <div className="py-4 flex items-center justify-between gap-4">

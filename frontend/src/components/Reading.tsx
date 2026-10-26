@@ -7,12 +7,13 @@ import {
 } from 'lucide-react';
 import {
   dictionary, lookup, media, stories, studySessions,
-  type DictionaryResult, type SavedStory, type StudySession, type WordData,
+  type DictionaryResult, type SavedStory, type StoryUnit, type StudySession, type WordData,
 } from '../api';
 import { useSessionSaver } from '../hooks/useSessionSaver';
 import { Segmented } from './quizlet/ui';
 import { AddCardDialog } from './AddCardDialog';
-import { buildVocab, fold, LANG_CODE, paragraphs, splitLine, stripArticle, type Vocab } from './story/text';
+import ReactMarkdown from 'react-markdown';
+import { alignUnits, buildVocab, fold, LANG_CODE, paragraphs, splitLine, stripArticle, type Vocab } from './story/text';
 
 const clean = (v: string) => v.replace(/\[sound:[^\]]+\]/g, '').replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
 const soundOf = (fields: Record<string, string>) => Object.values(fields).map(v => /\[sound:([^\]]+)\]/.exec(v)?.[1]).find(Boolean) ?? null;
@@ -182,7 +183,22 @@ function Library({ onOpen }: { onOpen: (id: number) => void }) {
 
 // --- Reader ------------------------------------------------------------------------
 
-interface Picked { text: string; vocab: string | null; rect: DOMRect }
+interface Picked { text: string; vocab: string | null; rect: DOMRect; unit?: StoryUnit }
+interface Piece { text: string; word?: boolean; vocab?: string; unit?: StoryUnit }
+
+/** Grow a selection that starts or ends mid-word ("Marie p") to whole words ("Marie pense"). */
+function snapToWords(text: string, context: string): string {
+  const at = context.indexOf(text);
+  if (at === -1) return text;
+  const isLetter = (c: string | undefined) => !!c && /[\p{L}\p{M}\p{N}'’-]/u.test(c);
+  let start = at, end = at + text.length;
+  while (start > 0 && isLetter(context[start - 1]) && isLetter(context[start])) start--;
+  while (end < context.length && isLetter(context[end]) && isLetter(context[end - 1])) end++;
+  return context.slice(start, end).trim();
+}
+
+/** The AI writer the Story tab is set to (shared choice). */
+const aiChoice = () => store.get<{ provider?: string; model?: string }>('story-ai', {});
 
 function Reader({ id, onBack }: { id: number; onBack: () => void }) {
   const [story, setStory] = useState<SavedStory | null>(null);
@@ -194,6 +210,9 @@ function Reader({ id, onBack }: { id: number; onBack: () => void }) {
   const [speaking, setSpeaking] = useState<number | null>(null);
   const [adding, setAdding] = useState<{ front: string; back: string } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [annotating, setAnnotating] = useState<{ error?: string } | null>(null);
+  const [selection, setSelection] = useState<{ text: string; context: string; rect: DOMRect } | null>(null);
+  const [explaining, setExplaining] = useState<{ text: string; context: string; rect: DOMRect } | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const stopRef = useRef(false);
 
@@ -207,14 +226,59 @@ function Reader({ id, onBack }: { id: number; onBack: () => void }) {
   const vocab = useMemo<Vocab>(() => buildVocab(words, story?.word_forms ?? {}), [words, story]);
   const paras = useMemo(() => paragraphs(story?.content ?? ''), [story]);
   const hasTr = paras.some(p => p.translation);
-  const lang = story ? storyLanguage(story) : null;
+  const lang = story ? storyLanguage(story) ?? story.annotations?.language ?? null : null;
+
+  // Segmented paragraphs: the AI's reading units when the story has them, else our own tokenizer.
+  const pieces = useMemo<Piece[][]>(() => {
+    const ann = story?.annotations?.paragraphs;
+    const byLower = new Map(words.map(w => [w.toLowerCase(), w]));
+    return paras.map((p, i) => {
+      const units = ann?.[i];
+      if (!units?.length) return splitLine(p.text, vocab);
+      return alignUnits(p.text, units).map(x => {
+        if (!x.unit) return { text: x.text };
+        const u = x.unit;
+        const v = (u.v && byLower.get(u.v.toLowerCase())) || vocab.owner.get(fold(u.t)) || (u.l ? vocab.owner.get(fold(u.l)) : undefined);
+        return { text: x.text, word: true, unit: u, vocab: v };
+      });
+    });
+  }, [paras, story, vocab, words]);
 
   // How often each vocab word appears (for the side list).
   const freq = useMemo(() => {
     const m: Record<string, number> = {};
-    for (const p of paras) for (const x of splitLine(p.text, vocab)) if (x.vocab) m[x.vocab] = (m[x.vocab] ?? 0) + 1;
+    for (const line of pieces) for (const x of line) if (x.vocab) m[x.vocab] = (m[x.vocab] ?? 0) + 1;
     return m;
-  }, [paras, vocab]);
+  }, [pieces]);
+
+  // Select a passage → "Explain" button.
+  useEffect(() => {
+    const onUp = () => setTimeout(() => {
+      const sel = window.getSelection();
+      const text = sel?.toString().replace(/\s+/g, ' ').trim() ?? '';
+      if (!sel || sel.rangeCount === 0 || text.length < 2 || !bodyRef.current?.contains(sel.anchorNode)) { setSelection(null); return; }
+      const range = sel.getRangeAt(0);
+      const para = (range.commonAncestorContainer instanceof Element ? range.commonAncestorContainer : range.commonAncestorContainer.parentElement)?.closest('[id^=para-]');
+      const context = para?.querySelector('p')?.textContent ?? text;
+      setSelection({ text: snapToWords(text, context), context, rect: range.getBoundingClientRect() });
+    }, 10);
+    document.addEventListener('mouseup', onUp);
+    document.addEventListener('touchend', onUp);
+    return () => { document.removeEventListener('mouseup', onUp); document.removeEventListener('touchend', onUp); };
+  }, []);
+
+  const prepareLookups = async () => {
+    if (!story) return;
+    setAnnotating({});
+    try {
+      const { provider, model } = aiChoice();
+      const r = await stories.annotate(story.id, provider || undefined, model || undefined);
+      setStory(s => (s ? { ...s, annotations: r.annotations } : s));
+      setAnnotating(null);
+    } catch (e) {
+      setAnnotating({ error: e instanceof Error ? e.message : 'Could not prepare lookups' });
+    }
+  };
 
   // Reading progress for the Study hub (scroll position, restored on open).
   const readSession = useSessionSaver('reading', story ? story.id : null, 1000);
@@ -307,17 +371,31 @@ function Reader({ id, onBack }: { id: number; onBack: () => void }) {
               <span className="px-2 py-0.5">{ago(story.created_at)}</span>
             </div>
           </header>
+          {!story.annotations && (
+            <div className="mb-6 rounded-xl bg-(--bg-secondary) px-4 py-3 flex flex-wrap items-center gap-3 text-sm">
+              <Sparkles className="w-4 h-4 text-(--accent) shrink-0" />
+              <span className="flex-1 min-w-48 text-(--text-secondary)">
+                {annotating?.error ? <span className="text-(--error)">{annotating.error}</span>
+                  : 'This story was written before instant lookups. Prepare them once to get meanings in context for every word.'}
+              </span>
+              <button onClick={prepareLookups} disabled={!!annotating && !annotating.error}
+                className="h-8 px-3 rounded-lg bg-(--accent) text-white text-xs font-medium inline-flex items-center gap-1.5 disabled:opacity-60">
+                {annotating && !annotating.error ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Preparing…</> : 'Prepare lookups'}
+              </button>
+            </div>
+          )}
           <div ref={bodyRef} className={`${textSize} leading-[1.85] space-y-5`}>
             {paras.map((p, i) => (
               <div key={i} id={`para-${i}`} className={`rounded-lg transition-colors -mx-3 px-3 py-1 ${speaking === i ? 'bg-(--accent)/10' : ''}`}>
                 <p>
-                  {splitLine(p.text, vocab).map((x, j) => {
+                  {pieces[i].map((x, j) => {
                     if (!x.word) return <span key={j}>{x.text}</span>;
                     const isVocab = !!x.vocab;
+                    const pick = (el: HTMLElement) => setPicked({ text: x.text, vocab: x.vocab ?? null, rect: el.getBoundingClientRect(), unit: x.unit });
                     return (
                       <span key={j} role="button" tabIndex={0} data-vocab={x.vocab ?? undefined}
-                        onClick={e => setPicked({ text: x.text, vocab: x.vocab ?? null, rect: (e.currentTarget as HTMLElement).getBoundingClientRect() })}
-                        onKeyDown={e => { if (e.key === 'Enter') setPicked({ text: x.text, vocab: x.vocab ?? null, rect: (e.currentTarget as HTMLElement).getBoundingClientRect() }); }}
+                        onClick={e => { if ((window.getSelection()?.toString().trim().length ?? 0) > 1) return; pick(e.currentTarget as HTMLElement); }}
+                        onKeyDown={e => { if (e.key === 'Enter') pick(e.currentTarget as HTMLElement); }}
                         className={`cursor-pointer rounded-[4px] transition-colors ${isVocab
                           ? `text-(--accent) font-semibold decoration-(--accent)/40 underline decoration-dotted underline-offset-4 hover:bg-(--accent)/15 ${flash === x.vocab ? 'bg-(--accent)/30' : ''}`
                           : 'hover:bg-white/8'} ${picked?.text === x.text ? 'bg-white/10' : ''}`}>
@@ -359,6 +437,17 @@ function Reader({ id, onBack }: { id: number; onBack: () => void }) {
         <WordCard key={`${picked.text}-${Math.round(picked.rect.left)}-${Math.round(picked.rect.top)}`} picked={picked} story={story} lang={lang} onClose={() => setPicked(null)}
           onAdd={p => { setPicked(null); setAdding(p); }} />
       )}
+      {selection && !explaining && createPortal(
+        <button onMouseDown={e => e.preventDefault()} onClick={() => { setExplaining(selection); setSelection(null); }}
+          className="fixed z-[140] -translate-x-1/2 -translate-y-full h-8 px-3 rounded-lg bg-(--accent) text-white text-xs font-semibold shadow-xl inline-flex items-center gap-1.5 section-pop"
+          style={{ left: Math.max(60, Math.min(window.innerWidth - 60, selection.rect.left + selection.rect.width / 2)), top: Math.max(48, selection.rect.top - 8) }}>
+          <Sparkles className="w-3.5 h-3.5" /> Explain
+        </button>, document.body)}
+      {explaining && (
+        <ExplainCard key={explaining.text} passage={explaining.text} context={explaining.context} rect={explaining.rect} story={story} lang={lang}
+          onClose={() => { setExplaining(null); window.getSelection()?.removeAllRanges(); }}
+          onAdd={p => { setExplaining(null); setAdding(p); }} />
+      )}
       {adding && <AddCardDialog prefill={adding} onClose={() => setAdding(null)} onAdded={d => { setAdding(null); setToast(`Added to ${d}`); }} />}
       {toast && createPortal(
         <div className="fixed bottom-20 sm:bottom-6 left-1/2 -translate-x-1/2 z-[300] rounded-lg bg-(--bg-secondary) border border-white/10 shadow-xl px-4 py-2.5 text-sm flex items-center gap-2">
@@ -368,40 +457,22 @@ function Reader({ id, onBack }: { id: number; onBack: () => void }) {
   );
 }
 
-// --- Word card (tap a word) --------------------------------------------------------------
+// --- Popovers: word card + explain card ---------------------------------------------------
 
 const dictCache = new Map<string, DictionaryResult>();
 
-function WordCard({ picked, story, lang, onClose, onAdd }: {
-  picked: Picked; story: SavedStory; lang: string | null; onClose: () => void; onAdd: (p: { front: string; back: string }) => void;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
+/** Position a popover next to `rect` (flipping above when needed) and close it on outside tap, Esc or scroll. */
+function usePopover(ref: React.RefObject<HTMLDivElement | null>, rect: DOMRect, onClose: () => void, deps: unknown[]) {
   const [pos, setPos] = useState<{ left: number; top: number; above: boolean } | null>(null);
-  const lemma = picked.vocab ?? picked.text;
-  const lookupWord = picked.vocab ? stripArticle(picked.vocab) || picked.vocab : picked.text.replace(/['’]$/, '');
-  const key = `${lookupWord}|${lang ?? ''}`;
-  const [dict, setDict] = useState<{ key: string; data: DictionaryResult | null } | null>(() => (dictCache.has(key) ? { key, data: dictCache.get(key)! } : null));
-  const [ai, setAi] = useState<{ loading: boolean; text?: string; error?: string } | null>(null);
-  const card: WordData | undefined = picked.vocab ? story.word_data?.[picked.vocab] : undefined;
-
-  useEffect(() => {
-    if (dictCache.has(key)) return;
-    let cancelled = false;
-    dictionary.lookup(lookupWord, lang ?? '').then(d => { dictCache.set(key, d); if (!cancelled) setDict({ key, data: d }); })
-      .catch(() => { if (!cancelled) setDict({ key, data: null }); });
-    return () => { cancelled = true; };
-  }, [key, lookupWord, lang]);
-
-  // Place next to the word, flipping above when there's no room below.
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const r = picked.rect, w = el.offsetWidth, h = el.offsetHeight;
-    const left = Math.max(12, Math.min(window.innerWidth - w - 12, r.left + r.width / 2 - w / 2));
-    const above = r.bottom + h + 16 > window.innerHeight && r.top - h - 16 > 0;
-    setPos({ left, top: above ? r.top - h - 10 : r.bottom + 10, above });
-  }, [picked, dict, ai]);
-
+    const w = el.offsetWidth, h = el.offsetHeight;
+    const left = Math.max(12, Math.min(window.innerWidth - w - 12, rect.left + rect.width / 2 - w / 2));
+    const above = rect.bottom + h + 16 > window.innerHeight && rect.top - h - 16 > 0;
+    setPos({ left, top: above ? rect.top - h - 10 : Math.min(rect.bottom + 10, Math.max(12, window.innerHeight - h - 12)), above });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rect, ...deps]);
   useEffect(() => {
     const onDown = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node) && !(e.target as HTMLElement).closest('[role=button]')) onClose(); };
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -410,9 +481,41 @@ function WordCard({ picked, story, lang, onClose, onAdd }: {
     window.addEventListener('keydown', onKey);
     window.addEventListener('scroll', onScroll, { passive: true, once: true });
     return () => { window.removeEventListener('pointerdown', onDown); window.removeEventListener('keydown', onKey); window.removeEventListener('scroll', onScroll); };
-  }, [onClose]);
+  }, [ref, onClose]);
+  return pos;
+}
 
-  const data = dict?.key === key ? dict.data : undefined;
+const POS_LABEL: Record<string, string> = {
+  noun: 'noun', verb: 'verb', adj: 'adjective', adv: 'adverb', pron: 'pronoun', prep: 'preposition', conj: 'conjunction',
+  det: 'determiner', interj: 'interjection', num: 'number', expr: 'expression', name: 'name',
+};
+
+function WordCard({ picked, story, lang, onClose, onAdd }: {
+  picked: Picked; story: SavedStory; lang: string | null; onClose: () => void; onAdd: (p: { front: string; back: string }) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const unit = picked.unit;
+  // Dictionary form to look up: the AI's lemma, else the vocab word, else the word itself
+  // (lower-cased, so a sentence-initial "Hola" isn't read as a name).
+  const base = unit?.l || (picked.vocab ? stripArticle(picked.vocab) || picked.vocab : picked.text.replace(/['’]$/, ''));
+  const lookupWord = unit?.p === 'name' ? base : base.toLowerCase();
+  const key = `${lookupWord}|${lang ?? ''}`;
+  const [wantDict, setWantDict] = useState(!unit);
+  const [dict, setDict] = useState<{ key: string; data: DictionaryResult | null } | null>(() => (dictCache.has(key) ? { key, data: dictCache.get(key)! } : null));
+  const [ai, setAi] = useState<{ loading: boolean; text?: string; error?: string } | null>(null);
+  const card: WordData | undefined = picked.vocab ? story.word_data?.[picked.vocab] : undefined;
+
+  useEffect(() => {
+    if (!wantDict || dictCache.has(key)) return;
+    let cancelled = false;
+    dictionary.lookup(lookupWord, lang ?? '').then(d => { dictCache.set(key, d); if (!cancelled) setDict({ key, data: d }); })
+      .catch(() => { if (!cancelled) setDict({ key, data: null }); });
+    return () => { cancelled = true; };
+  }, [wantDict, key, lookupWord, lang]);
+
+  const pos = usePopover(ref, picked.rect, onClose, [dict, ai, wantDict]);
+
+  const data = dict?.key === key ? dict.data : dictCache.get(key);
   const lang0 = data?.wiktionary?.languages[0];
   const entry = lang0?.entries[0];
   const sense = entry?.senses.map(s => s.segments.map(x => x.t).join('')) ?? [];
@@ -420,7 +523,7 @@ function WordCard({ picked, story, lang, onClose, onAdd }: {
   const fields = card ? Object.entries(card.fields)
     .filter(([k, v]) => clean(v) && (story.lookup_fields?.length ? story.lookup_fields.includes(k) : true) && clean(v) !== picked.vocab) : [];
   const sound = card ? soundOf(card.fields) : null;
-  const meaning = jisho ? jisho.senses[0]?.glosses.join('; ') : sense[0] ?? (fields[0] ? clean(fields[0][1]) : ai?.text ?? '');
+  const meaning = unit?.g || (jisho ? jisho.senses[0]?.glosses.join('; ') : sense[0]) || (fields[0] ? clean(fields[0][1]) : ai?.text ?? '');
 
   const askAi = async () => {
     setAi({ loading: true });
@@ -430,14 +533,49 @@ function WordCard({ picked, story, lang, onClose, onAdd }: {
     } catch { setAi({ loading: false, error: 'AI lookup failed — check your API key in Story → AI settings.' }); }
   };
 
-  const playCardAudio = async () => {
-    if (!sound) return;
-    try {
-      const r = await media.get(sound);
-      const ext = sound.split('.').pop()?.toLowerCase();
-      new Audio(`data:${ext === 'ogg' ? 'audio/ogg' : ext === 'wav' ? 'audio/wav' : 'audio/mpeg'};base64,${r.data}`).play().catch(() => {});
-    } catch { /* no audio */ }
+  const listen = async () => {
+    if (sound) {
+      try {
+        const r = await media.get(sound);
+        const ext = sound.split('.').pop()?.toLowerCase();
+        new Audio(`data:${ext === 'ogg' ? 'audio/ogg' : ext === 'wav' ? 'audio/wav' : 'audio/mpeg'};base64,${r.data}`).play().catch(() => {});
+        return;
+      } catch { /* fall through to speech */ }
+    }
+    if (!unit && lang0?.audio[0]) { new Audio(lang0.audio[0]).play().catch(() => {}); return; }
+    speak(picked.text, lang);
   };
+
+  const dictBlock = data === undefined ? (
+    <div className="space-y-1.5">{[80, 60].map(w => <div key={w} className="skeleton h-3.5 rounded" style={{ width: `${w}%` }} />)}</div>
+  ) : jisho ? (
+    <ol className="text-sm space-y-1 list-decimal list-inside marker:text-(--text-secondary)">
+      {jisho.senses.slice(0, 3).map((s, i) => <li key={i}>{s.glosses.join('; ')}</li>)}
+    </ol>
+  ) : sense.length ? (
+    <div className="space-y-1">
+      <p className="text-[11px] text-(--text-secondary) flex flex-wrap gap-2">
+        {lang0?.ipa[0] && <span className="font-mono">{lang0.ipa[0]}</span>}
+        {entry && <span className="uppercase tracking-wide font-semibold">{entry.pos}</span>}
+        {entry?.gender && <span className="px-1.5 rounded bg-white/5">{entry.gender}</span>}
+      </p>
+      <ol className="text-sm space-y-1 list-decimal list-inside marker:text-(--text-secondary)">
+        {sense.slice(0, 3).map((s, i) => <li key={i}>{s}</li>)}
+      </ol>
+    </div>
+  ) : (
+    <div className="text-sm space-y-2">
+      {!fields.length && !ai?.text && !unit && <p className="text-(--text-secondary)">No dictionary entry for this form.</p>}
+      {unit && <p className="text-xs text-(--text-secondary)">No dictionary entry for “{lookupWord}”.</p>}
+      {ai?.text && <p>{ai.text}</p>}
+      {ai?.error && <p className="text-xs text-(--error)">{ai.error}</p>}
+      {!ai?.text && !unit && (
+        <button onClick={askAi} disabled={ai?.loading} className="text-xs inline-flex items-center gap-1.5 text-(--accent) hover:underline">
+          {ai?.loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} Ask AI what it means here
+        </button>
+      )}
+    </div>
+  );
 
   return createPortal(
     <div ref={ref} className="fixed z-[150] w-[min(22rem,calc(100vw-24px))] rounded-xl bg-(--bg-secondary) border border-white/10 shadow-2xl p-4 space-y-3 section-pop"
@@ -445,19 +583,25 @@ function WordCard({ picked, story, lang, onClose, onAdd }: {
       <div className="flex items-start gap-2">
         <div className="flex-1 min-w-0">
           <p className="text-lg font-bold leading-tight break-words">{picked.text}</p>
-          {picked.vocab && fold(picked.vocab) !== fold(picked.text) && <p className="text-xs text-(--text-secondary)">from <span className="text-white">{picked.vocab}</span></p>}
-          <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-(--text-secondary)">
-            {jisho?.reading && <span>{jisho.reading}</span>}
-            {lang0?.ipa[0] && <span className="font-mono">{lang0.ipa[0]}</span>}
-            {entry && <span className="text-(--accent) uppercase tracking-wide text-[10px] font-semibold">{entry.pos}</span>}
-            {entry?.gender && <span className="px-1.5 rounded bg-white/5">{entry.gender}</span>}
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1 text-xs text-(--text-secondary)">
+            {unit?.l && fold(unit.l) !== fold(picked.text) && <span>from <span className="text-white">{unit.l}</span></span>}
+            {!unit && picked.vocab && fold(picked.vocab) !== fold(picked.text) && <span>from <span className="text-white">{picked.vocab}</span></span>}
+            {unit?.p && <span className="text-(--accent) uppercase tracking-wide text-[10px] font-semibold">{POS_LABEL[unit.p] ?? unit.p}</span>}
+            {!unit && entry && <span className="text-(--accent) uppercase tracking-wide text-[10px] font-semibold">{entry.pos}</span>}
+            {!unit && lang0?.ipa[0] && <span className="font-mono">{lang0.ipa[0]}</span>}
             {picked.vocab && <span className="px-1.5 rounded bg-(--accent)/15 text-(--accent)">in your cards</span>}
           </div>
         </div>
-        <button onClick={() => { if (sound) playCardAudio(); else if (lang0?.audio[0]) new Audio(lang0.audio[0]).play().catch(() => {}); else speak(picked.text, lang); }}
-          className="icon-btn shrink-0" title="Listen"><Volume2 className="w-4 h-4" /></button>
+        <button onClick={listen} className="icon-btn shrink-0" title="Listen"><Volume2 className="w-4 h-4" /></button>
         <button onClick={onClose} className="icon-btn shrink-0" title="Close"><X className="w-4 h-4" /></button>
       </div>
+
+      {unit?.g && (
+        <div className="space-y-1">
+          <p className="text-base">{unit.g}</p>
+          {unit.n && <p className="text-xs text-(--text-secondary) italic">{unit.n}</p>}
+        </div>
+      )}
 
       {fields.length > 0 && (
         <div className="rounded-lg bg-(--bg-tertiary)/60 p-2.5 space-y-1">
@@ -467,41 +611,76 @@ function WordCard({ picked, story, lang, onClose, onAdd }: {
         </div>
       )}
 
-      {data === undefined ? (
-        <div className="space-y-1.5">{[80, 60].map(w => <div key={w} className="skeleton h-3.5 rounded" style={{ width: `${w}%` }} />)}</div>
-      ) : jisho ? (
-        <ol className="text-sm space-y-1 list-decimal list-inside marker:text-(--text-secondary)">
-          {jisho.senses.slice(0, 3).map((s, i) => <li key={i}>{s.glosses.join('; ')}</li>)}
-        </ol>
-      ) : sense.length ? (
-        <ol className="text-sm space-y-1 list-decimal list-inside marker:text-(--text-secondary)">
-          {sense.slice(0, 3).map((s, i) => <li key={i}>{s}</li>)}
-        </ol>
-      ) : (
-        <div className="text-sm space-y-2">
-          {!fields.length && !ai?.text && <p className="text-(--text-secondary)">No dictionary entry for this form.</p>}
-          {ai?.text && <p>{ai.text}</p>}
-          {ai?.error && <p className="text-xs text-(--error)">{ai.error}</p>}
-          {!ai?.text && (
-            <button onClick={askAi} disabled={ai?.loading} className="text-xs inline-flex items-center gap-1.5 text-(--accent) hover:underline">
-              {ai?.loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} Ask AI what it means here
-            </button>
-          )}
-        </div>
+      {wantDict ? (unit ? <div className="pt-2 border-t border-white/8">{dictBlock}</div> : dictBlock) : (
+        <button onClick={() => setWantDict(true)} className="text-xs text-(--text-secondary) hover:text-white inline-flex items-center gap-1.5">
+          <BookOpen className="w-3.5 h-3.5" /> Dictionary entry for “{lookupWord}”
+        </button>
       )}
 
       <div className="flex gap-2 pt-1">
         {!picked.vocab && (
-          <button onClick={() => onAdd({ front: entry?.headword || lookupWord, back: meaning })}
+          <button onClick={() => onAdd({ front: entry?.headword || unit?.l || lookupWord, back: meaning })}
             className="flex-1 h-8 rounded-lg bg-(--accent) text-white text-xs font-medium inline-flex items-center justify-center gap-1.5 hover:brightness-110">
             <Plus className="w-3.5 h-3.5" /> Add as card
           </button>
         )}
-        <Link to={`/search?q=${encodeURIComponent(lemma)}`} className="flex-1 h-8 rounded-lg bg-(--bg-tertiary) text-xs text-(--text-secondary) hover:text-white inline-flex items-center justify-center gap-1.5">
+        <Link to={`/search?q=${encodeURIComponent(lookupWord)}`} className="flex-1 h-8 rounded-lg bg-(--bg-tertiary) text-xs text-(--text-secondary) hover:text-white inline-flex items-center justify-center gap-1.5">
           <SearchIcon className="w-3.5 h-3.5" /> Full entry
         </Link>
       </div>
       <style>{`@keyframes pop { from { opacity: 0; transform: translateY(${pos?.above ? 4 : -4}px) scale(.98) } to { opacity: 1; transform: none } } .section-pop { animation: pop .16s ease-out }`}</style>
+    </div>,
+    document.body,
+  );
+}
+
+/** Explanation of a selected passage: translation, breakdown, grammar. */
+function ExplainCard({ passage, context, rect, story, lang, onClose, onAdd }: {
+  passage: string; context: string; rect: DOMRect; story: SavedStory; lang: string | null;
+  onClose: () => void; onAdd: (p: { front: string; back: string }) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [res, setRes] = useState<{ text?: string; error?: string } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const { provider, model } = aiChoice();
+    stories.explain({
+      passage, context, language: lang, level: story.level ?? null,
+      gloss_language: story.annotations?.gloss_language || (story.lookup_language && story.lookup_language !== 'auto' ? story.lookup_language : 'English'),
+      provider: provider || undefined, model: model || undefined,
+    }).then(r => { if (!cancelled) setRes({ text: r.explanation }); })
+      .catch(e => { if (!cancelled) setRes({ error: e instanceof Error ? e.message : 'Could not explain this passage' }); });
+    return () => { cancelled = true; };
+  }, [passage, context, lang, story]);
+  const pos = usePopover(ref, rect, onClose, [res]);
+  const translation = res?.text ? /\*\*Translation\*\*\s*[—–:-]*\s*([^\n]+)/.exec(res.text)?.[1]?.trim() : undefined;
+
+  return createPortal(
+    <div ref={ref} className="fixed z-[150] w-[min(28rem,calc(100vw-24px))] max-h-[min(70vh,34rem)] overflow-y-auto rounded-xl bg-(--bg-secondary) border border-white/10 shadow-2xl p-4 space-y-3 section-pop"
+      style={pos ? { left: pos.left, top: pos.top } : { left: -9999, top: 0 }}>
+      <div className="flex items-start gap-2">
+        <p className="flex-1 min-w-0 font-semibold leading-snug">“{passage}”</p>
+        <button onClick={() => speak(passage, lang)} className="icon-btn shrink-0" title="Listen"><Volume2 className="w-4 h-4" /></button>
+        <button onClick={onClose} className="icon-btn shrink-0" title="Close"><X className="w-4 h-4" /></button>
+      </div>
+      {!res ? (
+        <div className="space-y-2">
+          <p className="text-xs text-(--text-secondary) inline-flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Explaining…</p>
+          {[90, 70, 80].map(w => <div key={w} className="skeleton h-3.5 rounded" style={{ width: `${w}%` }} />)}
+        </div>
+      ) : res.error ? (
+        <p className="text-sm text-(--error)">{res.error}</p>
+      ) : (
+        <div className="text-sm leading-relaxed space-y-2 [&_strong]:text-white [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:space-y-1 [&_em]:text-(--accent) [&_em]:not-italic">
+          <ReactMarkdown>{res.text ?? ''}</ReactMarkdown>
+        </div>
+      )}
+      {translation && (
+        <button onClick={() => onAdd({ front: passage, back: translation })}
+          className="w-full h-8 rounded-lg bg-(--accent) text-white text-xs font-medium inline-flex items-center justify-center gap-1.5 hover:brightness-110">
+          <Plus className="w-3.5 h-3.5" /> Save this phrase as a card
+        </button>
+      )}
     </div>,
     document.body,
   );

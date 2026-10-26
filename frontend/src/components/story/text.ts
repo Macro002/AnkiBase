@@ -106,6 +106,32 @@ export function paragraphs(content: string): { text: string; translation?: strin
   return out;
 }
 
+export interface AlignedPiece<U> { text: string; unit?: U }
+
+/**
+ * Place the AI's reading units onto the real paragraph text, in order. Text between units
+ * (punctuation, spaces, anything the AI skipped) stays as plain text, so the story always
+ * renders exactly as written even if the annotation is imperfect.
+ */
+export function alignUnits<U extends { t: string }>(text: string, units: U[]): AlignedPiece<U>[] {
+  const out: AlignedPiece<U>[] = [];
+  const lower = text.toLowerCase();
+  let at = 0;
+  for (const u of units) {
+    const t = u.t.trim();
+    if (!t) continue;
+    let i = text.indexOf(t, at);
+    if (i === -1) i = lower.indexOf(t.toLowerCase(), at);
+    // A tiny unit ("a", "y") found far ahead is probably a different occurrence — skip it.
+    if (i === -1 || (t.length <= 2 && i - at > 40)) continue;
+    if (i > at) out.push({ text: text.slice(at, i) });
+    out.push({ text: text.slice(i, i + t.length), unit: u });
+    at = i + t.length;
+  }
+  if (at < text.length) out.push({ text: text.slice(at) });
+  return out;
+}
+
 /** Best-effort BCP-47 code for speech synthesis. */
 export const LANG_CODE: Record<string, string> = {
   French: 'fr-FR', Japanese: 'ja-JP', German: 'de-DE', Spanish: 'es-ES', Italian: 'it-IT', Portuguese: 'pt-PT',

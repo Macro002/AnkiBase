@@ -314,6 +314,102 @@ FORMS:
                     word_forms[key] = list(dict.fromkeys(forms))[:8]
         return title, story.strip(), word_forms
 
+    # --- reading aids -------------------------------------------------------------
+
+    @staticmethod
+    def story_paragraphs(content: str) -> list[str]:
+        """Main-text paragraphs, in the same order the Reading view shows them (">> " lines are translations)."""
+        import re
+        out = []
+        for block in re.split(r"\n\s*\n", content.replace("\r", "")):
+            lines = [l.strip() for l in block.split("\n") if l.strip()]
+            main = " ".join(l for l in lines if not l.startswith(">>")).replace("**", "")
+            if main:
+                out.append(main)
+        return out
+
+    @staticmethod
+    def _json_object(text: str) -> Optional[dict]:
+        import json
+        start, end = text.find("{"), text.rfind("}")
+        if start == -1 or end <= start:
+            return None
+        try:
+            obj = json.loads(text[start:end + 1])
+            return obj if isinstance(obj, dict) else None
+        except ValueError:
+            return None
+
+    async def annotate_story(self, content: str, vocab: list[str], story_language: Optional[str],
+                             gloss_language: str, provider: Optional[str] = None, model: Optional[str] = None) -> dict:
+        """
+        Split every paragraph into reading units (words, or fixed multi-word expressions) with
+        lemma, part of speech, meaning in context and an optional grammar note — so the reader
+        can show lookups instantly. One request per paragraph, a few at a time.
+        """
+        import asyncio
+        paras = self.story_paragraphs(content)
+        sem = asyncio.Semaphore(4)
+        vocab_list = "\n".join(f"- {w}" for w in vocab) or "(none)"
+
+        async def one(text: str) -> tuple[list[dict], Optional[str]]:
+            prompt = f"""You are preparing a {story_language or "foreign-language"} story for a language learner whose own language is {gloss_language}.
+
+Vocabulary the learner is studying:
+{vocab_list}
+
+Paragraph:
+\"\"\"{text}\"\"\"
+
+Split the paragraph into reading units, in order. A unit is one word, except that fixed multi-word expressions
+(idioms, set phrases, phrasal or compound verbs — e.g. "il y a", "tout à coup", "hacer compras", "darse cuenta")
+are a single unit. Leave out punctuation. Copy each unit's text exactly as it appears in the paragraph.
+
+For each unit give:
+  "t": the exact text
+  "l": its dictionary form (infinitive, singular, masculine…)
+  "p": part of speech — one of noun, verb, adj, adv, pron, prep, conj, det, interj, num, expr, name
+  "g": its meaning here, in {gloss_language}, in a few words (for names, say what it is: "name (person)")
+  "n": a short grammar note when useful (e.g. "1st person singular, present of ser"); otherwise omit
+  "v": the vocabulary item from the list above that this unit is a form of, copied exactly; otherwise omit
+
+Reply with JSON only, no prose: {{"language": "<the paragraph's language, in English>", "units": [...]}}"""
+            async with sem:
+                try:
+                    reply, _, _ = await self.generate_with_provider(prompt, provider, model)
+                except Exception:
+                    return [], None
+            obj = self._json_object(reply) or {}
+            units = []
+            for u in obj.get("units") or []:
+                if isinstance(u, dict) and isinstance(u.get("t"), str) and u["t"].strip():
+                    units.append({k: str(u[k]).strip() for k in ("t", "l", "p", "g", "n", "v") if u.get(k)})
+            return units, obj.get("language") if isinstance(obj.get("language"), str) else None
+
+        results = await asyncio.gather(*(one(p) for p in paras))
+        langs = [l for _, l in results if l]
+        language = max(set(langs), key=langs.count) if langs else None
+        return {"language": language, "paragraphs": [u for u, _ in results], "gloss_language": gloss_language}
+
+    async def explain_passage(self, passage: str, context: str, language: Optional[str], gloss_language: str,
+                              level: Optional[str] = None, provider: Optional[str] = None, model: Optional[str] = None) -> str:
+        """A short learner-friendly explanation (Markdown) of a selected passage."""
+        prompt = f"""A language learner{f" at CEFR level {level}" if level else ""} is reading a {language or "foreign-language"} story and selected this passage:
+
+"{passage}"
+
+The sentence or paragraph it comes from:
+"{context}"
+
+Explain the passage in {gloss_language}, briefly, in Markdown with exactly these parts:
+**Translation** — a natural translation of the passage.
+**Breakdown** — a bullet list of the words and phrases worth knowing: *original* — meaning (and a grammar note where it helps).
+**Grammar** — one or two sentences on any construction worth noticing (leave this part out if there is nothing notable).
+
+Write for a learner: plain words, no long introductions."""
+        reply, _, _ = await self.generate_with_provider(prompt, provider, model)
+        return reply.strip()
+
     async def lookup_word_jisho(self, word: str) -> dict | None:
         """
         Look up a Japanese word using Jisho API (free, no API key needed).

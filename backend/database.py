@@ -274,7 +274,7 @@ def init_account_db(container_name: str):
         except sqlite3.OperationalError:
             pass
         # Story tab redesign: CEFR level and the inflected forms the AI used for each word
-        for col in ("level TEXT", "word_forms TEXT"):
+        for col in ("level TEXT", "word_forms TEXT", "annotations TEXT"):
             try:
                 cursor.execute(f"ALTER TABLE stories ADD COLUMN {col}")
             except sqlite3.OperationalError:
@@ -452,6 +452,7 @@ def save_story(
     container_name: Optional[str] = None,
     level: Optional[str] = None,
     word_forms: Optional[dict] = None,
+    annotations: Optional[dict] = None,
 ) -> int:
     """Save a generated story to the database."""
     # Use active account if not specified
@@ -471,8 +472,8 @@ def save_story(
             """
             INSERT INTO stories (name, content, words, word_data, lookup_fields, lookup_language,
                                 style, length, language, target_language,
-                                provider, model, deck_name, level, word_forms)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                provider, model, deck_name, level, word_forms, annotations)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (name, content, json.dumps(words),
              json.dumps(word_data) if word_data else None,
@@ -480,10 +481,32 @@ def save_story(
              lookup_language,
              style, length, language, target_language,
              provider, model, deck_name, level,
-             json.dumps(word_forms) if word_forms else None)
+             json.dumps(word_forms) if word_forms else None,
+             json.dumps(annotations) if annotations else None)
         )
         conn.commit()
         return cursor.lastrowid
+
+
+def set_story_annotations(story_id: int, annotations: dict, language: Optional[str] = None,
+                          container_name: Optional[str] = None) -> bool:
+    """Store a story's reading annotations; also fills in its language if it was 'auto'."""
+    if container_name is None:
+        account = get_active_account()
+        if not account:
+            return False
+        container_name = account["container_name"]
+    db_path = get_account_db_path(container_name)
+    if not os.path.exists(db_path):
+        return False
+    with get_db(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE stories SET annotations = ? WHERE id = ?", (json.dumps(annotations), story_id))
+        if language:
+            cursor.execute("UPDATE stories SET language = ? WHERE id = ? AND (language IS NULL OR language = '' OR language = 'auto') "
+                           "AND (target_language IS NULL OR target_language = '')", (language, story_id))
+        conn.commit()
+        return cursor.rowcount >= 0
 
 
 def get_story(story_id: int, container_name: Optional[str] = None) -> Optional[dict]:
@@ -521,6 +544,7 @@ def get_story(story_id: int, container_name: Optional[str] = None) -> Optional[d
                 result["word_data"] = {}
             result["lookup_fields"] = json.loads(row["lookup_fields"]) if row["lookup_fields"] else ["Meaning"]
             result["word_forms"] = json.loads(row["word_forms"]) if "word_forms" in row.keys() and row["word_forms"] else {}
+            result["annotations"] = json.loads(row["annotations"]) if "annotations" in row.keys() and row["annotations"] else None
             return result
         return None
 

@@ -1338,10 +1338,6 @@ export function QuizletStudy() {
 
       <style>{`
         /* Options panel slide in / out */
-        @keyframes panelSlideIn  { from { transform: translateX(100%); } to { transform: translateX(0); } }
-        @keyframes panelSlideOut { from { transform: translateX(0); }    to { transform: translateX(100%); } }
-        .options-panel         { animation: panelSlideIn  0.38s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-        .options-panel-closing { animation: panelSlideOut 0.2s  cubic-bezier(0.4,  0, 0.6, 1) forwards; }
 
         /* Override library defaults for dark theme */
         .flashcard-wrapper {

@@ -29,6 +29,7 @@ export function Toggle({ on, onChange, disabled }: { on: boolean; onChange: (v: 
 
 const SEG_SIZE = {
   lg: { box: 'p-1.5 gap-1', btn: 'px-4 py-3 text-sm' },
+  field: { box: 'h-10 p-1', btn: 'h-8 px-3 text-xs' }, // matches the 40px selects
   md: { box: 'h-9 p-1', btn: 'h-7 px-3 text-xs' },
   sm: { box: 'h-8 p-[3px]', btn: 'h-[26px] px-2.5 text-xs' },
 } as const;

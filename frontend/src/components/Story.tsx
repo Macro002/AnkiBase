@@ -193,7 +193,7 @@ export function Story() {
               <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 items-center">
                 <Select value={prefs.set} onChange={v => set({ set: v })} placeholder={sets.length ? 'Choose a set…' : 'No Quizlet sets yet'}
                   options={sets.map(s => ({ value: String(s.id), label: `${s.title} (${s.card_count})` }))} />
-                <Segmented value={prefs.side} onChange={v => set({ side: v })} options={[{ value: 'term', label: 'Terms' }, { value: 'definition', label: 'Definitions' }]} />
+                <Segmented size="field" value={prefs.side} onChange={v => set({ side: v })} options={[{ value: 'term', label: 'Terms' }, { value: 'definition', label: 'Definitions' }]} />
               </div>
             )}
 

@@ -26,6 +26,7 @@ from database import (
     get_quizlet_study_state, set_quizlet_study_state, delete_quizlet_study_state,
     list_study_sessions, get_study_session, upsert_study_session, delete_study_session,
     get_quizlet_stats_data, search_quizlet_cards, add_quizlet_card, get_quizlet_set_words,
+    set_story_annotations,
     get_setting, set_setting, get_user_accent, set_user_accent, clear_user_accent,
     get_server_base_colors, set_server_base_colors,
     get_user_base_colors, set_user_base_colors, clear_user_base_colors,
@@ -1097,6 +1098,19 @@ async def generate_story_endpoint(
         )
 
         story_name = request.name or result.get("title") or f"Story with {len(request.words)} words"
+
+        # Prepare instant word lookups for Reading (best effort — the story is kept either way).
+        story_lang = request.target_language or (request.language if request.language != "auto" else None)
+        gloss = _gloss_language(request.lookup_language, request.language if request.target_language else None)
+        annotations = None
+        try:
+            annotations = await generator.annotate_story(result["story"], request.words, story_lang, gloss,
+                                                         result.get("provider_used"), result.get("model_used"))
+            if not any(annotations["paragraphs"]):
+                annotations = None
+        except Exception:
+            annotations = None
+        detected = (annotations or {}).get("language")
         story_id = save_story(
             name=story_name,
             content=result["story"],
@@ -1113,13 +1127,17 @@ async def generate_story_endpoint(
             deck_name=request.deck_name,
             level=request.level,
             word_forms=result.get("word_forms"),
+            annotations=annotations,
         )
+        if detected and not story_lang:
+            set_story_annotations(story_id, annotations, detected)
 
         return {
             "story": result["story"],
             "story_id": story_id,
             "title": story_name,
             "word_forms": result.get("word_forms") or {},
+            "annotated": annotations is not None,
             "provider_used": result.get("provider_used"),
             "model_used": result.get("model_used"),
         }
@@ -1127,6 +1145,68 @@ async def generate_story_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def _gloss_language(lookup_language: Optional[str], translation_language: Optional[str]) -> str:
+    """Language for meanings and explanations: the chosen lookup language, else the translation language, else English."""
+    if lookup_language and lookup_language != "auto":
+        return lookup_language
+    return translation_language or "English"
+
+
+class AiChoiceRequest(BaseModel):
+    provider: Optional[str] = None
+    model: Optional[str] = None
+
+
+@app.post("/api/stories/{story_id}/annotate")
+async def annotate_story_endpoint(story_id: int, request: AiChoiceRequest, _: dict = Depends(require_auth)):
+    """Prepare instant word lookups for a story written before annotations existed."""
+    story_row = get_story(story_id)
+    if not story_row:
+        raise HTTPException(status_code=404, detail="Story not found")
+    api_keys = get_api_keys()
+    if not any(api_keys.values()):
+        raise HTTPException(status_code=400, detail="Add an AI key in Story → AI settings first")
+    lang = story_row.get("target_language") or (story_row.get("language") if story_row.get("language") not in (None, "", "auto") else None)
+    gloss = _gloss_language(story_row.get("lookup_language"), story_row.get("language") if story_row.get("target_language") else None)
+    try:
+        annotations = await StoryGenerator(api_keys).annotate_story(
+            story_row["content"], story_row.get("words") or [], lang, gloss, request.provider, request.model)
+    except NoValidKeysError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not any(annotations["paragraphs"]):
+        raise HTTPException(status_code=502, detail="The AI didn't return usable annotations — try again")
+    set_story_annotations(story_id, annotations, annotations.get("language"))
+    return {"annotations": annotations}
+
+
+class ExplainRequest(BaseModel):
+    passage: str
+    context: str = ""
+    language: Optional[str] = None
+    gloss_language: Optional[str] = None
+    level: Optional[str] = None
+    provider: Optional[str] = None
+    model: Optional[str] = None
+
+
+@app.post("/api/story/explain")
+async def explain_passage_endpoint(request: ExplainRequest, _: dict = Depends(require_auth)):
+    """Explain a passage the reader selected: translation, word breakdown, grammar."""
+    passage = request.passage.strip()[:600]
+    if not passage:
+        raise HTTPException(status_code=400, detail="Nothing selected")
+    api_keys = get_api_keys()
+    if not any(api_keys.values()):
+        raise HTTPException(status_code=400, detail="Add an AI key in Story → AI settings first")
+    try:
+        text = await StoryGenerator(api_keys).explain_passage(
+            passage, request.context.strip()[:1500], request.language, request.gloss_language or "English",
+            request.level, request.provider, request.model)
+    except NoValidKeysError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"explanation": text}
 
 
 @app.post("/api/lookup")

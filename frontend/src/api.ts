@@ -355,7 +355,12 @@ export interface SavedStory {
   word_forms?: Record<string, string[]>;
   preview?: string;
   word_count?: number;
+  annotations?: StoryAnnotations | null;
 }
+
+/** One reading unit of a story: a word or a fixed expression, explained in context. */
+export interface StoryUnit { t: string; l?: string; p?: string; g?: string; n?: string; v?: string }
+export interface StoryAnnotations { language: string | null; paragraphs: StoryUnit[][]; gloss_language?: string }
 
 export const stories = {
   list: (limit = 100, offset = 0) =>
@@ -368,6 +373,10 @@ export const stories = {
     }),
   delete: (id: number) =>
     fetchAPI<{ success: boolean }>(`/stories/${id}`, { method: 'DELETE' }),
+  annotate: (id: number, provider?: string, model?: string) =>
+    fetchAPI<{ annotations: StoryAnnotations }>(`/stories/${id}/annotate`, { method: 'POST', body: JSON.stringify({ provider, model }) }),
+  explain: (p: { passage: string; context: string; language?: string | null; gloss_language?: string; level?: string | null; provider?: string; model?: string }) =>
+    fetchAPI<{ explanation: string }>('/story/explain', { method: 'POST', body: JSON.stringify(p) }),
 };
 
 // Update

@@ -25,6 +25,7 @@ from database import (
     update_quizlet_card,
     get_quizlet_study_state, set_quizlet_study_state, delete_quizlet_study_state,
     list_study_sessions, get_study_session, upsert_study_session, delete_study_session,
+    get_quizlet_stats_data,
     get_setting, set_setting, get_user_accent, set_user_accent, clear_user_accent,
     get_server_base_colors, set_server_base_colors,
     get_user_base_colors, set_user_base_colors, clear_user_base_colors,
@@ -2544,6 +2545,48 @@ async def get_stats_html(
         return {"html": html}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# Full statistics (Anki's stats screen + Quizlet) for the Stats tab
+@app.get("/api/stats/overview")
+async def stats_overview(
+    deck: str = "",              # Anki deck (includes subdecks); empty = whole collection
+    anki: bool = True,           # include Anki data
+    quizlet: str = "all",        # "all" | "none" | a Quizlet set id
+    period: str = "1m",          # 1m | 3m | 1y | all
+    tz: str = "UTC",             # viewer's IANA timezone, so days match their clock
+    refresh: bool = False,
+    client: AnkiConnectClient = Depends(get_anki_client),
+    user: dict = Depends(require_auth),
+):
+    import stats_engine as se
+
+    if period not in se.PERIODS:
+        raise HTTPException(status_code=400, detail="Invalid period")
+    period_days = se.PERIODS[period]
+    clock = se.DayClock(tz)
+    quizlet_set = int(quizlet) if quizlet.isdigit() else None
+    use_anki = anki and quizlet_set is None
+    use_quizlet = quizlet != "none" and not deck
+
+    result: dict = {
+        "today": clock.today.isoformat(),
+        "period": period,
+        "rollover_hours": se.ROLLOVER_HOURS,
+        "anki": None,
+        "anki_error": None,
+        "quizlet": None,
+    }
+    if use_anki:
+        try:
+            cache = await se.refresh(client, force=refresh)
+            result["anki"] = se.compute_anki(cache, clock, deck or None, period_days)
+        except Exception as e:
+            result["anki_error"] = f"Couldn't reach Anki: {e}"
+    if use_quizlet:
+        rows, cards, levels = get_quizlet_stats_data(user["user_id"], quizlet_set)
+        result["quizlet"] = se.compute_quizlet(rows, cards, levels, clock, period_days)
+    return result
 
 
 # Review history endpoint for heatmap

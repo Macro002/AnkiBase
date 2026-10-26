@@ -1144,6 +1144,40 @@ def get_quizlet_daily_counts() -> dict[str, int]:
         return {row[0]: row[1] for row in cursor.fetchall()}
 
 
+def get_quizlet_stats_data(user_id: int, deck_id: Optional[int] = None) -> tuple[list[tuple], list[dict], dict[int, int]]:
+    """Quizlet answers, cards and Learn levels for the active account (optionally one set) — for the Stats tab."""
+    import json
+    container_id = _active_container_id()
+    deck_filter, args = ("AND qd.id = ?", (container_id, deck_id)) if deck_id is not None else ("", (container_id,))
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT qr.card_id, qr.deck_id, qr.ease, qr.reviewed_at
+            FROM quizlet_reviews qr JOIN quizlet_decks qd ON qr.deck_id = qd.id
+            WHERE qd.container_id = ? {deck_filter}
+        """, args)
+        rows = [tuple(r) for r in cursor.fetchall()]
+        cursor.execute(f"""
+            SELECT qc.id, qc.deck_id, qc.front, qc.back
+            FROM quizlet_cards qc JOIN quizlet_decks qd ON qc.deck_id = qd.id
+            WHERE qd.container_id = ? {deck_filter}
+        """, args)
+        cards = [dict(r) for r in cursor.fetchall()]
+        cursor.execute(
+            "SELECT state FROM study_sessions WHERE user_id = ? AND container_id = ? AND kind = 'quizlet-learn'",
+            (user_id, container_id),
+        )
+        levels: dict[int, int] = {}
+        for (raw,) in cursor.fetchall():
+            try:
+                terms = (json.loads(raw) or {}).get("terms", {}) if raw else {}
+            except ValueError:
+                continue
+            for cid, t in terms.items():
+                levels[int(cid)] = int(t.get("level", 0))
+    return rows, cards, levels
+
+
 def get_setting(key: str, default: Optional[str] = None) -> Optional[str]:
     with get_db() as conn:
         cursor = conn.cursor()

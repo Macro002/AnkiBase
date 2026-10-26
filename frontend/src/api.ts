@@ -474,7 +474,62 @@ export interface ReviewHistory {
   today_time_seconds: number;
 }
 
+export type StatsPeriod = '1m' | '3m' | '1y' | 'all';
+
+export interface HourBucket { total: number; correct: number }
+export interface RetentionCell { young_pass: number; young_fail: number; mature_pass: number; mature_fail: number }
+
+export interface AnkiStats {
+  today: {
+    reviews: number; seconds: number; again: number;
+    learn: number; review: number; relearn: number; filtered: number;
+    mature_correct: number; mature_total: number;
+  };
+  calendar: Record<string, number>;
+  /** day -> category counts (learn/young/mature/relearn/filtered) and seconds (`<cat>_s`) */
+  daily: Record<string, Record<string, number>>;
+  hourly: HourBucket[];
+  buttons: { learning: number[]; young: number[]; mature: number[] };
+  retention: Record<'today' | 'yesterday' | 'week' | 'month' | 'year' | 'all', RetentionCell>;
+  card_counts: { new: number; learning: number; relearning: number; young: number; mature: number; suspended: number; buried: number; total: number };
+  intervals: Record<string, number>;
+  ease: Record<string, number>;
+  ease_avg: number | null;
+  future_due: { days: Record<string, number>; overdue: number; learning_today: number; daily_load: number; known: boolean };
+  added: Record<string, number>;
+}
+
+export interface QuizletStats {
+  today: { answers: number; correct: number };
+  calendar: Record<string, number>;
+  daily: Record<string, number>;
+  hourly: HourBucket[];
+  accuracy: { total: number; correct: number };
+  mastery: { not_studied: number; learning: number; familiar: number; mastered: number; total: number };
+  hardest: { id: number; front: string; back: string; attempts: number; misses: number }[];
+}
+
+export interface StatsOverview {
+  today: string;
+  period: StatsPeriod;
+  rollover_hours: number;
+  anki: AnkiStats | null;
+  anki_error: string | null;
+  quizlet: QuizletStats | null;
+}
+
 export const stats = {
+  overview: (p: { deck?: string; anki?: boolean; quizlet?: string; period: StatsPeriod; refresh?: boolean }) => {
+    const q = new URLSearchParams({
+      deck: p.deck ?? '',
+      anki: String(p.anki ?? true),
+      quizlet: p.quizlet ?? 'all',
+      period: p.period,
+      tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+      refresh: String(!!p.refresh),
+    });
+    return fetchAPI<StatsOverview>(`/stats/overview?${q}`);
+  },
   getReviewHistory: (deck?: string, source?: string) => {
     const params = new URLSearchParams();
     if (deck) params.set('deck', deck);

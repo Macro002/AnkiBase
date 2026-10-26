@@ -24,6 +24,7 @@ from database import (
     get_quizlet_deck_stats, get_quizlet_favorites, toggle_quizlet_favorite,
     update_quizlet_card,
     get_quizlet_study_state, set_quizlet_study_state, delete_quizlet_study_state,
+    list_study_sessions, get_study_session, upsert_study_session, delete_study_session,
     get_setting, set_setting, get_user_accent, set_user_accent, clear_user_accent,
     get_server_base_colors, set_server_base_colors,
     get_user_base_colors, set_user_base_colors, clear_user_base_colors,
@@ -2221,7 +2222,7 @@ async def quizlet_record_review(deck_id: int, request: QuizletReviewRequest, _: 
         raise HTTPException(status_code=500, detail=str(e))
 
 
-QUIZLET_STATE_MODES = {"learn", "match", "blast", "blocks"}
+QUIZLET_STATE_MODES = {"match", "blast", "blocks"}
 
 
 class QuizletStateRequest(BaseModel):
@@ -2258,6 +2259,76 @@ async def quizlet_put_state(deck_id: int, mode: str, request: QuizletStateReques
 async def quizlet_delete_state(deck_id: int, mode: str, _: str = Depends(require_auth)):
     _check_state_mode(mode)
     delete_quizlet_study_state(deck_id, mode)
+    return {"success": True}
+
+
+# --- Study sessions (resumable activities shown in the Study hub) ---
+
+SESSION_KINDS = {"quizlet-learn", "quizlet-flashcards", "quizlet-test", "anki", "reading"}
+SESSION_STATUSES = {"active", "completed"}
+
+
+class StudySessionRequest(BaseModel):
+    title: str
+    detail: Optional[str] = None
+    progress_done: int = 0
+    progress_total: int = 0
+    status: str = "active"
+    state: Optional[dict] = None
+
+
+def _check_session(kind: str, ref_id: str):
+    if kind not in SESSION_KINDS:
+        raise HTTPException(status_code=400, detail="Unknown session kind")
+    if not ref_id or len(ref_id) > 64:
+        raise HTTPException(status_code=400, detail="Invalid reference")
+
+
+@app.get("/api/sessions")
+async def sessions_list(user: dict = Depends(require_auth)):
+    return {"sessions": list_study_sessions(user["user_id"])}
+
+
+@app.get("/api/sessions/{kind}/{ref_id}")
+async def sessions_get(kind: str, ref_id: str, user: dict = Depends(require_auth)):
+    import json
+    _check_session(kind, ref_id)
+    session = get_study_session(user["user_id"], kind, ref_id)
+    if session is None and kind == "quizlet-learn" and ref_id.isdigit():
+        # One-time move of Learn progress saved per deck (before sessions existed) to this user.
+        legacy = get_quizlet_study_state(int(ref_id), "learn")
+        if legacy:
+            deck = get_quizlet_deck(int(ref_id))
+            upsert_study_session(user["user_id"], kind, ref_id, deck["title"] if deck else "", None, 0, 0, "active", legacy)
+            delete_quizlet_study_state(int(ref_id), "learn")
+            session = get_study_session(user["user_id"], kind, ref_id)
+    if session is None:
+        return {"session": None}
+    raw = session.pop("state", None)
+    session["state"] = json.loads(raw) if raw else None
+    return {"session": session}
+
+
+@app.put("/api/sessions/{kind}/{ref_id}")
+async def sessions_put(kind: str, ref_id: str, request: StudySessionRequest, user: dict = Depends(require_auth)):
+    import json
+    _check_session(kind, ref_id)
+    if request.status not in SESSION_STATUSES:
+        raise HTTPException(status_code=400, detail="Invalid status")
+    raw = json.dumps(request.state) if request.state is not None else None
+    if raw and len(raw) > 2_000_000:
+        raise HTTPException(status_code=413, detail="State too large")
+    upsert_study_session(
+        user["user_id"], kind, ref_id, request.title[:200], (request.detail or None) and request.detail[:200],
+        max(0, request.progress_done), max(0, request.progress_total), request.status, raw,
+    )
+    return {"success": True}
+
+
+@app.delete("/api/sessions/{kind}/{ref_id}")
+async def sessions_delete(kind: str, ref_id: str, user: dict = Depends(require_auth)):
+    _check_session(kind, ref_id)
+    delete_study_session(user["user_id"], kind, ref_id)
     return {"success": True}
 
 

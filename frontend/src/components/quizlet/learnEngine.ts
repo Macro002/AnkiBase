@@ -31,6 +31,8 @@ export interface LearnSettings {
   anyPart: boolean;
   retypeWrong: boolean;
   roundSize: number;
+  /** Write mode: every question is typed. */
+  write?: boolean;
 }
 
 export const DEFAULT_SETTINGS: LearnSettings = {
@@ -187,7 +189,8 @@ const EASY: QType[] = ['mc', 'tf', 'flashcard'];
  * Cram mixes everything enabled. Falls back gracefully when types are disabled.
  */
 export function questionType(state: LearnState, id: number, poolSize: number): QType {
-  const { types, goal } = state.settings;
+  const { types, goal, write } = state.settings;
+  if (write) return 'written';
   const t = state.terms[id];
   // Multiple choice and true/false need other cards to draw wrong answers from.
   const ok = (q: QType) => types[q] && (q === 'written' || q === 'flashcard' || poolSize >= 2);

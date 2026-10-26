@@ -191,6 +191,26 @@ def init_global_db():
             )
         """)
 
+        # Resumable study sessions (per user, per Anki account) for the Study hub
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS study_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                container_id INTEGER NOT NULL DEFAULT 0,
+                kind TEXT NOT NULL,
+                ref_id TEXT NOT NULL,
+                title TEXT NOT NULL DEFAULT '',
+                detail TEXT,
+                progress_done INTEGER NOT NULL DEFAULT 0,
+                progress_total INTEGER NOT NULL DEFAULT 0,
+                state TEXT,
+                status TEXT NOT NULL DEFAULT 'active',
+                created_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now')),
+                UNIQUE(user_id, container_id, kind, ref_id)
+            )
+        """)
+
         # Login attempts for persistent, server-side rate limiting
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS login_attempts (
@@ -973,8 +993,10 @@ def delete_quizlet_deck(deck_id: int) -> bool:
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM quizlet_decks WHERE id = ?", (deck_id,))
+        deleted = cursor.rowcount > 0
+        cursor.execute("DELETE FROM study_sessions WHERE kind LIKE 'quizlet-%' AND ref_id = ?", (str(deck_id),))
         conn.commit()
-        return cursor.rowcount > 0
+        return deleted
 
 def record_quizlet_review(card_id: int, deck_id: int, ease: int):
     with get_db() as conn:
@@ -1047,6 +1069,63 @@ def delete_quizlet_study_state(deck_id: int, mode: str):
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM quizlet_study_state WHERE deck_id = ? AND mode = ?", (deck_id, mode))
+        conn.commit()
+
+
+def _active_container_id() -> int:
+    active = get_active_account()
+    return active["id"] if active else 0
+
+
+_SESSION_COLS = "kind, ref_id, title, detail, progress_done, progress_total, status, created_at, updated_at"
+
+
+def list_study_sessions(user_id: int, status: str = "active", limit: int = 50) -> list[dict]:
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"SELECT {_SESSION_COLS} FROM study_sessions WHERE user_id = ? AND container_id = ? AND status = ? "
+            "ORDER BY updated_at DESC LIMIT ?",
+            (user_id, _active_container_id(), status, limit),
+        )
+        return [dict(r) for r in cursor.fetchall()]
+
+
+def get_study_session(user_id: int, kind: str, ref_id: str) -> Optional[dict]:
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"SELECT {_SESSION_COLS}, state FROM study_sessions WHERE user_id = ? AND container_id = ? AND kind = ? AND ref_id = ?",
+            (user_id, _active_container_id(), kind, ref_id),
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+
+def upsert_study_session(user_id: int, kind: str, ref_id: str, title: str, detail: Optional[str],
+                         progress_done: int, progress_total: int, status: str, state: Optional[str]):
+    """Create or update a session. A None state keeps whatever state was saved before."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO study_sessions (user_id, container_id, kind, ref_id, title, detail, progress_done, progress_total, status, state)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(user_id, container_id, kind, ref_id) DO UPDATE SET
+                title = excluded.title, detail = excluded.detail,
+                progress_done = excluded.progress_done, progress_total = excluded.progress_total,
+                status = excluded.status, state = COALESCE(excluded.state, study_sessions.state),
+                updated_at = datetime('now')
+        """, (user_id, _active_container_id(), kind, ref_id, title, detail, progress_done, progress_total, status, state))
+        conn.commit()
+
+
+def delete_study_session(user_id: int, kind: str, ref_id: str):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "DELETE FROM study_sessions WHERE user_id = ? AND container_id = ? AND kind = ? AND ref_id = ?",
+            (user_id, _active_container_id(), kind, ref_id),
+        )
         conn.commit()
 
 

@@ -1,7 +1,8 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, X, RotateCcw, Clock } from 'lucide-react';
 import TestIcon from '../../assets/icons/brand-test.svg?react';
-import { quizlet, type QuizletCard } from '../../api';
+import { quizlet, studySessions, type QuizletCard } from '../../api';
+import { useSessionSaver } from '../../hooks/useSessionSaver';
 import {
   answerOf, gradeAnswer, mcOptions, pickDistractors, promptOf, resolveSide, shuffle, usesLatinAccents, formatTime,
   type AnswerWith, type Grading, type Side,
@@ -95,15 +96,22 @@ function isAnswered(q: Q, a: A | undefined): boolean {
   return true;
 }
 
+/** What an in-progress test saves so it can be resumed from the Study hub. */
+interface TestSaved {
+  cfg: TestConfig; questions: Q[]; answers: Record<number, A>; overrides: number[];
+  onlyIds: number[] | null; startedAt: number; savedAt: number;
+}
+
 export interface TestModeProps {
   deckId: number;
+  title: string;
   cards: QuizletCard[];
   favorites: Set<number>;
   onReviewed: () => void;
   onOpenMode: (mode: 'learn' | 'flashcards') => void;
 }
 
-export function TestMode({ deckId, cards, favorites, onReviewed, onOpenMode }: TestModeProps) {
+export function TestMode({ deckId, title, cards, favorites, onReviewed, onOpenMode }: TestModeProps) {
   const [cfg, setCfg] = useState<TestConfig>({
     count: Math.min(20, cards.length),
     answerWith: 'definition',
@@ -121,7 +129,9 @@ export function TestMode({ deckId, cards, favorites, onReviewed, onOpenMode }: T
   const [confirmSubmit, setConfirmSubmit] = useState(false);
   const [onlyIds, setOnlyIds] = useState<number[] | null>(null);
   const [testId, setTestId] = useState(0);
+  const [resumed, setResumed] = useState(false);
   const topRef = useRef<HTMLDivElement>(null);
+  const session = useSessionSaver('quizlet-test', deckId);
 
   const byId = useMemo(() => new Map(cards.map(c => [c.id, c])), [cards]);
   const showAccents = useMemo(() => usesLatinAccents(cards.flatMap(c => [c.front, c.back])), [cards]);
@@ -133,7 +143,35 @@ export function TestMode({ deckId, cards, favorites, onReviewed, onOpenMode }: T
     return s;
   }, [cards, cfg.starredOnly, favorites, onlyIds]);
 
+  // Resume an unfinished test, unless the cards it used have since been deleted.
+  useEffect(() => {
+    let cancelled = false;
+    studySessions.get<TestSaved>('quizlet-test', deckId).then(({ session: sess }) => {
+      const t = sess?.status === 'active' ? sess.state : null;
+      if (cancelled || !t?.questions?.length) return;
+      const ids = new Set(cards.map(c => c.id));
+      const valid = t.questions.every(q => q.kind === 'matching'
+        ? q.ids.every(i => ids.has(i))
+        : ids.has(q.id) && (q.kind !== 'mc' || q.options.every(i => ids.has(i))) && (q.kind !== 'tf' || ids.has(q.shownId)));
+      if (!valid) { studySessions.remove('quizlet-test', deckId).catch(() => {}); return; }
+      setCfg(t.cfg);
+      setQuestions(t.questions);
+      setAnswers(t.answers);
+      setOverrides(new Set(t.overrides));
+      setOnlyIds(t.onlyIds);
+      // Time away from the test doesn't count.
+      setStartedAt(Date.now() - Math.max(0, t.savedAt - t.startedAt));
+      setTestId(n => n + 1);
+      setResumed(true);
+      setPhase('test');
+    }).catch(() => {});
+    return () => { cancelled = true; };
+    // Only on first open of this deck's Test mode.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deckId]);
+
   const begin = (ids: number[] | null = onlyIds) => {
+    setResumed(false);
     const pool = ids ? cards.filter(c => ids.includes(c.id)) : scope;
     setQuestions(buildTest(pool, cards, { ...cfg, count: ids ? ids.length : cfg.count }));
     setAnswers({});
@@ -161,9 +199,19 @@ export function TestMode({ deckId, cards, favorites, onReviewed, onOpenMode }: T
   const total = questions.reduce((n, q) => n + weight(q), 0);
   const score = questions.reduce((n, q, i) => n + isCorrect(i, q, answers[i]), 0);
 
+  useEffect(() => {
+    if (phase !== 'test' || !questions.length) return;
+    const state: TestSaved = { cfg, questions, answers, overrides: [...overrides], onlyIds, startedAt, savedAt: Date.now() };
+    session.save({ title, detail: `${answeredCount}/${questions.length} answered`, progress_done: answeredCount, progress_total: questions.length, state });
+  }, [phase, questions, answers, overrides, cfg, onlyIds, startedAt, answeredCount, title, session]);
+
+  const exitTest = () => { session.remove(); setResumed(false); setPhase('setup'); };
+
   const submit = () => {
     if (answeredCount < questions.length && !confirmSubmit) { setConfirmSubmit(true); return; }
     setConfirmSubmit(false);
+    session.remove();
+    setResumed(false);
     setElapsed(Date.now() - startedAt);
     setPhase('results');
     // Record reviews (one per term) for the heatmap / "studied today".
@@ -295,8 +343,13 @@ export function TestMode({ deckId, cards, favorites, onReviewed, onOpenMode }: T
               <div className="h-full bg-(--accent) transition-all" style={{ width: `${(answeredCount / Math.max(questions.length, 1)) * 100}%` }} />
             </div>
             <span className="text-xs text-(--text-secondary) tabular-nums">{answeredCount}/{questions.length} answered</span>
-            <button onClick={() => setPhase('setup')} className="text-xs text-(--text-secondary) hover-accent">Exit</button>
+            <button onClick={exitTest} className="text-xs text-(--text-secondary) hover-accent">Exit</button>
           </div>
+          {resumed && (
+            <p className="text-xs text-(--text-secondary) mt-1.5">
+              Picked up where you left off · <button className="text-(--accent) hover-underline" onClick={exitTest}>discard this test</button>
+            </p>
+          )}
         </div>
       )}
 

@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BookOpen, Trash2, Edit2, Check, X, ChevronLeft, Clock, Cpu, FileText, Loader2, Volume2, Sparkles } from 'lucide-react';
-import { stories, lookup, media } from '../api';
+import { stories, lookup, media, studySessions } from '../api';
+import { useSessionSaver } from '../hooks/useSessionSaver';
 import type { SavedStory } from '../api';
 
 // Cache for word lookups
@@ -528,6 +529,47 @@ export function Reading() {
 
     return () => clearTimeout(saveTimeout);
   }, [activeLookupFields, selectedStory]);
+
+  // Remember how far into a story you've read, so the Study hub can bring you back.
+  const storyId = selectedStory?.id ?? null;
+  const storyName = selectedStory?.name ?? '';
+  const readSession = useSessionSaver('reading', storyId, 1000);
+  useEffect(() => {
+    if (storyId == null) return;
+    let cancelled = false;
+    let tracking = false; // don't record the scroll we do ourselves while restoring
+    let finished = false;
+    const maxScroll = () => document.documentElement.scrollHeight - window.innerHeight;
+
+    studySessions.get<{ pct: number }>('reading', storyId).then(({ session }) => {
+      const pct = session?.status === 'active' ? session.state?.pct : undefined;
+      if (cancelled) return;
+      if (!pct) { tracking = true; return; }
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: pct * maxScroll(), behavior: 'smooth' });
+        setTimeout(() => { tracking = true; }, 700);
+      });
+    }).catch(() => { tracking = true; });
+
+    const onScroll = () => {
+      if (!tracking) return;
+      const max = maxScroll();
+      if (max < 200) return; // the whole story fits on screen
+      const pct = window.scrollY / max;
+      if (pct >= 0.95) {
+        if (!finished) { finished = true; readSession.remove(); }
+        return;
+      }
+      finished = false;
+      if (pct < 0.03) return;
+      readSession.save({
+        title: storyName, detail: `${Math.round(pct * 100)}% read`,
+        progress_done: Math.round(pct * 100), progress_total: 100, state: { pct },
+      });
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => { cancelled = true; window.removeEventListener('scroll', onScroll); };
+  }, [storyId, storyName, readSession]);
 
   const loadStories = async () => {
     setLoading(true);

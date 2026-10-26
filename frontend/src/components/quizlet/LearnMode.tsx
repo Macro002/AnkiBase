@@ -4,7 +4,9 @@ import { Check, X, Settings, RotateCcw, Lightbulb, ArrowRight, Loader2 } from 'l
 import CramIcon from '../../assets/icons/brand-cram.svg?react';
 import MemorizeIcon from '../../assets/icons/brand-memorize.svg?react';
 import LearnIcon from '../../assets/icons/brand-learn.svg?react';
-import { quizlet, type QuizletCard } from '../../api';
+import WriteIcon from '../../assets/icons/brand-write.svg?react';
+import { quizlet, studySessions, type QuizletCard } from '../../api';
+import { useSessionSaver } from '../../hooks/useSessionSaver';
 import * as L from './learnEngine';
 import type { LearnSettings, LearnState, QType, Level } from './learnEngine';
 import {
@@ -57,18 +59,22 @@ function makeQuestion(state: LearnState, byId: Map<number, QuizletCard>, pool: Q
 
 export interface LearnModeProps {
   deckId: number;
+  title: string;
   cards: QuizletCard[];
   favorites: Set<number>;
   onReviewed: () => void;
   onLevels: (levels: Map<number, Level>) => void;
   onOpenMode: (mode: 'flashcards' | 'test') => void;
+  /** Write mode (typed answers only) — chosen from the mode grid or the options toggle. */
+  write: boolean;
+  onWriteChange: (write: boolean) => void;
 }
 
-export function LearnMode({ deckId, cards, favorites, onReviewed, onLevels, onOpenMode }: LearnModeProps) {
+export function LearnMode({ deckId, title, cards, favorites, onReviewed, onLevels, onOpenMode, write, onWriteChange }: LearnModeProps) {
   const [loading, setLoading] = useState(true);
   const [state, setState] = useState<LearnState | null>(null);
   const [draftSettings, setDraftSettings] = useState<LearnSettings>(L.DEFAULT_SETTINGS);
-  const [question, setQuestion] = useState<Question | null>(null);
+  const [rawQuestion, setQuestion] = useState<Question | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
   const [typed, setTyped] = useState('');
   const [retype, setRetype] = useState<string | null>(null);
@@ -77,43 +83,36 @@ export function LearnMode({ deckId, cards, favorites, onReviewed, onLevels, onOp
   const [confirmRestart, setConfirmRestart] = useState(false);
   const [brokenImages, setBrokenImages] = useState<Set<number>>(new Set());
   const inputRef = useRef<HTMLInputElement>(null);
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const latest = useRef<LearnState | null>(null);
   const autoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const byId = useMemo(() => new Map(cards.map(c => [c.id, c])), [cards]);
   const cardIds = useMemo(() => cards.map(c => c.id), [cards]);
   const showAccents = useMemo(() => usesLatinAccents(cards.flatMap(c => [c.front, c.back])), [cards]);
 
-  // --- persistence ---------------------------------------------------------
-  const flushSave = useCallback((keepalive = false) => {
-    if (!saveTimer.current) return; // nothing pending
-    clearTimeout(saveTimer.current);
-    saveTimer.current = null;
-    if (latest.current) quizlet.putState(deckId, 'learn', latest.current, keepalive).catch(() => {});
-  }, [deckId]);
+  // --- persistence (one resumable session per deck, listed in the Study hub) ---
+  const session = useSessionSaver('quizlet-learn', deckId, 600);
 
   const scheduleSave = useCallback((s: LearnState) => {
-    latest.current = s;
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => flushSave(), 600);
-    // Round boundaries are worth saving right away.
-    if (s.status !== 'active') flushSave();
-  }, [flushSave]);
+    const c = L.counts(s);
+    session.save({
+      title,
+      // The Study hub reads the "Write" prefix to reopen the right tile.
+      detail: s.status === 'complete' ? 'All terms mastered'
+        : `${s.settings.write ? 'Write' : s.settings.goal === 'cram' ? 'Cram' : 'Memorize'} · round ${s.round.number} · ${c.mastered}/${c.total} mastered`,
+      // Overall progress, so Familiar terms already move the bar.
+      progress_done: Math.round(L.progress(s) * 100),
+      progress_total: 100,
+      status: s.status === 'complete' ? 'completed' : 'active',
+      state: s,
+    }, s.status !== 'active'); // round boundaries are worth saving right away
+  }, [session, title]);
 
-  useEffect(() => {
-    // A reload or closed tab doesn't unmount React, so flush on pagehide too.
-    const onHide = () => flushSave(true);
-    window.addEventListener('pagehide', onHide);
-    return () => {
-      window.removeEventListener('pagehide', onHide);
-      flushSave();
-      if (autoTimer.current) clearTimeout(autoTimer.current);
-    };
-  }, [flushSave]);
+  useEffect(() => () => { if (autoTimer.current) clearTimeout(autoTimer.current); }, []);
 
   /** Single entry point for state changes: rebuild the question, reset inputs, save. */
-  const commit = useCallback((s: LearnState | null, save = true) => {
+  const commit = useCallback((next: LearnState | null, save = true) => {
+    // The selected tile (Learn or Write) decides write mode, for saved sessions too.
+    const s = next && { ...next, settings: { ...next.settings, write } };
     setState(s);
     setPending(null);
     setTyped('');
@@ -125,12 +124,13 @@ export function LearnMode({ deckId, cards, favorites, onReviewed, onLevels, onOp
       onLevels(L.levels(s));
       if (save) scheduleSave(s);
     }
-  }, [byId, cards, onLevels, scheduleSave]);
+  }, [byId, cards, onLevels, scheduleSave, write]);
 
   useEffect(() => {
     let cancelled = false;
-    quizlet.getState<LearnState>(deckId, 'learn').then(({ state: saved }) => {
+    studySessions.get<LearnState>('quizlet-learn', deckId).then(({ session: sess }) => {
       if (cancelled) return;
+      const saved = sess?.state;
       if (saved && saved.version === 1 && saved.order?.length) {
         const s = L.reconcile(saved, cardIds, favorites);
         setDraftSettings(s.settings);
@@ -151,10 +151,7 @@ export function LearnMode({ deckId, cards, favorites, onReviewed, onLevels, onOp
   const restart = () => {
     setConfirmRestart(false);
     setShowSettings(false);
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = null;
-    latest.current = null;
-    quizlet.deleteState(deckId, 'learn').catch(() => {});
+    session.remove();
     setState(null);
     setQuestion(null);
     setPending(null);
@@ -172,6 +169,11 @@ export function LearnMode({ deckId, cards, favorites, onReviewed, onLevels, onOp
     if (typeChanged || sideChanged || patch.starredOnly !== undefined || L.currentId(s) !== question?.id) commit(s);
     else { setState(s); scheduleSave(s); }
   };
+
+  // Switching to Write mid-question turns the current question into a typed one.
+  const question = useMemo(() => (rawQuestion && write && rawQuestion.qtype !== 'written' && !pending
+    ? { ...rawQuestion, qtype: 'written' as const }
+    : rawQuestion), [rawQuestion, write, pending]);
 
   // --- answering -----------------------------------------------------------
   const card = question ? byId.get(question.id) ?? null : null;
@@ -266,7 +268,7 @@ export function LearnMode({ deckId, cards, favorites, onReviewed, onLevels, onOp
   }
 
   const settingsPanel = showSettings && (
-    <LearnSettingsPanel settings={draftSettings} hasStarred={favorites.size > 0} canPick={cards.length >= 2}
+    <LearnSettingsPanel settings={draftSettings} write={write} onWriteChange={onWriteChange} hasStarred={favorites.size > 0} canPick={cards.length >= 2}
       onChange={updateSettings} onClose={() => setShowSettings(false)} onRestart={() => setConfirmRestart(true)} active={!!state} />
   );
   const restartDialog = confirmRestart && (
@@ -287,15 +289,19 @@ export function LearnMode({ deckId, cards, favorites, onReviewed, onLevels, onOp
     return (
       <>
         <div className="card relative flex flex-col space-y-5 overflow-hidden" style={{ padding: '1.5rem' }}>
-          <LearnIcon className="absolute top-4 right-4 w-7 h-7 opacity-20 pointer-events-none" style={{ color: 'var(--accent)' }} />
+          {write
+            ? <WriteIcon className="absolute top-4 right-4 w-7 h-7 opacity-20 pointer-events-none" style={{ color: 'var(--accent)' }} />
+            : <LearnIcon className="absolute top-4 right-4 w-7 h-7 opacity-20 pointer-events-none" style={{ color: 'var(--accent)' }} />}
           <div className="text-center">
-            <h2 className="text-xl font-bold mb-1">Choose a goal for this session</h2>
+            <h2 className="text-xl font-bold mb-1">{write ? 'Choose a goal for Write' : 'Choose a goal for this session'}</h2>
             <p className="text-sm text-(--text-secondary)">This will shape how your session works. Your progress is saved as you go.</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {([
-              { g: 'cram' as const, title: 'Cram for a test', desc: 'Get each term right once. Fast review of the whole set.', Icon: CramIcon },
-              { g: 'memorize' as const, title: 'Memorize it all', desc: 'Recognize it, then recall it. Each term needs two correct answers in separate rounds.', Icon: MemorizeIcon },
+              { g: 'cram' as const, title: 'Cram for a test', Icon: CramIcon,
+                desc: write ? 'Type each term correctly once. Fast review of the whole set.' : 'Get each term right once. Fast review of the whole set.' },
+              { g: 'memorize' as const, title: 'Memorize it all', Icon: MemorizeIcon,
+                desc: write ? 'Type each term correctly twice, in separate rounds.' : 'Recognize it, then recall it. Each term needs two correct answers in separate rounds.' },
             ]).map(({ g, title, desc, Icon }) => (
               <button key={g} onClick={() => start({ ...draftSettings, goal: g })}
                 className="group rounded-xl p-4 bg-(--bg-tertiary) hover:bg-(--accent)/10 transition-colors text-left flex flex-col">
@@ -687,8 +693,8 @@ function LearnComplete({ state, byId, onAgain, onTest, onFlashcards }: {
   );
 }
 
-function LearnSettingsPanel({ settings, hasStarred, canPick, active, onChange, onClose, onRestart }: {
-  settings: LearnSettings; hasStarred: boolean; canPick: boolean; active: boolean;
+function LearnSettingsPanel({ settings, write, onWriteChange, hasStarred, canPick, active, onChange, onClose, onRestart }: {
+  settings: LearnSettings; write: boolean; onWriteChange: (v: boolean) => void; hasStarred: boolean; canPick: boolean; active: boolean;
   onChange: (p: Partial<LearnSettings>) => void; onClose: () => void; onRestart: () => void;
 }) {
   const typeRows: { key: QType; label: string; hint: string }[] = [
@@ -700,6 +706,9 @@ function LearnSettingsPanel({ settings, hasStarred, canPick, active, onChange, o
   const enabledCount = typeRows.filter(r => settings.types[r.key]).length;
   return (
     <SidePanel title="Learn options" onClose={onClose}>
+      <SettingRow title="Write mode" hint="Type every answer — no multiple choice">
+        <Toggle on={write} onChange={onWriteChange} />
+      </SettingRow>
       <SettingRow title="Goal" hint={settings.goal === 'memorize' ? 'Two correct answers per term' : 'One correct answer per term'}>
         <Segmented value={settings.goal} onChange={v => onChange({ goal: v })}
           options={[{ value: 'memorize', label: 'Memorize' }, { value: 'cram', label: 'Cram' }]} />
@@ -708,10 +717,12 @@ function LearnSettingsPanel({ settings, hasStarred, canPick, active, onChange, o
         <Segmented value={settings.answerWith} onChange={v => onChange({ answerWith: v })}
           options={[{ value: 'definition', label: 'Definition' }, { value: 'term', label: 'Term' }, { value: 'both', label: 'Both' }]} />
       </SettingRow>
-      <div className="p-6 space-y-4">
+      <div className={`p-6 space-y-4 transition-opacity ${write ? 'opacity-40 pointer-events-none' : ''}`}>
         <div>
           <p className="font-medium text-sm">Question types</p>
-          <p className="text-xs text-(--text-secondary) mt-0.5">New terms start with recognition questions; familiar terms move on to written.</p>
+          <p className="text-xs text-(--text-secondary) mt-0.5">
+            {write ? 'Write mode asks only written questions.' : 'New terms start with recognition questions; familiar terms move on to written.'}
+          </p>
         </div>
         {typeRows.map(r => {
           const needsPool = (r.key === 'mc' || r.key === 'tf') && !canPick;

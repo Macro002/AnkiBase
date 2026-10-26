@@ -3,6 +3,8 @@ import { useParams, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Eye, RotateCcw, ThumbsDown, ThumbsUp, Check, Volume2, Undo2, X } from 'lucide-react';
 import { decks, cards, media, type Card } from '../api';
+import { useSessionSaver } from '../hooks/useSessionSaver';
+import { StudyHub } from './StudyHub';
 
 // Process card HTML to load images via media API
 function processCardHtml(html: string, mediaCache: Map<string, string>): string {
@@ -334,6 +336,24 @@ export function Study() {
     }
   }, [loadNextCard]);
 
+  // Report progress to the Study hub so this deck shows up under "continue".
+  const session = useSessionSaver('anki', id ?? null);
+  useEffect(() => {
+    if (!id || !deckName || initialLoad) return;
+    if (!currentCard) {
+      // Nothing left to review in this deck: the session is finished.
+      session.remove();
+      return;
+    }
+    if (sessionStats.reviewed === 0) return; // only once you've actually started
+    session.save({
+      title: deckName,
+      detail: `${remaining} left`,
+      progress_done: sessionStats.reviewed,
+      progress_total: sessionStats.reviewed + remaining,
+    });
+  }, [id, deckName, initialLoad, currentCard, remaining, sessionStats.reviewed, session]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -398,6 +418,8 @@ export function Study() {
     }
     return '';
   };
+
+  if (!id) return <StudyHub />;
 
   if (!deckName) {
     return (

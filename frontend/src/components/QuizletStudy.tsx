@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import confetti from 'canvas-confetti';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft, Star, ChevronLeft, ChevronRight, ChevronDown,
   Undo2, Settings, X, Check,
@@ -12,11 +12,13 @@ import { Flashcard, useFlashcard } from 'react-quizlet-flashcard';
 import 'react-quizlet-flashcard/dist/index.css';
 import FlashcardsIcon  from '../assets/icons/brand-flashcards.svg?react';
 import LearnIcon       from '../assets/icons/brand-learn.svg?react';
+import WriteIcon       from '../assets/icons/brand-write.svg?react';
 import TestIcon       from '../assets/icons/brand-test.svg?react';
 import BlocksIcon     from '../assets/icons/brand-blocks.svg?react';
 import BlastIcon      from '../assets/icons/brand-blast.svg?react';
 import MatchIcon      from '../assets/icons/brand-match.svg?react';
-import { quizlet, type QuizletCard } from '../api';
+import { quizlet, studySessions, type QuizletCard } from '../api';
+import { useSessionSaver } from '../hooks/useSessionSaver';
 import { shuffle } from './quizlet/shared';
 import { levels as learnLevelsOf, type Level, type LearnState } from './quizlet/learnEngine';
 import { LearnMode } from './quizlet/LearnMode';
@@ -69,7 +71,12 @@ function DonutChart({ percent }: { percent: number }) {
   );
 }
 
-type StudyMode = 'flashcards' | 'learn' | 'test' | 'blocks' | 'blast' | 'match';
+type StudyMode = 'flashcards' | 'learn' | 'write' | 'test' | 'blocks' | 'blast' | 'match';
+
+interface FlashcardsSaved {
+  queue: number[]; index: number; known: number[]; unknown: number[];
+  trackProgress: boolean; isShuffled: boolean; frontSide: 'term' | 'definition'; studyStarredOnly: boolean;
+}
 
 const MODES: { id: StudyMode; label: string; Icon: typeof FlashcardsIcon; active: boolean }[] = [
   { id: 'flashcards', label: 'Flashcards', Icon: FlashcardsIcon, active: true },
@@ -82,10 +89,74 @@ const MODES: { id: StudyMode; label: string; Icon: typeof FlashcardsIcon; active
 
 // desktop: 3-col grid, icon left + label right
 // mobile: rendered separately below progress bar as 2-col grid, icon+label stacked
+/** Learn and Write share one tile; the chevron on its right switches between them. */
+const LEARN_VARIANTS = {
+  learn: { label: 'Learn', Icon: LearnIcon },
+  write: { label: 'Write', Icon: WriteIcon },
+} as const;
+
 function ModeGrid({ mobile = false, activeMode = 'flashcards', onModeClick }: { mobile?: boolean; activeMode?: StudyMode; onModeClick?: (id: StudyMode) => void }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e: PointerEvent) => { if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenuOpen(false); };
+    window.addEventListener('pointerdown', onDown);
+    window.addEventListener('keydown', onKey);
+    return () => { window.removeEventListener('pointerdown', onDown); window.removeEventListener('keydown', onKey); };
+  }, [menuOpen]);
+
+  const tileClass = (isCurrent: boolean, active = true) => `rounded-lg font-medium transition-colors ${
+    mobile
+      ? 'flex flex-col items-center justify-center gap-1.5 py-4 px-2 text-xs'
+      : 'flex items-center gap-3 px-4 py-3 text-sm'
+  } ${
+    !active
+      ? 'bg-(--bg-secondary) text-(--text-secondary) opacity-40 cursor-not-allowed'
+      : isCurrent
+      ? 'bg-(--accent)/10 text-(--accent)'
+      : 'bg-(--bg-secondary) text-(--text-secondary) hover:bg-(--bg-tertiary) hover:text-white'
+  }`;
+  const iconClass = mobile ? 'w-8 h-8' : 'w-6 h-6';
+  const iconStyle = { color: 'rgba(var(--accent-rgb), 0.55)' };
+
   return (
     <div className={mobile ? 'grid grid-cols-2 gap-2' : 'grid grid-cols-3 gap-2'}>
       {MODES.map(({ id, label, Icon, active }) => {
+        if (id === 'learn') {
+          const shown = activeMode === 'write' ? 'write' : 'learn';
+          const other = shown === 'learn' ? 'write' : 'learn';
+          const { label: shownLabel, Icon: ShownIcon } = LEARN_VARIANTS[shown];
+          const { label: otherLabel, Icon: OtherIcon } = LEARN_VARIANTS[other];
+          const isCurrent = activeMode === 'learn' || activeMode === 'write';
+          return (
+            <div key={id} ref={menuRef} className="relative">
+              <button onClick={() => onModeClick?.(shown)} className={`${tileClass(isCurrent)} w-full h-full ${mobile ? '' : 'pr-11'}`}>
+                <ShownIcon className={iconClass} style={iconStyle} />
+                {shownLabel}
+              </button>
+              <button
+                onClick={() => setMenuOpen(o => !o)}
+                aria-label="More Learn modes" aria-expanded={menuOpen}
+                className={`absolute ${mobile ? 'top-1.5 right-1.5' : 'top-1/2 -translate-y-1/2 right-2'} w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
+                  isCurrent ? 'text-(--accent) hover:bg-(--accent)/15' : 'text-(--text-secondary) hover:text-white hover:bg-white/10'}`}>
+                <ChevronDown className={`w-4 h-4 transition-transform ${menuOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {menuOpen && (
+                <div className="mode-menu-in absolute z-30 left-0 right-0 top-full mt-1.5 rounded-lg bg-(--bg-secondary) border border-white/8 shadow-xl p-1">
+                  <button onClick={() => { setMenuOpen(false); onModeClick?.(other); }}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium text-(--text-secondary) hover:bg-(--bg-tertiary) hover:text-white transition-colors">
+                    <OtherIcon className="w-5 h-5" style={iconStyle} />
+                    <span className="flex-1 text-left">{otherLabel}</span>
+                    {other === 'write' && <span className="text-[11px] text-(--text-secondary)">type every answer</span>}
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        }
         const isCurrent = id === activeMode;
         return (
           <button
@@ -93,22 +164,9 @@ function ModeGrid({ mobile = false, activeMode = 'flashcards', onModeClick }: { 
             disabled={!active}
             onClick={active ? () => onModeClick?.(id) : undefined}
             title={active ? undefined : 'Coming soon'}
-            className={`rounded-lg font-medium transition-colors ${
-              mobile
-                ? 'flex flex-col items-center justify-center gap-1.5 py-4 px-2 text-xs'
-                : 'flex items-center gap-3 px-4 py-3 text-sm'
-            } ${
-              !active
-                ? 'bg-(--bg-secondary) text-(--text-secondary) opacity-40 cursor-not-allowed'
-                : isCurrent
-                ? 'bg-(--accent)/10 text-(--accent)'
-                : 'bg-(--bg-secondary) text-(--text-secondary) hover:bg-(--bg-tertiary) hover:text-white'
-            }`}
+            className={tileClass(isCurrent, active)}
           >
-            <Icon
-              className={mobile ? 'w-8 h-8' : 'w-6 h-6'}
-              style={{ color: active ? 'rgba(var(--accent-rgb), 0.55)' : undefined }}
-            />
+            <Icon className={iconClass} style={active ? iconStyle : undefined} />
             {label}
           </button>
         );
@@ -273,25 +331,79 @@ export function QuizletStudy() {
   const backEditRef = useRef<HTMLDivElement>(null);
   const editImageInputRef = useRef<HTMLInputElement>(null);
 
-  const [mode, setMode] = useState<StudyMode>('flashcards');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [mode, setMode] = useState<StudyMode>(() => {
+    const m = searchParams.get('mode');
+    return MODES.some(x => x.id === m) || m === 'write' ? (m as StudyMode) : 'flashcards';
+  });
   const [learnLevels, setLearnLevels] = useState<Map<number, Level>>(new Map());
 
+  const fcSessionExists = useRef(false);
   const current = queue[index];
 
   useEffect(() => {
-    Promise.all([quizlet.getDeck(deckId), quizlet.deckStats(deckId), quizlet.getFavorites(deckId)]).then(([deck, stats, favs]) => {
+    Promise.all([
+      quizlet.getDeck(deckId), quizlet.deckStats(deckId), quizlet.getFavorites(deckId),
+      studySessions.get<FlashcardsSaved>('quizlet-flashcards', deckId).catch(() => ({ session: null })),
+    ]).then(([deck, stats, favs, fc]) => {
       setTitle(deck.title);
       setCards(deck.cards);
-      setQueue(deck.cards);
       setStudiedToday(stats.studied_today);
       setFavorites(new Set(favs.card_ids));
+      // Pick up where the last flashcards session left off.
+      const saved = fc.session?.status === 'active' ? fc.session.state : null;
+      if (saved) {
+        const byId = new Map(deck.cards.map(c => [c.id, c]));
+        const restored = saved.queue.map(id => byId.get(id)).filter((c): c is QuizletCard => !!c);
+        const missing = saved.studyStarredOnly ? [] : deck.cards.filter(c => !saved.queue.includes(c.id));
+        const q = [...restored, ...missing];
+        const i = Math.min(saved.index, Math.max(0, q.length - 1));
+        setQueue(q);
+        setIndex(i);
+        prevIndexRef.current = i;
+        trackProgressIndexRef.current = i;
+        setKnown(new Set(saved.known.filter(id => byId.has(id))));
+        setUnknown(new Set(saved.unknown.filter(id => byId.has(id))));
+        setTrackProgress(saved.trackProgress);
+        setIsShuffled(saved.isShuffled);
+        setFrontSide(saved.frontSide);
+        setStudyStarredOnly(saved.studyStarredOnly);
+        fcSessionExists.current = true;
+      } else {
+        setQueue(deck.cards);
+      }
       setLoading(false);
     });
     // Learn progress drives the "Still learning / Mastered" labels in the term list.
-    quizlet.getState<LearnState>(deckId, 'learn')
-      .then(r => { if (r.state?.order) setLearnLevels(learnLevelsOf(r.state)); })
+    studySessions.get<LearnState>('quizlet-learn', deckId)
+      .then(r => { if (r.session?.state?.order) setLearnLevels(learnLevelsOf(r.session.state)); })
       .catch(() => {});
   }, [deckId]);
+
+  // Save the flashcards session so it can be resumed from the Study hub.
+  const fcSession = useSessionSaver('quizlet-flashcards', deckId);
+  useEffect(() => {
+    if (loading || !title) return;
+    const started = index > 0 || known.size > 0 || unknown.size > 0;
+    if (sessionDone || !started) {
+      // Finished, or back at the very start: nothing to resume.
+      if (sessionDone || fcSessionExists.current) fcSession.remove();
+      fcSessionExists.current = false;
+      return;
+    }
+    fcSessionExists.current = true;
+    const state: FlashcardsSaved = {
+      queue: queue.map(c => c.id), index, known: [...known], unknown: [...unknown],
+      trackProgress, isShuffled, frontSide, studyStarredOnly,
+    };
+    fcSession.save({
+      title,
+      detail: trackProgress ? `${known.size} known · ${unknown.size} still learning` : `Card ${index + 1} of ${queue.length}`,
+      progress_done: trackProgress ? known.size + unknown.size : index + 1,
+      progress_total: queue.length,
+      state,
+    });
+  }, [loading, title, queue, index, known, unknown, trackProgress, isShuffled, frontSide, studyStarredOnly, sessionDone, fcSession]);
 
   const advance = useCallback((nextIndex: number) => {
     setSlideDir(nextIndex >= prevIndexRef.current ? 'right' : 'left');
@@ -599,9 +711,18 @@ export function QuizletStudy() {
   const onReviewed = useCallback(() => setStudiedToday(t => t + 1), []);
   const openMode = useCallback((m: StudyMode) => {
     setMode(m);
+    // Keep the mode in the URL so reloads and Study-hub links land in the right place.
+    setSearchParams(m === 'flashcards' ? {} : { mode: m }, { replace: true });
     setSessionDone(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, []);
+  }, [setSearchParams]);
+
+  // From the Learn options toggle: switch Learn <-> Write without scrolling away.
+  const setLearnVariant = useCallback((write: boolean) => {
+    const m: StudyMode = write ? 'write' : 'learn';
+    setMode(m);
+    setSearchParams({ mode: m }, { replace: true });
+  }, [setSearchParams]);
 
   if (loading) {
     return (
@@ -848,11 +969,12 @@ export function QuizletStudy() {
         </div>
       </>)}
 
-      {mode === 'learn' && (
-        <LearnMode deckId={deckId} cards={cards} favorites={favorites} onReviewed={onReviewed}
-          onLevels={setLearnLevels} onOpenMode={openMode} />
+      {(mode === 'learn' || mode === 'write') && (
+        <LearnMode deckId={deckId} title={title} cards={cards} favorites={favorites} onReviewed={onReviewed}
+          onLevels={setLearnLevels} onOpenMode={openMode}
+          write={mode === 'write'} onWriteChange={setLearnVariant} />
       )}
-      {mode === 'test' && <TestMode deckId={deckId} cards={cards} favorites={favorites} onReviewed={onReviewed} onOpenMode={openMode} />}
+      {mode === 'test' && <TestMode deckId={deckId} title={title} cards={cards} favorites={favorites} onReviewed={onReviewed} onOpenMode={openMode} />}
       {mode === 'match' && <MatchMode deckId={deckId} cards={cards} onReviewed={onReviewed} />}
       {mode === 'blast' && <BlastMode deckId={deckId} cards={cards} onReviewed={onReviewed} />}
       {mode === 'blocks' && <BlocksMode deckId={deckId} cards={cards} onReviewed={onReviewed} />}
@@ -863,7 +985,7 @@ export function QuizletStudy() {
       </div>
 
       {/* Card list */}
-      {(mode === 'flashcards' || mode === 'learn') && (() => {
+      {(mode === 'flashcards' || mode === 'learn' || mode === 'write') && (() => {
         // Learn progress wins; flashcard "Track progress" marks fill in for terms Learn hasn't touched.
         const statusOf = (id: number): 'mastered' | 'familiar' | 'learning' | null => {
           const lvl = learnLevels.get(id) ?? 0;
@@ -908,7 +1030,7 @@ export function QuizletStudy() {
                 placeholder="Search terms..."
                 value={listSearch}
                 onChange={e => setListSearch(e.target.value)}
-                className="input flex-1"
+                className="input flex-1 min-w-0"
               />
               <select
                 value={listFilter}
@@ -1275,6 +1397,10 @@ export function QuizletStudy() {
         }
         .card-swipe-left  { animation: swipeLeft  0.43s cubic-bezier(0.4, 0, 0.9, 0.6) forwards; }
         .card-swipe-right { animation: swipeRight 0.43s cubic-bezier(0.4, 0, 0.9, 0.6) forwards; }
+
+        /* Learn / Write dropdown */
+        @keyframes modeMenuIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+        .mode-menu-in { animation: modeMenuIn 0.15s ease-out; }
 
         /* Phase bar slide-in when window advances */
         @keyframes phaseBarSlideIn {

@@ -582,7 +582,7 @@ export interface QuizletCard {
   position: number;
 }
 
-export type QuizletStateMode = 'learn' | 'match' | 'blast' | 'blocks';
+export type QuizletStateMode = 'match' | 'blast' | 'blocks';
 
 export const quizlet = {
   scrape: (url: string) =>
@@ -638,4 +638,45 @@ export const quizlet = {
       method: 'POST',
       body: JSON.stringify({ url }),
     }),
+};
+
+// --- Study sessions (resumable activities listed in the Study hub) ---
+
+export type SessionKind = 'quizlet-learn' | 'quizlet-flashcards' | 'quizlet-test' | 'anki' | 'reading';
+
+export interface StudySession {
+  kind: SessionKind;
+  ref_id: string;
+  title: string;
+  detail: string | null;
+  progress_done: number;
+  progress_total: number;
+  status: 'active' | 'completed';
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SessionUpdate {
+  title: string;
+  detail?: string | null;
+  progress_done?: number;
+  progress_total?: number;
+  status?: 'active' | 'completed';
+  /** Omit to keep the previously saved state. */
+  state?: unknown;
+}
+
+export const studySessions = {
+  list: () => fetchAPI<{ sessions: StudySession[] }>('/sessions'),
+  get: <T,>(kind: SessionKind, ref: string | number) =>
+    fetchAPI<{ session: (StudySession & { state: T | null }) | null }>(`/sessions/${kind}/${encodeURIComponent(String(ref))}`),
+  /** `keepalive` lets the save finish while the page is unloading. */
+  put: (kind: SessionKind, ref: string | number, update: SessionUpdate, keepalive = false) =>
+    fetchAPI<{ success: boolean }>(`/sessions/${kind}/${encodeURIComponent(String(ref))}`, {
+      method: 'PUT',
+      body: JSON.stringify(update),
+      keepalive,
+    }),
+  remove: (kind: SessionKind, ref: string | number) =>
+    fetchAPI<{ success: boolean }>(`/sessions/${kind}/${encodeURIComponent(String(ref))}`, { method: 'DELETE' }),
 };

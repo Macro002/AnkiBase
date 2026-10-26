@@ -29,6 +29,7 @@ verbose() { [ "$VERBOSE" -eq 1 ] && echo -e "    ${NC}$1" || true; }
 # Redirect noisy commands based on verbosity
 if [ "$VERBOSE" -eq 1 ]; then
     Q=""
+    exec 3>&1         # fd 3 = the terminal in verbose mode
 else
     Q=">/dev/null 2>&1"
     exec 3>/dev/null  # fd 3 = /dev/null in quiet mode
@@ -83,17 +84,6 @@ else
     verbose "Node.js $(node --version) already present"
 fi
 
-# ── Docker ────────────────────────────────────────────────────────────────────
-if ! command -v docker &>/dev/null; then
-    step "Installing Docker..."
-    run curl -fsSL https://get.docker.com | sh
-    run systemctl enable docker
-    systemctl start docker
-    success "Docker installed"
-else
-    verbose "Docker already present"
-fi
-
 # ── Find available port ───────────────────────────────────────────────────────
 find_port() {
     local port=8000
@@ -145,7 +135,6 @@ APP_SECRET_KEY=${SECRET_KEY}
 ANKIWEB_ENCRYPTION_KEY=${ENCRYPTION_KEY}
 APP_PORT=${APP_PORT}
 CORS_ORIGINS=http://localhost:${APP_PORT}
-ANKICONNECT_URL=http://localhost:8765
 EOF
     verbose "Config generated (.env)"
 else
@@ -161,8 +150,7 @@ step "Configuring service..."
 cat > /etc/systemd/system/ankibase.service <<EOF
 [Unit]
 Description=AnkiBase Backend
-After=network.target docker.service
-Requires=docker.service
+After=network.target ankibase-anki.service
 
 [Service]
 Type=simple
@@ -178,6 +166,24 @@ EOF
 
 run systemctl daemon-reload
 run systemctl enable ankibase
+
+# ── Anki engine (anki-cli) ────────────────────────────────────────────────────
+# Its own virtualenv and service (ankibase-anki); moves accounts off the old Docker
+# containers first when upgrading.
+step "Setting up the Anki engine (first time takes a minute)..."
+if (cd "$INSTALL_DIR/backend" && "$INSTALL_DIR/backend/venv/bin/python3" -c "
+import anki_server, anki_migration, sys
+anki_server.install_engine()
+if anki_migration.pending():
+    if anki_server.healthy():
+        anki_server.stop()
+    anki_migration.migrate()
+sys.exit(0 if anki_server.ensure_running() else 1)
+") >&3 2>&1; then
+    success "Anki engine running"
+else
+    warn "Anki engine didn't start — check: journalctl -u ankibase-anki -n 30"
+fi
 
 # Kill any stale process on the port before starting
 STALE_PID=$(ss -tlnp 2>/dev/null | grep ":${APP_PORT} " | grep -oP 'pid=\K[0-9]+' | head -1)

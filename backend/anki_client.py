@@ -2,18 +2,30 @@ import httpx
 from typing import Any
 
 
-class AnkiConnectClient:
-    """Client for communicating with AnkiConnect API."""
+class AnkiError(Exception):
+    """An error reported by Anki (anki-cli), with its v1 error type when known."""
 
-    def __init__(self, url: str = "http://localhost:8765"):
-        self.url = url
+    def __init__(self, message: str, code: str = ""):
+        super().__init__(message)
+        self.code = code
+
+
+class AnkiConnectClient:
+    """One account's collection on the anki-cli engine, through AnkiConnect's protocol
+    (`request`) or anki-cli's v1 API (`rpc`)."""
+
+    def __init__(self, url: str, key: str | None = None):
+        self.url = url if url.endswith("/") else url + "/"
+        self.key = key
         self.version = 6
 
     async def request(self, action: str, timeout: float = 30.0, **params) -> Any:
-        """Make a request to AnkiConnect."""
+        """Make a request with AnkiConnect's protocol."""
         payload = {"action": action, "version": self.version}
         if params:
             payload["params"] = params
+        if self.key:
+            payload["key"] = self.key
 
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(self.url, json=payload)
@@ -21,9 +33,22 @@ class AnkiConnectClient:
             result = response.json()
 
             if result.get("error"):
-                raise Exception(result["error"])
+                raise AnkiError(result["error"])
 
             return result.get("result")
+
+    async def rpc(self, method: str, timeout: float = 30.0, **params) -> Any:
+        """Call an anki-cli v1 method (sync.run, sync.login, …)."""
+        headers = {"Authorization": f"Bearer {self.key}"} if self.key else {}
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(self.url + "api/v1", headers=headers,
+                                         json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
+            response.raise_for_status()
+            reply = response.json()
+        if "error" in reply:
+            error = reply["error"]
+            raise AnkiError(error.get("message", "Anki error"), (error.get("data") or {}).get("type", ""))
+        return reply["result"]
 
     # Deck operations
     async def get_deck_names(self) -> list[str]:
@@ -119,25 +144,19 @@ class AnkiConnectClient:
         """
         return await self.request("findCards", query=f'deck:"{deck}" is:new')
 
-    # Sync
-    async def sync(self) -> None:
-        """Sync with AnkiWeb. Requires Anki to be logged in.
+    # Sync (AnkiWeb or a self-hosted server, with the login stored by sync.login)
+    async def sync(self) -> dict:
+        """A normal sync. One-way full syncs (an empty side) happen automatically; when both
+        sides changed, the result's outcome is "fullSyncRequired" and nothing is changed."""
+        return await self.rpc("sync.run", timeout=600.0, mode="auto")
 
-        Now handles all sync statuses automatically:
-        - Status 0/1: Normal sync
-        - Status 2: Conflict - returns error asking user to choose
-        - Status 3: Auto-downloads from AnkiWeb
-        - Status 4: Auto-uploads to AnkiWeb
-        """
-        return await self.request("sync", timeout=120.0)
+    async def full_upload(self) -> dict:
+        """Replace the server's copy with this collection."""
+        return await self.rpc("sync.run", timeout=600.0, mode="upload")
 
-    async def full_upload(self) -> None:
-        """Force upload entire local collection to AnkiWeb, overwriting remote data."""
-        return await self.request("fullUpload", timeout=120.0)
-
-    async def full_download(self) -> None:
-        """Force download entire collection from AnkiWeb, overwriting local data."""
-        return await self.request("fullDownload", timeout=120.0)
+    async def full_download(self) -> dict:
+        """Replace this collection with the server's copy."""
+        return await self.rpc("sync.run", timeout=600.0, mode="download")
 
     # Media
     async def retrieve_media_file(self, filename: str) -> str | None:
@@ -156,8 +175,8 @@ class AnkiConnectClient:
 
     # Import/Export
     async def import_package(self, path: str) -> None:
-        """Import an .apkg file from the given path."""
-        return await self.request("importPackage", timeout=120.0, path=path)
+        """Import an .apkg file from a path on this server."""
+        return await self.request("importPackage", timeout=600.0, path=path)
 
     # Deck management
     async def delete_decks(self, deck_names: list[str]) -> None:

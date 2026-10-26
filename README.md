@@ -80,19 +80,19 @@ Bottom tab bar, safe-area aware layouts, large touch targets and a full-width an
 
 ### 🏠 Built to self-host
 
-- **Multi-user:** an admin panel and per-user permissions. Each Anki account gets its **own isolated Anki container**.
+- **Multi-user:** an admin panel and per-user permissions. Each Anki account gets its **own collection, media and AnkiWeb login**.
 - **One-line install** with optional nginx and Let's Encrypt, and **in-app updates** with one click.
 - API keys are stored encrypted, and the AI is optional: everything else works without it.
 
 ## 🧭 How it fits together
 
-<img src="docs/public/media/architecture.webp" alt="Architecture: browser, AnkiBase server, Anki containers, AnkiWeb, AI provider" width="100%">
+<img src="docs/public/media/architecture.webp" alt="Architecture: browser, AnkiBase server, Anki engine (anki-cli), AnkiWeb, AI provider" width="100%">
 
 | Layer | Tech |
 |---|---|
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS v4 |
 | Backend | FastAPI + Uvicorn, SQLite |
-| Anki runtime | [headless Anki](https://hub.docker.com/r/thisisnttheway/headless-anki) + AnkiConnect, one Docker container per account |
+| Anki engine | [anki-cli](https://github.com/Macro002/anki-cli): Anki's own engine as one small service, a collection per account. No Docker, no Anki Desktop |
 | AI (optional) | Anthropic Claude, OpenAI, Google Gemini (bring your own key) |
 
 ## 🚀 Install
@@ -105,14 +105,14 @@ curl -fsSL https://raw.githubusercontent.com/Macro002/AnkiBase/main/install.sh |
 
 The installer:
 
-1. Installs Docker, Node.js 20 and Python if they're missing
+1. Installs Node.js 20 and Python if they're missing
 2. Builds the frontend
 3. Picks a free port, starting at 8000
 4. Generates the secret and encryption keys
-5. Creates the `ankibase` systemd service
+5. Creates the `ankibase` systemd service (and `ankibase-anki` for the Anki engine)
 6. Optionally sets up nginx with a Let's Encrypt certificate
 
-Open the address it prints. A setup wizard creates your admin account and your first Anki container.
+Open the address it prints. A setup wizard creates your admin account and your first Anki account.
 
 ### Updating
 
@@ -128,8 +128,19 @@ curl -fsSL https://raw.githubusercontent.com/Macro002/AnkiBase/main/install.sh |
 journalctl -u ankibase -f      # live logs
 systemctl restart ankibase     # restart
 systemctl status ankibase      # status
-docker ps --filter name=anki   # Anki containers
+journalctl -u ankibase-anki -f # Anki engine logs
 ```
+
+Collections live in `/opt/ankibase/anki-data/<account>/` (Anki's usual layout: `collection.anki2`,
+`collection.media/`, `backups/`), with a backup every hour.
+
+### Coming from the Docker version
+
+Older versions ran one headless Anki container per account. The first start after updating
+moves every account to the new engine on its own: it stops each container, copies the
+collection and media into `/opt/ankibase/anki-data/`, carries the AnkiWeb login over and
+removes the container. The Docker volumes are left untouched, so delete them yourself once
+you're happy (`docker volume ls`, `docker volume rm …`).
 
 ## 🛠️ Development
 

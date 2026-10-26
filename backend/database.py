@@ -745,6 +745,16 @@ def get_next_available_port() -> int:
         return max_port + 1
 
 
+def rename_account(account_id: int, name: str) -> bool:
+    """Rename an account (its Anki profile is renamed by the caller)."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE anki_accounts SET container_name = ?, volume_name = ? WHERE id = ?",
+                       (name, "anki-cli:" + name, account_id))
+        conn.commit()
+        return cursor.rowcount > 0
+
+
 def set_ankiweb_email(account_id: int, email: Optional[str]) -> bool:
     """Set the AnkiWeb email for an account."""
     with get_db() as conn:

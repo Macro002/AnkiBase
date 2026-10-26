@@ -23,18 +23,18 @@ curl -fsSL https://raw.githubusercontent.com/Macro002/AnkiBase/main/install.sh |
 ```
 
 The installer will:
-- Install Docker, Node.js 20, and Python if not already present
+- Install Node.js 20 and Python if not already present
 - Build the frontend
 - Find an available port (starting at 8000)
 - Generate a secret key and encryption config
-- Set up a `systemd` service (`ankibase`)
+- Set up the `systemd` services (`ankibase`, and `ankibase-anki` for the Anki engine)
 - Optionally configure nginx reverse proxy + SSL via Certbot
 
 ### Complete the setup wizard
 
 On first visit, a setup wizard walks you through:
 1. Creating your admin account
-2. Initializing your first Anki container
+2. Creating your first Anki account
 
 ### Log in
 
@@ -65,18 +65,22 @@ systemctl restart ankibase
 systemctl status ankibase
 ```
 
-## Docker (Anki container)
+## The Anki engine
 
-Each user account runs its own headless Anki container using the `thisisnttheway/headless-anki` image. These are managed automatically — you don't need to interact with them directly.
+Anki runs as one small service, `ankibase-anki`, using [anki-cli](https://github.com/Macro002/anki-cli): Anki's own engine (the same Rust core as Anki Desktop) without a desktop app or Docker. Every account is a folder with its own collection, media and AnkiWeb login:
 
 ```bash
-# List running Anki containers
-docker ps --filter "name=anki"
+# Engine logs
+journalctl -u ankibase-anki -f
 
-# View container logs
-docker logs <container-name>
+# The collections
+ls /opt/ankibase/anki-data/
 ```
 
 <Callout type="info">
-  AnkiConnect runs on port 8765 inside each container and is mapped to a unique host port per account. The backend communicates with AnkiConnect over this port.
+  The engine listens on 127.0.0.1 only and requires an API key, which is generated on first start and kept in `/opt/ankibase/anki-data/.env`. It keeps an automatic backup of each collection every hour in `<account>/backups/`.
 </Callout>
+
+### Coming from the Docker version
+
+Older versions ran one `headless-anki` container per account. The first start after updating moves every account over automatically: each container is stopped, its collection and media are copied into `/opt/ankibase/anki-data/`, the AnkiWeb login is carried over and the container is removed. Docker volumes are left untouched as a safety net, so remove them yourself once everything looks right (`docker volume ls`).

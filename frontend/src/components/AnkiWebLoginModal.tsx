@@ -88,18 +88,11 @@ export function AnkiWebLoginModal({ isOpen, onClose, onSuccess }: AnkiWebLoginMo
     setLoading(true);
 
     try {
-      // Step 1: Authenticate with AnkiWeb and save credentials
+      // Log in (Anki keeps the sync key; the password isn't stored)
       await ankiweb.login(email, password);
       setLoading(false);
       setEmail('');
       setPassword('');
-
-      // Step 2: Wait for container to restart
-      setCheckingStatus(true);
-      setStatusMessage(t('ankiweb.restartingContainer'));
-      await new Promise(resolve => setTimeout(resolve, 12000)); // Wait 12 seconds
-
-      // Step 3: Verify configuration
       setStatusMessage(t('ankiweb.verifyingConfig'));
       await checkLoginStatus();
 

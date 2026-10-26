@@ -102,11 +102,9 @@ export function AccountSwitcherModal({ isOpen, onClose, onSwitch }: AccountSwitc
     setLoading(true);
 
     try {
-      // TODO: Add rename endpoint to backend
-      // For now, just close the modal
+      await accounts.rename(renameModal.account.id, renameModal.newName.trim());
       setRenameModal(null);
-      // await accounts.rename(renameModal.account.id, renameModal.newName.trim());
-      // await loadAccounts();
+      await loadAccounts();
     } catch (err) {
       setError(err instanceof Error ? err.message : t('accounts.renameFailed'));
     } finally {
@@ -223,7 +221,7 @@ export function AccountSwitcherModal({ isOpen, onClose, onSwitch }: AccountSwitc
             </div>
           ) : (
             <div className="space-y-3 mb-4">
-              {accountList.map((account, index) => {
+              {accountList.map((account) => {
                 const isActive = account.id === activeAccountId;
                 // Only use ankiweb_email from database, not the placeholder email field
                 const ankiwebEmail = account.ankiweb_email;
@@ -297,10 +295,12 @@ export function AccountSwitcherModal({ isOpen, onClose, onSwitch }: AccountSwitc
                       <p className="text-sm text-yellow-400 mb-2">{t('accounts.notLoggedIntoAnkiWeb', 'Not logged into AnkiWeb')}</p>
                     )}
 
-                    {/* Container details */}
-                    <p className="text-xs text-(--text-secondary) mb-2">
-                      [Index: {index + 1}] [Port: {account.container_port}] [Volume: {account.volume_name}]
-                    </p>
+                    {/* Account details */}
+                    {account.created_at && (
+                      <p className="text-xs text-(--text-secondary) mb-2">
+                        {t('accounts.created', 'Created')} {new Date(account.created_at.replace(' ', 'T') + 'Z').toLocaleDateString()}
+                      </p>
+                    )}
 
                     {/* Select button - bottom right */}
                     <div className="flex justify-end">
@@ -422,7 +422,7 @@ export function AccountSwitcherModal({ isOpen, onClose, onSwitch }: AccountSwitc
                 className="mt-0.5 w-4 h-4 rounded border-gray-600 bg-(--bg-tertiary) text-(--accent)"
               />
               <span className="text-sm">
-                {t('accounts.deleteData', 'Also delete all data (Docker volume)')}
+                {t('accounts.deleteData', 'Also delete all data (collection and media)')}
                 <span className="block text-xs text-red-400 mt-1">
                   {t('accounts.deleteWarning', 'Warning: This will permanently delete all cards and data!')}
                 </span>

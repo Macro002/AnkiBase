@@ -15,7 +15,7 @@ def get_account_api_keys_file(container_name: str) -> str:
 
 
 class Settings(BaseSettings):
-    ankiconnect_url: str = "http://localhost:8765"
+    ankiconnect_url: str = ""  # unused since the anki-cli engine; old .env files still set it
     gemini_api_key: str = ""
     openai_api_key: str = ""
     anthropic_api_key: str = ""

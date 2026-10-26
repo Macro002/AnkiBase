@@ -5,6 +5,7 @@ deploy.sh
 nginx-*.conf
 .claude/
 backups/
+anki-data/
 
 # Environment & secrets
 .env

@@ -72,19 +72,19 @@ server {
 
 ## Multi-user Setup
 
-AnkiBase supports multiple users, each with their own Anki container.
+AnkiBase supports multiple users and multiple Anki accounts, each with its own collection.
 
 - The first account created (id=1) is always the root admin and cannot be deleted or demoted.
-- Admins can create users and assign container access via the **User Management** panel.
-- Per-user permissions: `is_admin`, `can_add_containers`, and per-container access grants.
+- Admins can create users and assign account access via the **User Management** panel.
+- Per-user permissions: `is_admin`, `can_add_containers` (create Anki accounts), and per-account access grants.
 
-<Callout type="warning">
-  Each additional Anki container requires its own Docker container and a free port on the host. Make sure you have sufficient resources before adding many accounts.
+<Callout type="info">
+  Accounts are cheap: they all share one Anki engine process, and a collection is only opened when it's used.
 </Callout>
 
 ## AnkiWeb Sync
 
-AnkiWeb credentials are stored encrypted in the database. Each account can have its own AnkiWeb login, set with the **AnkiWeb** button in the header.
+Each account can have its own AnkiWeb login, set with the **AnkiWeb** button in the header. Like Anki Desktop, only AnkiWeb's sync key is kept (in `/opt/ankibase/anki-data/anki-cli.json`, readable by root only), never your password.
 
 Sync modes available:
 - **Normal sync** — incremental, merges changes

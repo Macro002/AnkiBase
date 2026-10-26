@@ -466,6 +466,11 @@ export const accounts = {
     fetchAPI<{ success: boolean; message: string }>(`/accounts/${accountId}/restart`, {
       method: 'POST',
     }),
+  rename: (accountId: number, name: string) =>
+    fetchAPI<{ success: boolean; account: AnkiAccount }>(`/accounts/${accountId}/rename`, {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    }),
 };
 
 // Models

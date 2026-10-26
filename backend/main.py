@@ -9,11 +9,12 @@ import os
 import json
 import tempfile
 import shutil
+from pathlib import Path
 import time
 from collections import defaultdict
 
 from config import get_settings, Settings, get_api_keys, get_api_key_info, save_api_key, delete_api_key, change_password, get_account_api_keys_file
-from anki_client import AnkiConnectClient
+from anki_client import AnkiConnectClient, AnkiError
 from story_generator import StoryGenerator, PROVIDERS, NoValidKeysError
 from database import (
     save_story, get_story, get_all_stories, delete_story, update_story_name,
@@ -33,8 +34,8 @@ from database import (
     get_user,
 )
 from ankiweb_credentials import AnkiWebCredentials
-from anki_config import AnkiConfigurator
-from anki_container_manager import AnkiContainerManager
+from anki_accounts import AnkiAccountManager
+import anki_server
 
 app = FastAPI(title="AnkiBase", version="1.0.0")
 
@@ -58,76 +59,73 @@ _USERNAME_MAX_FAIL = 5     # per username
 _IP_MAX_FAIL       = 20    # per IP (allows multiple users on same network)
 
 
-# Startup event - auto-configure AnkiWeb if credentials exist
+BACKEND_DIR = Path(__file__).resolve().parent
+
+
+def _start_anki_engine() -> None:
+    """Install and start the Anki engine (anki-cli), first moving accounts off the old Docker
+    containers. Runs in the background so the app is up meanwhile."""
+    import anki_migration
+    anki_server.status = "installing"
+    anki_server.install_engine()
+    if anki_migration.pending():
+        anki_server.status = "migrating"
+        if anki_server.healthy():
+            anki_server.stop()  # its settings file gets the migrated AnkiWeb logins
+        moved = anki_migration.migrate()
+        if moved:
+            print(f"✓ Moved {len(moved)} Anki account(s) to anki-cli: {', '.join(moved)}")
+    anki_server.status = "starting"
+    if anki_server.needs_restart() and anki_server.healthy():
+        anki_server.restart()  # a new anki-cli version was installed
+    anki_server.restarted()
+    if not anki_server.ensure_running():
+        anki_server.status = "failed: the engine did not start (journalctl -u ankibase-anki)"
+        return
+    anki_server.status = "ready"
+    # Accounts that only had an encrypted AnkiWeb password (no key in Anki's profile yet):
+    # log in once, then the password isn't needed any more.
+    for account in get_all_accounts():
+        if not (BACKEND_DIR / "data" / account["container_name"] / ".credentials").exists():
+            continue
+        creds = AnkiWebCredentials(container_name=account["container_name"])
+        try:
+            name = account["container_name"]
+            if not anki_server.call("sync.account", profile=name)["loggedIn"]:
+                saved = creds.load_credentials() or {}
+                anki_server.call("sync.login", profile=name, timeout=60,
+                                 username=saved["email"], password=saved["password"])
+                set_ankiweb_email(account["id"], saved["email"])
+            creds.delete_credentials()
+        except Exception as e:
+            print(f"✗ AnkiWeb login for '{account['container_name']}' failed: {e}")
+
+
+def _start_anki_engine_safely() -> None:
+    try:
+        _start_anki_engine()
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        anki_server.status = f"failed: {e}"
+        print(f"✗ Anki engine startup failed: {e}")
+
+
 @app.on_event("startup")
 async def startup_event():
-    """Auto-configure AnkiWeb login on startup if credentials exist"""
+    import asyncio
+    app.state.anki_engine = asyncio.create_task(asyncio.to_thread(_start_anki_engine_safely))
     try:
-        # Migration: Add existing headless-anki container to database if not present
-        from database import add_account, get_all_accounts, get_account_by_email
-        import subprocess
-
-        accounts = get_all_accounts()
-        if len(accounts) == 0:
-            # Check if the default container exists (upgrading from pre-multi-account version)
-            result = subprocess.run(
-                ["docker", "inspect", "headless-anki"],
-                capture_output=True,
-                text=True
-            )
-            if result.returncode == 0:
-                # Container exists, add it to database
-                print("Migrating existing headless-anki container to multi-account system...")
-                try:
-                    add_account(
-                        email="default@ankibase.local",  # Placeholder email
-                        container_name="headless-anki",
-                        container_port=8765,
-                        volume_name="ankibase_anki-data"
-                    )
-                    # Set it as active
-                    from database import set_active_account, get_account_by_email
-                    account = get_account_by_email("default@ankibase.local")
-                    if account:
-                        set_active_account(account["id"])
-                    print("✓ Default container migrated successfully")
-                    accounts = get_all_accounts()
-                except Exception as e:
-                    print(f"✗ Failed to migrate default container: {e}")
-
-        # Migration: Create root user only when upgrading (containers already exist)
-        # Fresh installs use the setup wizard to create their first user
-        if len(accounts) > 0:
-            settings = get_settings()
-            migrate_to_user_system(settings.app_password)
-
-        active_account = get_active_account()
-        if active_account:
-            creds = AnkiWebCredentials(container_name=active_account["container_name"])
-            # One-time migration: move old global .credentials into the active container's dir
-            if not creds.has_credentials():
-                legacy = AnkiWebCredentials()
-                if legacy.has_credentials():
-                    old_data = legacy.load_credentials()
-                    if old_data:
-                        creds.save_credentials(old_data["email"], old_data["password"])
-                        legacy.delete_credentials()
-                        print(f"✓ Migrated AnkiWeb credentials to container '{active_account['container_name']}'")
-            if creds.has_credentials():
-                print("Found stored AnkiWeb credentials, auto-configuring...")
-                credentials = creds.load_credentials()
-                if credentials:
-                    configurator = AnkiConfigurator()
-                    success = configurator.configure_ankiweb_login(
-                        credentials["email"],
-                        credentials["password"]
-                    )
-                    if success:
-                        print(f"✓ AnkiWeb auto-configured for {credentials['email']}")
-                    else:
-                        print("✗ Failed to auto-configure AnkiWeb")
+        # Create the root user when upgrading from a version without users.
+        if get_all_accounts():
+            migrate_to_user_system(get_settings().app_password)
     except Exception as e:
-        print(f"Error during AnkiWeb auto-configuration: {e}")
+        print(f"Error during user migration: {e}")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    anki_server.stop_child()
 
 
 # Auth models
@@ -310,67 +308,23 @@ async def setup_container_stream(name: str, request: Request):
             return f"data: {json.dumps(data)}\n\n"
 
         try:
-            # Step 1: Pull image
-            yield event({"type": "step", "message": "Pulling Docker image...", "progress": 5})
-
-            pull_proc = await asyncio.create_subprocess_exec(
-                "docker", "pull", "thisisnttheway/headless-anki:latest",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-            )
-            async for line in pull_proc.stdout:
-                msg = line.decode().strip()
-                if msg:
-                    yield event({"type": "log", "message": msg, "progress": 30})
-
-            await pull_proc.wait()
-            if pull_proc.returncode != 0:
-                yield event({"type": "error", "message": "Failed to pull Docker image"})
+            yield event({"type": "step", "message": "Starting the Anki engine...", "progress": 20})
+            task = getattr(app.state, "anki_engine", None)
+            if task is not None and not task.done():
+                yield event({"type": "log", "message": "Getting Anki ready (the very first start installs it, about a minute)...",
+                             "progress": 30})
+                await task
+            if not await asyncio.to_thread(anki_server.ensure_running):
+                yield event({"type": "error", "message": "The Anki engine (anki-cli) did not start. "
+                                                         "Check: journalctl -u ankibase-anki -n 50"})
                 return
-
-            yield event({"type": "step", "message": "Image ready.", "progress": 55})
-
-            # Step 2: Create container
-            yield event({"type": "step", "message": f"Creating container '{container_name}'...", "progress": 60})
+            yield event({"type": "step", "message": f"Creating account '{container_name}'...", "progress": 60})
             try:
-                account = container_manager.create_account(container_name)
+                await asyncio.to_thread(container_manager.create_account, container_name)
             except Exception as e:
                 yield event({"type": "error", "message": str(e)})
                 return
-
-            yield event({"type": "step", "message": "Container started.", "progress": 75})
-
-            # Step 3: Wait for AnkiConnect
-            yield event({"type": "step", "message": "Waiting for AnkiConnect to initialize...", "progress": 80})
-            port = account["container_port"]
-            ready = False
-            async with httpx.AsyncClient() as client:
-                for _ in range(30):
-                    await asyncio.sleep(2)
-                    try:
-                        r = await client.get(f"http://localhost:{port}", timeout=3.0)
-                        if r.status_code < 500:
-                            ready = True
-                            break
-                    except Exception:
-                        pass
-                    yield event({"type": "log", "message": "Still initializing...", "progress": 85})
-
-            if not ready:
-                yield event({"type": "error", "message": "AnkiConnect did not respond in time. You can continue anyway."})
-                yield event({"type": "done", "message": "Container created (AnkiConnect may still be starting)", "progress": 100})
-                return
-
-            # Patch AnkiConnect to add fullUpload/fullDownload
-            import subprocess as _sp
-            yield event({"type": "log", "message": "Applying AnkiConnect patches...", "progress": 95})
-            from anki_container_manager import patch_ankiconnect
-            patch_ankiconnect(container_name)
-            _sp.run(["docker", "restart", container_name], capture_output=True)
-            await asyncio.sleep(8)
-
-            yield event({"type": "done", "message": "AnkiConnect is ready!", "progress": 100})
-
+            yield event({"type": "done", "message": "Anki is ready!", "progress": 100})
         except Exception as e:
             yield event({"type": "error", "message": str(e)})
 
@@ -752,15 +706,17 @@ async def set_user_containers(user_id: int, request: SetUserContainersRequest, _
 
 
 # Anki client factory
-def get_anki_client(settings: Settings = Depends(get_settings)) -> AnkiConnectClient:
-    # Check if there's an active account with a specific port
+def get_anki_client() -> AnkiConnectClient:
+    """The active account's collection on the anki-cli engine."""
+    if anki_server.status != "ready":
+        detail = {"installing": "Anki is being installed (first start after an update, about a minute)…",
+                  "migrating": "Moving your Anki collections to the new engine…",
+                  "starting": "Anki is starting…"}.get(anki_server.status, f"Anki is unavailable ({anki_server.status})")
+        raise HTTPException(status_code=503, detail=detail)
     active_account = get_active_account()
-    if active_account:
-        url = f"http://localhost:{active_account['container_port']}"
-    else:
-        # Fallback to default URL from settings
-        url = settings.ankiconnect_url
-    return AnkiConnectClient(url)
+    if not active_account:
+        raise HTTPException(status_code=503, detail="No Anki account yet. Create one in Settings.")
+    return AnkiConnectClient(anki_server.profile_url(active_account["container_name"]), anki_server.api_key())
 
 
 # Deck endpoints
@@ -1897,31 +1853,25 @@ async def get_deck_words(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# Sync endpoint
+# Sync endpoints
+def _sync_error(e: Exception) -> HTTPException:
+    if "auth not configured" in str(e):
+        return HTTPException(status_code=503, detail="AnkiWeb sync not configured. Please configure AnkiWeb login first.")
+    if isinstance(e, AnkiError) and e.code == "authenticationRequired":
+        return HTTPException(status_code=401, detail="AnkiWeb didn't accept the saved login. Log in to AnkiWeb again.")
+    return HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/sync")
 async def sync_anki(client: AnkiConnectClient = Depends(get_anki_client), _: str = Depends(require_auth)):
     try:
-        await client.sync()
-        return {"success": True, "message": "Sync completed"}
+        result = await client.sync()
     except Exception as e:
-        error_msg = str(e)
-        if "auth not configured" in error_msg:
-            raise HTTPException(
-                status_code=503,
-                detail="AnkiWeb sync not configured. Please configure AnkiWeb login first."
-            )
-        # Detect AnkiConnect's "Sync status N not one of [0, 1]" errors.
-        # Status 2=FULL_SYNC (choose), 3=FULL_DOWNLOAD (server wins), 4=FULL_UPLOAD (local wins)
-        import re
-        m = re.search(r"Sync status (\d+) not one of", error_msg)
-        if m:
-            status = int(m.group(1))
-            recommended = {2: "choose", 3: "download", 4: "upload"}.get(status, "choose")
-            raise HTTPException(
-                status_code=409,
-                detail=f"Full sync required:{recommended}"
-            )
-        raise HTTPException(status_code=500, detail=error_msg)
+        raise _sync_error(e)
+    if result.get("outcome") == "fullSyncRequired":
+        # Both sides changed: the user has to pick which copy wins.
+        raise HTTPException(status_code=409, detail="Full sync required:choose")
+    return {"success": True, "message": "Sync completed", "outcome": result.get("outcome")}
 
 
 @app.post("/api/sync/full-upload")
@@ -1929,15 +1879,9 @@ async def full_upload_anki(client: AnkiConnectClient = Depends(get_anki_client),
     """Force upload entire local collection to AnkiWeb, overwriting remote data."""
     try:
         await client.full_upload()
-        return {"success": True, "message": "Full upload completed - AnkiWeb overwritten with local data"}
     except Exception as e:
-        error_msg = str(e)
-        if "auth not configured" in error_msg:
-            raise HTTPException(
-                status_code=503,
-                detail="AnkiWeb sync not configured. Please configure AnkiWeb login first."
-            )
-        raise HTTPException(status_code=500, detail=error_msg)
+        raise _sync_error(e)
+    return {"success": True, "message": "Full upload completed - AnkiWeb overwritten with local data"}
 
 
 @app.post("/api/sync/full-download")
@@ -1945,15 +1889,9 @@ async def full_download_anki(client: AnkiConnectClient = Depends(get_anki_client
     """Force download entire collection from AnkiWeb, overwriting local data."""
     try:
         await client.full_download()
-        return {"success": True, "message": "Full download completed - local data overwritten with AnkiWeb"}
     except Exception as e:
-        error_msg = str(e)
-        if "auth not configured" in error_msg:
-            raise HTTPException(
-                status_code=503,
-                detail="AnkiWeb sync not configured. Please configure AnkiWeb login first."
-            )
-        raise HTTPException(status_code=500, detail=error_msg)
+        raise _sync_error(e)
+    return {"success": True, "message": "Full download completed - local data overwritten with AnkiWeb"}
 
 
 # ── Update endpoints ──────────────────────────────────────────────────────────
@@ -2064,6 +2002,16 @@ async def update_apply(request: Request, _: dict = Depends(require_admin)):
             )
             await proc.wait()
 
+            yield event({"type": "step", "message": "Updating the Anki engine...", "progress": 82})
+            proc = await asyncio.create_subprocess_exec(
+                os.path.join(install_dir, "venv", "bin", "python"), "-c",
+                "import anki_server; anki_server.install_engine()",
+                cwd=install_dir, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+            )
+            out, _ = await proc.communicate()
+            if proc.returncode != 0:
+                yield event({"type": "log", "message": out.decode()[-500:], "progress": 85})
+
             # Write new version hash
             new_sha_path = os.path.join(tmp, ".git", "refs", "heads", "main")
             try:
@@ -2097,7 +2045,7 @@ async def update_apply(request: Request, _: dict = Depends(require_admin)):
 
 
 # Account management endpoints
-container_manager = AnkiContainerManager()
+container_manager = AnkiAccountManager()
 
 @app.get("/api/accounts")
 async def list_accounts(user: dict = Depends(require_auth)):
@@ -2144,13 +2092,14 @@ async def list_accounts(user: dict = Depends(require_auth)):
 
 @app.post("/api/accounts")
 async def create_account(request: CreateAccountRequest, user: dict = Depends(require_can_add_containers)):
-    """Create a new Anki account with its own container (requires can_add_containers permission)"""
+    """Create a new Anki account: its own collection on the engine (requires can_add_containers)"""
+    import asyncio
     try:
-        account = container_manager.create_account(request.container_name)
+        account = await asyncio.to_thread(container_manager.create_account, request.container_name)
         return {
             "success": True,
             "account": account,
-            "message": f"Account created successfully. Container: {account['container_name']}"
+            "message": f"Account '{account['container_name']}' created"
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -2174,7 +2123,8 @@ async def switch_account(request: SwitchAccountRequest, _: str = Depends(require
 async def delete_account_endpoint(account_id: int, remove_data: bool = False, _: str = Depends(require_auth)):
     """Delete an account and optionally its data"""
     try:
-        success = container_manager.delete_account(account_id, remove_data)
+        import asyncio
+        success = await asyncio.to_thread(container_manager.delete_account, account_id, remove_data)
         if not success:
             raise HTTPException(status_code=404, detail="Account not found")
         return {"success": True, "message": "Account deleted successfully"}
@@ -2182,171 +2132,88 @@ async def delete_account_endpoint(account_id: int, remove_data: bool = False, _:
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class RenameAccountRequest(BaseModel):
+    name: str
+
+
+@app.post("/api/accounts/{account_id}/rename")
+async def rename_account_endpoint(account_id: int, request: RenameAccountRequest,
+                                  _: dict = Depends(require_can_add_containers)):
+    """Rename an account (its collection and its stories move with it)"""
+    import asyncio
+    try:
+        account = await asyncio.to_thread(container_manager.rename_account, account_id, request.name)
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"success": True, "account": account}
+
+
 @app.post("/api/accounts/{account_id}/restart")
 async def restart_account_endpoint(account_id: int, _: str = Depends(require_auth)):
-    """Restart a container"""
+    """Reload an account's collection"""
     try:
-        success = container_manager.restart_container(account_id)
+        import asyncio
+        success = await asyncio.to_thread(container_manager.restart_container, account_id)
         if not success:
             raise HTTPException(status_code=404, detail="Account not found")
-        return {"success": True, "message": "Container restarted successfully"}
+        return {"success": True, "message": "Collection reloaded"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# AnkiWeb login endpoints
+# AnkiWeb login endpoints (the sync key is kept by anki-cli, per account)
 @app.post("/api/ankiweb/login")
-async def ankiweb_login(request: AnkiWebLoginRequest, _: str = Depends(require_auth)):
-    """Save AnkiWeb credentials and configure Anki"""
+async def ankiweb_login(request: AnkiWebLoginRequest, client: AnkiConnectClient = Depends(get_anki_client),
+                        _: str = Depends(require_auth)):
     try:
-        import asyncio
-
-        # Initialize credentials manager and configurator
-        active_account = get_active_account()
-        creds = AnkiWebCredentials(container_name=active_account["container_name"] if active_account else None)
-        configurator = AnkiConfigurator()
-
-        # Save encrypted credentials first
-        creds.save_credentials(request.email, request.password)
-        print(f"✓ Saved encrypted credentials for {request.email}")
-
-        # Try to configure Anki with the credentials (without restart)
-        print(f"→ Attempting to authenticate with AnkiWeb...")
-        success, error_msg = configurator.configure_ankiweb_login(request.email, request.password, restart=False)
-
-        if not success:
-            # Authentication failed - credentials are saved but won't work
-            print(f"✗ AnkiWeb authentication failed")
-            raise HTTPException(
-                status_code=500,
-                detail=error_msg or "Failed to authenticate with AnkiWeb. Please check your email and password are correct."
-            )
-
-        print(f"✓ AnkiWeb authentication successful")
-
-        # Save email to database for the active account
-        active_account = get_active_account()
-        if active_account:
-            set_ankiweb_email(active_account["id"], request.email)
-            print(f"✓ Saved AnkiWeb email to database for account {active_account['id']}")
-
-        # Restart container in the background (non-blocking)
-        async def restart_in_background():
-            await asyncio.sleep(0.1)  # Small delay to let response return first
-            print(f"🔄 Restarting Anki container in background...")
-            configurator.restart_anki_container()
-
-        asyncio.create_task(restart_in_background())
-
-        return {
-            "success": True,
-            "message": "AnkiWeb credentials configured successfully. Container restarting in background..."
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        await client.rpc("sync.login", timeout=60.0, username=request.email, password=request.password)
+    except AnkiError as e:
+        raise HTTPException(status_code=401 if e.code == "authenticationRequired" else 500,
+                            detail=str(e) or "Failed to log in to AnkiWeb. Check your email and password.")
+    active_account = get_active_account()
+    if active_account:
+        set_ankiweb_email(active_account["id"], request.email)
+    return {"success": True, "message": "Logged in to AnkiWeb"}
 
 
 @app.get("/api/ankiweb/status")
-async def ankiweb_status(_: str = Depends(require_auth)):
-    """Check if AnkiWeb credentials are configured"""
+async def ankiweb_status(client: AnkiConnectClient = Depends(get_anki_client), _: str = Depends(require_auth)):
+    """Whether this account is logged in to AnkiWeb"""
     try:
-        active_account = get_active_account()
-        creds = AnkiWebCredentials(container_name=active_account["container_name"] if active_account else None)
-        configurator = AnkiConfigurator()
-
-        has_credentials = creds.has_credentials()
-        anki_status = configurator.check_ankiweb_status()
-        is_configured = anki_status.get("configured", False)
-
-        return {
-            "has_credentials": has_credentials or is_configured,
-            "configured": is_configured,
-            "email": anki_status.get("email") if is_configured else None
-        }
-
+        account = await client.rpc("sync.account")
     except Exception as e:
-        return {
-            "has_credentials": False,
-            "configured": False,
-            "error": str(e)
-        }
+        return {"has_credentials": False, "configured": False, "error": str(e)}
+    return {"has_credentials": account["loggedIn"], "configured": account["loggedIn"],
+            "email": account.get("username") if account["loggedIn"] else None,
+            "last_sync": account.get("lastSync")}
 
 
 @app.get("/api/ankiweb/debug")
-async def ankiweb_debug(_: str = Depends(require_auth)):
-    """Debug endpoint to check Anki container and database"""
+async def ankiweb_debug(client: AnkiConnectClient = Depends(get_anki_client), _: str = Depends(require_auth)):
+    """The Anki engine and the active collection"""
     try:
-        import subprocess
-
-        # Check if container is running
-        container_check = subprocess.run(
-            ["docker", "ps", "--filter", "name=headless-anki", "--format", "{{.Names}}"],
-            capture_output=True,
-            text=True
-        )
-
-        container_running = "headless-anki" in container_check.stdout
-
-        # Check if sqlite3 is available in container
-        sqlite_check = subprocess.run(
-            ["docker", "exec", "headless-anki", "which", "sqlite3"],
-            capture_output=True,
-            text=True
-        )
-
-        # Check if database file exists
-        db_check = subprocess.run(
-            ["docker", "exec", "headless-anki", "ls", "-la", "/data/"],
-            capture_output=True,
-            text=True
-        )
-
-        return {
-            "container_running": container_running,
-            "container_output": container_check.stdout.strip(),
-            "sqlite3_available": sqlite_check.returncode == 0,
-            "sqlite3_path": sqlite_check.stdout.strip() if sqlite_check.returncode == 0 else None,
-            "data_directory": db_check.stdout if db_check.returncode == 0 else "Cannot access /data"
-        }
+        return {"engine": await client.rpc("server.info"), "collection": await client.rpc("collection.info"),
+                "sync": await client.rpc("sync.account")}
     except Exception as e:
         return {"error": str(e)}
 
 
 @app.delete("/api/ankiweb/credentials")
-async def delete_ankiweb_credentials(_: str = Depends(require_auth)):
-    """Delete stored AnkiWeb credentials"""
+async def delete_ankiweb_credentials(client: AnkiConnectClient = Depends(get_anki_client),
+                                     _: str = Depends(require_auth)):
+    """Log this account out of AnkiWeb"""
     try:
-        active_account = get_active_account()
-        creds = AnkiWebCredentials(container_name=active_account["container_name"] if active_account else None)
-        configurator = AnkiConfigurator()
-
-        # Delete encrypted credentials file
-        creds.delete_credentials()
-
-        # Delete credentials from Anki profile
-        configurator.delete_ankiweb_credentials()
-
-        # Clear email from database for the active account
-        active_account = get_active_account()
-        if active_account:
-            set_ankiweb_email(active_account["id"], None)
-            print(f"✓ Cleared AnkiWeb email from database for account {active_account['id']}")
-
-        # Restart container to reload profile
-        configurator.restart_anki_container()
-
-        return {
-            "success": True,
-            "message": "AnkiWeb credentials deleted"
-        }
-
+        await client.rpc("sync.logout")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    active_account = get_active_account()
+    if active_account:
+        set_ankiweb_email(active_account["id"], None)
+    return {"success": True, "message": "AnkiWeb credentials deleted"}
 
 
 # Quizlet endpoints
@@ -2752,8 +2619,7 @@ async def import_ankiweb_url(
     if not active_account:
         raise HTTPException(status_code=400, detail="No active account")
 
-    export_dir = f"/opt/ankibase/containers/{active_account['container_name']}/export"
-    os.makedirs(export_dir, exist_ok=True)
+    export_dir = tempfile.mkdtemp(dir=_import_dir())
 
     cd = resp.headers.get('content-disposition', '')
     m = _re.search(r'filename="?([^";\n]+)', cd)
@@ -2765,13 +2631,12 @@ async def import_ankiweb_url(
     try:
         with open(file_path, 'wb') as f:
             f.write(resp.content)
-        await client.import_package(f"/export/{filename}")
+        await client.import_package(file_path)
         return {"success": True, "message": f'Successfully imported "{deck_title}"', "deck_title": deck_title}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
-        if os.path.exists(file_path):
-            os.remove(file_path)
+        shutil.rmtree(export_dir, ignore_errors=True)
 
 
 # Import deck endpoint
@@ -2784,37 +2649,26 @@ async def import_deck(
     if not file.filename or not file.filename.endswith(".apkg"):
         raise HTTPException(status_code=400, detail="Only .apkg files are supported")
 
-    temp_path = None
+    temp_dir = tempfile.mkdtemp(dir=_import_dir())
     try:
-        # Get active account to determine export directory
-        active_account = get_active_account()
-        if not active_account:
-            raise HTTPException(status_code=400, detail="No active account")
-
-        # Each container has its own /export mount at /opt/ankibase/containers/{container_name}/export
-        export_dir = f"/opt/ankibase/containers/{active_account['container_name']}/export"
-        os.makedirs(export_dir, exist_ok=True)
-
-        temp_path = os.path.join(export_dir, file.filename)
+        # The engine runs on this machine, so it imports straight from the uploaded file.
+        temp_path = os.path.join(temp_dir, os.path.basename(file.filename))
         with open(temp_path, "wb") as f:
             shutil.copyfileobj(file.file, f)
-
-        # The path inside the container is /export/filename
-        container_path = f"/export/{file.filename}"
-
-        await client.import_package(container_path)
-
-        # Clean up the temp file
-        os.remove(temp_path)
-
+        await client.import_package(temp_path)
         return {"success": True, "message": f"Successfully imported {file.filename}"}
     except HTTPException:
         raise
     except Exception as e:
-        # Clean up on error
-        if temp_path and os.path.exists(temp_path):
-            os.remove(temp_path)
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def _import_dir() -> str:
+    path = anki_server.DATA_DIR / ".imports"
+    path.mkdir(parents=True, exist_ok=True)
+    return str(path)
 
 
 # Deck management endpoints

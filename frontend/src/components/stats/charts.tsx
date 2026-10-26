@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LineChart, Line } from 'recharts';
 import type { AnkiStats, QuizletStats, StatsPeriod } from '../../api';
 import {
@@ -6,7 +6,8 @@ import {
   fmtInt, pct, fmtDuration, fmtIvl, axisProps, yAxisProps, gridProps, BAR_RADIUS, type Bucket,
 } from './shared';
 import { ChartCard, Legend, Stat, S, TipBox, DataTable } from './ui';
-import { Segmented } from '../quizlet/ui';
+import { Segmented, PrevNext } from '../quizlet/ui';
+import { createPortal } from 'react-dom';
 
 const cursor = { fill: 'rgba(255,255,255,0.05)' };
 const H = 220;
@@ -172,6 +173,13 @@ export function CalendarHeatmap({ anki, quizlet, today }: { anki: AnkiStats | nu
   }, [counts, thisYear]);
   const [year, setYear] = useState(thisYear);
   const [hover, setHover] = useState<{ d: string; n: number; x: number; y: number } | null>(null);
+  // The tooltip is fixed-positioned, so drop it as soon as the page scrolls.
+  useEffect(() => {
+    if (!hover) return;
+    const clear = () => setHover(null);
+    window.addEventListener('scroll', clear, { passive: true, once: true });
+    return () => window.removeEventListener('scroll', clear);
+  }, [hover]);
 
   // Levels from quartiles of active days, so one huge day doesn't wash everything out.
   const levels = useMemo(() => {
@@ -216,11 +224,8 @@ export function CalendarHeatmap({ anki, quizlet, today }: { anki: AnkiStats | nu
   return (
     <ChartCard title="Calendar" subtitle={quizlet && anki ? 'Anki reviews and Quizlet answers per day' : 'Reviews per day'}
       actions={
-        <div className="flex items-center gap-1 text-sm">
-          <button className="icon-btn disabled:opacity-30" disabled={idx >= years.length - 1} onClick={() => setYear(years[idx + 1])} aria-label="Previous year">‹</button>
-          <span className="tabular-nums w-12 text-center">{year}</span>
-          <button className="icon-btn disabled:opacity-30" disabled={idx <= 0} onClick={() => setYear(years[idx - 1])} aria-label="Next year">›</button>
-        </div>
+        <PrevNext label={year} prevDisabled={idx >= years.length - 1} nextDisabled={idx <= 0}
+          onPrev={() => setYear(years[idx + 1])} onNext={() => setYear(years[idx - 1])} />
       }
       table={{ columns: ['Day', 'Reviews'], rows: Object.keys(counts).filter(d => d.startsWith(String(year)) && counts[d] > 0).sort().reverse().map(d => [fmtLong(d), fmtInt(counts[d])]) }}
       summary={<>
@@ -247,7 +252,7 @@ export function CalendarHeatmap({ anki, quizlet, today }: { anki: AnkiStats | nu
                   const future = ds > today;
                   return (
                     <span key={ds}
-                      onMouseEnter={e => { if (!inYear) return; const r = (e.target as HTMLElement).getBoundingClientRect(); const p = (e.currentTarget.closest('.relative') as HTMLElement).getBoundingClientRect(); setHover({ d: ds, n, x: r.left - p.left + 6, y: r.top - p.top }); }}
+                      onMouseEnter={e => { if (!inYear || future) { setHover(null); return; } const r = e.currentTarget.getBoundingClientRect(); setHover({ d: ds, n, x: r.left + r.width / 2, y: r.top }); }}
                       className={`w-[11px] h-[11px] rounded-[3px] ${inYear ? '' : 'opacity-0'} ${ds === today ? 'ring-1 ring-white/60' : ''}`}
                       style={{ background: future ? 'transparent' : shade(n), outline: future && inYear ? '1px solid rgba(255,255,255,0.06)' : undefined }} />
                   );
@@ -256,10 +261,12 @@ export function CalendarHeatmap({ anki, quizlet, today }: { anki: AnkiStats | nu
             );
           })}
         </div>
-        {hover && (
-          <div className="absolute z-10 pointer-events-none -translate-x-1/2 -translate-y-full" style={{ left: hover.x, top: hover.y - 4 }}>
+        {/* Portal + fixed position so the scroll container can't clip it. */}
+        {hover && createPortal(
+          <div className="fixed z-[90] pointer-events-none -translate-x-1/2 -translate-y-full" style={{ left: hover.x, top: hover.y - 6 }}>
             <TipBox title={fmtLong(hover.d)} rows={[{ label: hover.n === 1 ? 'review' : 'reviews', value: fmtInt(hover.n) }]} />
-          </div>
+          </div>,
+          document.body,
         )}
       </div>
       <div className="flex items-center gap-1.5 text-[10px] text-(--text-secondary)">

@@ -1,29 +1,113 @@
-import { useState, type ReactNode, type RefObject } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Minus, Plus } from 'lucide-react';
+import { X, Minus, Plus, Check } from 'lucide-react';
 import { ACCENT_CHARS } from './shared';
+import { useSpring } from '../../hooks/useSpring';
 
+/** On/off switch whose knob springs across (stretching a little while it moves). */
 export function Toggle({ on, onChange, disabled }: { on: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+  const knob = useRef<HTMLSpanElement>(null);
+  const prev = useRef(0);
+  const spring = useSpring<'x'>(({ x }) => {
+    const speed = Math.abs(x - prev.current);
+    prev.current = x;
+    if (knob.current) knob.current.style.transform = `translateX(${x}px) scaleX(${1 + Math.min(0.25, speed / 8)})`;
+  }, { stiffness: 600, damping: 22 });
+  const first = useRef(true);
+  useLayoutEffect(() => {
+    spring.set({ x: on ? 16 : 0 }, first.current);
+    first.current = false;
+  }, [on, spring]);
   return (
     <button type="button" role="switch" aria-checked={on} disabled={disabled}
       onClick={() => onChange(!on)}
-      className={`relative w-9 h-5 p-0 rounded-full transition-colors shrink-0 ${on ? 'bg-(--accent)' : 'bg-(--bg-tertiary)'} ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}>
-      <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${on ? 'translate-x-4' : 'translate-x-0'}`} />
+      className={`relative w-9 h-5 p-0 rounded-full transition-colors duration-200 shrink-0 ${on ? 'bg-(--accent)' : 'bg-(--bg-tertiary)'} ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}>
+      <span ref={knob} className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm" />
     </button>
   );
 }
 
-export function Segmented<T extends string>({ value, options, onChange }: {
-  value: T; options: { value: T; label: string }[]; onChange: (v: T) => void;
+const SEG_SIZE = {
+  md: { box: 'h-9 p-1', btn: 'h-7 px-3 text-xs' },
+  sm: { box: 'h-8 p-[3px]', btn: 'h-[26px] px-2.5 text-xs' },
+} as const;
+
+/** Single-choice slider: the highlight springs to the selected option. */
+export function Segmented<T extends string>({ value, options, onChange, size = 'sm' }: {
+  value: T; options: { value: T; label: string }[]; onChange: (v: T) => void; size?: keyof typeof SEG_SIZE;
 }) {
+  const box = useRef<HTMLDivElement>(null);
+  const pill = useRef<HTMLSpanElement>(null);
+  const spring = useSpring<'x' | 'w'>(({ x, w }) => {
+    if (pill.current) { pill.current.style.transform = `translateX(${x}px)`; pill.current.style.width = `${w}px`; }
+  });
+  const first = useRef(true);
+
+  const place = useCallback((immediate: boolean) => {
+    const el = box.current?.querySelector<HTMLElement>(`[data-seg="${CSS.escape(value)}"]`);
+    if (!el) return;
+    spring.set({ x: el.offsetLeft, w: el.offsetWidth }, immediate);
+  }, [value, spring]);
+
+  useLayoutEffect(() => {
+    place(first.current);
+    first.current = false;
+  }, [place]);
+
+  // Re-measure on resize (fonts loading, panel opening) — subscribed once; a fresh
+  // observer fires immediately, which would otherwise cut the slide animation short.
+  const placeRef = useRef(place);
+  useLayoutEffect(() => { placeRef.current = place; }, [place]);
+  useLayoutEffect(() => {
+    if (!box.current || typeof ResizeObserver === 'undefined') return;
+    let firstCall = true;
+    const ro = new ResizeObserver(() => { if (firstCall) { firstCall = false; return; } placeRef.current(true); });
+    ro.observe(box.current);
+    return () => ro.disconnect();
+  }, []);
+
+  const sz = SEG_SIZE[size];
   return (
-    <div className="inline-flex rounded-lg bg-(--bg-tertiary) p-0.5">
+    <div ref={box} role="radiogroup" className={`relative inline-flex items-center rounded-lg bg-(--bg-tertiary) ${sz.box}`}>
+      <span ref={pill} aria-hidden className="absolute left-0 top-1/2 -translate-y-1/2 rounded-md bg-(--accent) shadow-sm pointer-events-none"
+        style={{ height: size === 'md' ? 28 : 26, width: 0 }} />
       {options.map(o => (
-        <button key={o.value} type="button" onClick={() => onChange(o.value)}
-          className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${value === o.value ? 'bg-(--accent) text-white' : 'text-(--text-secondary) hover:text-white'}`}>
+        <button key={o.value} type="button" role="radio" aria-checked={value === o.value} data-seg={o.value}
+          onClick={() => onChange(o.value)}
+          className={`relative z-10 rounded-md font-medium whitespace-nowrap transition-colors duration-200 ${sz.btn} ${value === o.value ? 'text-white' : 'text-(--text-secondary) hover:text-white'}`}>
           {o.label}
         </button>
       ))}
+    </div>
+  );
+}
+
+/** Multi-select option chip (e.g. data sources) — independent on/off, with a check that pops in. */
+export function CheckChip({ on, onChange, children, disabled }: { on: boolean; onChange: (v: boolean) => void; children: ReactNode; disabled?: boolean }) {
+  return (
+    <button type="button" role="checkbox" aria-checked={on} disabled={disabled} onClick={() => onChange(!on)}
+      className={`h-9 px-3 rounded-lg inline-flex items-center gap-2 text-xs font-medium border transition-colors duration-200 ${
+        on ? 'bg-(--accent)/15 border-(--accent)/60 text-white' : 'bg-(--bg-tertiary) border-transparent text-(--text-secondary) hover:text-white'
+      } ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}>
+      <span className={`w-4 h-4 rounded-[5px] flex items-center justify-center transition-all duration-200 ${on ? 'bg-(--accent)' : 'bg-white/10'}`}>
+        <Check className={`w-3 h-3 text-white transition-transform duration-300 ${on ? 'scale-100' : 'scale-0'}`}
+          style={{ transitionTimingFunction: 'cubic-bezier(0.34, 1.56, 0.64, 1)' }} strokeWidth={3} />
+      </span>
+      {children}
+    </button>
+  );
+}
+
+/** Small ‹ value › switcher (e.g. year), styled like the other controls. */
+export function PrevNext({ label, onPrev, onNext, prevDisabled, nextDisabled }: {
+  label: ReactNode; onPrev: () => void; onNext: () => void; prevDisabled?: boolean; nextDisabled?: boolean;
+}) {
+  const btn = 'w-[26px] h-[26px] rounded-md flex items-center justify-center text-(--text-secondary) hover:text-white hover:bg-white/8 transition-colors disabled:opacity-30 disabled:hover:bg-transparent';
+  return (
+    <div className="inline-flex items-center h-8 p-[3px] rounded-lg bg-(--bg-tertiary)">
+      <button type="button" className={btn} onClick={onPrev} disabled={prevDisabled} aria-label="Previous">‹</button>
+      <span className="px-2 text-xs font-semibold tabular-nums">{label}</span>
+      <button type="button" className={btn} onClick={onNext} disabled={nextDisabled} aria-label="Next">›</button>
     </div>
   );
 }

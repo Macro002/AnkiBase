@@ -20,6 +20,7 @@ import MatchIcon      from '../assets/icons/brand-match.svg?react';
 import { quizlet, studySessions, type QuizletCard } from '../api';
 import { useSessionSaver } from '../hooks/useSessionSaver';
 import { shuffle } from './quizlet/shared';
+import { Toggle } from './quizlet/ui';
 import { levels as learnLevelsOf, type Level, type LearnState } from './quizlet/learnEngine';
 import { LearnMode } from './quizlet/LearnMode';
 import { TestMode } from './quizlet/TestMode';
@@ -930,12 +931,10 @@ export function QuizletStudy() {
           {/* Row 2 on mobile: toggle + icons space-between. On desktop: dissolves so
               children sit directly in the parent flex as order-1 and order-3. */}
           <div className="flex items-center justify-between sm:contents">
-            <button className="flex items-center gap-2 text-sm shrink-0 sm:order-1" onClick={toggleTrackProgress}>
-              <span className={trackProgress ? 'text-(--accent)' : 'text-(--text-secondary)'}>Track progress</span>
-              <div className={`relative w-9 h-5 rounded-full transition-colors ${trackProgress ? 'bg-(--accent)' : 'bg-(--bg-tertiary)'}`}>
-                <div className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${trackProgress ? 'translate-x-4' : 'translate-x-0'}`} />
-              </div>
-            </button>
+            <div className="flex items-center gap-2 text-sm shrink-0 sm:order-1">
+              <button onClick={toggleTrackProgress} className={`transition-colors ${trackProgress ? 'text-(--accent)' : 'text-(--text-secondary) hover:text-white'}`}>Track progress</button>
+              <Toggle on={trackProgress} onChange={() => toggleTrackProgress()} />
+            </div>
             <div className="flex items-center gap-1 shrink-0 sm:order-3">
               {trackProgress ? (
                 <button className={`icon-btn ${history.length === 0 ? 'opacity-30 cursor-not-allowed' : ''}`}
@@ -1129,11 +1128,7 @@ export function QuizletStudy() {
                 <p className="font-medium text-sm">Track progress</p>
                 <p className="text-xs text-(--text-secondary) mt-0.5">Mark cards as known or still learning. Turns nav buttons into ✓ / ✗.</p>
               </div>
-              <button onClick={toggleTrackProgress} className="shrink-0">
-                <div className={`relative w-9 h-5 rounded-full transition-colors ${trackProgress ? 'bg-(--accent)' : 'bg-(--bg-tertiary)'}`}>
-                  <div className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${trackProgress ? 'translate-x-4' : 'translate-x-0'}`} />
-                </div>
-              </button>
+              <Toggle on={trackProgress} onChange={() => toggleTrackProgress()} />
             </div>
 
             {/* Study only starred terms */}
@@ -1142,15 +1137,7 @@ export function QuizletStudy() {
                 <p className={`font-medium text-sm ${favorites.size === 0 ? 'text-(--text-secondary)' : ''}`}>Study only starred terms</p>
                 {favorites.size === 0 && <p className="text-xs text-(--text-secondary) mt-0.5">Star some cards first.</p>}
               </div>
-              <button
-                onClick={() => favorites.size > 0 && toggleStudyStarred(favorites)}
-                disabled={favorites.size === 0}
-                className={`shrink-0 ${favorites.size === 0 ? 'opacity-40 cursor-not-allowed' : ''}`}
-              >
-                <div className={`relative w-9 h-5 rounded-full transition-colors ${studyStarredOnly ? 'bg-(--accent)' : 'bg-(--bg-tertiary)'}`}>
-                  <div className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${studyStarredOnly ? 'translate-x-4' : 'translate-x-0'}`} />
-                </div>
-              </button>
+              <Toggle on={studyStarredOnly} disabled={favorites.size === 0} onChange={() => favorites.size > 0 && toggleStudyStarred(favorites)} />
             </div>
 
             {/* Front */}

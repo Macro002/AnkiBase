@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { RefreshCw, AlertTriangle, ChevronDown } from 'lucide-react';
 import { decks, quizlet as quizletApi, stats, type StatsOverview, type StatsPeriod } from '../api';
-import { Segmented } from './quizlet/ui';
+import { Segmented, CheckChip } from './quizlet/ui';
 import {
   TodaySection, ReviewsChart, FutureDue, CalendarHeatmap, CardCounts, Intervals, Ease, Added,
   Hourly, AnswerButtons, Retention, QuizletInsights,
@@ -63,7 +63,8 @@ export function Stats() {
     <div className="space-y-4 pb-8">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-xl font-bold">Statistics</h2>
-        <button onClick={() => setRefreshTick(t => t + 1)} className="icon-btn" title="Refresh" disabled={loading}>
+        <button onClick={() => setRefreshTick(t => t + 1)} title="Refresh" disabled={loading}
+          className="w-9 h-9 rounded-lg bg-(--bg-tertiary) flex items-center justify-center text-(--text-secondary) hover:text-white transition-colors">
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
         </button>
       </div>
@@ -72,7 +73,7 @@ export function Stats() {
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative">
           <select value={filters.scope} onChange={e => set({ scope: e.target.value })}
-            className="input appearance-none pr-9 py-1.5 text-sm cursor-pointer max-w-[16rem] truncate">
+            className="input appearance-none h-9 py-0 pl-3 pr-9 text-sm cursor-pointer max-w-[16rem] truncate">
             <option value="all">Everything</option>
             {ankiDecks.length > 0 && (
               <optgroup label="Anki decks">
@@ -91,16 +92,13 @@ export function Stats() {
           <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-(--text-secondary)" />
         </div>
         {filters.scope === 'all' && (
-          <div className="inline-flex rounded-lg bg-(--bg-tertiary) p-0.5">
+          <div className="inline-flex gap-2">
             {(['anki', 'quizlet'] as const).map(k => (
-              <button key={k} onClick={() => toggleSource(k)} aria-pressed={filters[k]}
-                className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${filters[k] ? 'bg-(--accent) text-white' : 'text-(--text-secondary) hover:text-white'}`}>
-                {k === 'anki' ? 'Anki' : 'Quizlet'}
-              </button>
+              <CheckChip key={k} on={filters[k]} onChange={() => toggleSource(k)}>{k === 'anki' ? 'Anki' : 'Quizlet'}</CheckChip>
             ))}
           </div>
         )}
-        <Segmented value={filters.period} onChange={v => set({ period: v })}
+        <Segmented size="md" value={filters.period} onChange={v => set({ period: v })}
           options={[{ value: '1m', label: '1 month' }, { value: '3m', label: '3 months' }, { value: '1y', label: '1 year' }, { value: 'all', label: 'All' }]} />
       </div>
 

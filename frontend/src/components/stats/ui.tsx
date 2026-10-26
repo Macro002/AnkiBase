@@ -48,10 +48,11 @@ export function ChartCard({ title, subtitle, summary, actions, table, children, 
           <h3 className="font-semibold">{title}</h3>
           {subtitle && <p className="text-xs text-(--text-secondary) mt-0.5">{subtitle}</p>}
         </div>
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
           {actions}
           {table && (
-            <button onClick={() => setAsTable(t => !t)} className="icon-btn" title={asTable ? 'Show chart' : 'Show table'} aria-pressed={asTable}>
+            <button onClick={() => setAsTable(t => !t)} title={asTable ? 'Show chart' : 'Show table'} aria-pressed={asTable}
+              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${asTable ? 'bg-(--accent)/15 text-(--accent)' : 'bg-(--bg-tertiary) text-(--text-secondary) hover:text-white'}`}>
               {asTable ? <BarChart3 className="w-4 h-4" /> : <Table2 className="w-4 h-4" />}
             </button>
           )}

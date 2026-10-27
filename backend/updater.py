@@ -31,6 +31,7 @@ REPO = os.getenv("UPDATE_REPO", "Macro002/AnkiBase")  # owner/name on GitHub, or
 REPO_URL = REPO if ("://" in REPO or REPO.startswith("/")) else f"https://github.com/{REPO}.git"
 BACKUP_DIR = Path(os.getenv("ANKIBASE_BACKUP_DIR") or BACKEND.parent / "backups")
 KEEP_BACKUPS = 3
+SERVICE = os.getenv("ANKIBASE_SERVICE", "ankibase")
 # Never touched by an update.
 KEEP = ["venv", ".env", "*.db", "*.db-wal", "*.db-shm", "data", ".version", "static", "__pycache__", "*.pyc"]
 TAG = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
@@ -104,7 +105,7 @@ RESTART_SCRIPT = """#!/bin/bash
 # Restart AnkiBase on the new version; if it doesn't answer within two minutes, put the
 # previous version back (from this backup) and restart that.
 sleep 2
-systemctl restart ankibase
+systemctl restart {service}
 for i in $(seq 1 60); do
   sleep 2
   curl -fsS "http://127.0.0.1:{port}/api/setup/status" >/dev/null 2>&1 && exit 0
@@ -112,7 +113,7 @@ done
 echo "AnkiBase didn't start after the update; restoring {backup}" >&2
 rsync -a --exclude venv "{backup}/backend/" "{backend}/"
 rsync -a --delete "{backup}/static/" "{backend}/static/"
-systemctl restart ankibase
+systemctl restart {service}
 """
 
 
@@ -181,7 +182,7 @@ async def apply() -> AsyncIterator[dict]:
         yield {"type": "step", "message": "Restarting…", "progress": 94}
         port = os.getenv("APP_PORT", "8000")
         script = backup / "restart.sh"
-        script.write_text(RESTART_SCRIPT.format(port=port, backup=backup, backend=BACKEND))
+        script.write_text(RESTART_SCRIPT.format(port=port, backup=backup, backend=BACKEND, service=SERVICE))
         script.chmod(0o700)
         # Outside the service, which the restart stops (with everything it started).
         if shutil.which("systemd-run"):

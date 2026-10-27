@@ -3,6 +3,7 @@
 /dist
 *.ipa
 /engine/target
-# Built from ../frontend by scripts/build.sh
+# Made by scripts/build.sh (web UI, icons, Anki's pages)
 /Sources/AnkiBase/Resources/web
 /Sources/AnkiBase/Resources/AppIcon.png
+/Sources/AnkiBase/Resources/pages

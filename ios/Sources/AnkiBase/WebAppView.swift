@@ -1,14 +1,9 @@
 import SwiftUI
 import WebKit
 
-/// AnkiBase's web UI, full screen.
+/// AnkiBase's web UI, full screen, behaving like an app rather than a web page: no zooming,
+/// no rubber-banding past the content, and the status bar following the theme.
 struct WebAppView: UIViewRepresentable {
-    static var server: URL {
-        if let saved = UserDefaults.standard.string(forKey: "server"), let url = URL(string: saved) { return url }
-        let configured = Bundle.main.object(forInfoDictionaryKey: "AnkiBaseServer") as? String
-        return URL(string: configured ?? "https://anki.macr0.dev")!
-    }
-
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeUIView(context: Context) -> WKWebView {
@@ -16,28 +11,86 @@ struct WebAppView: UIViewRepresentable {
         config.setURLSchemeHandler(context.coordinator.handler, forURLScheme: AppSchemeHandler.scheme)
         config.allowsInlineMediaPlayback = true
         config.mediaTypesRequiringUserActionForPlayback = []
+        config.userContentController.add(context.coordinator, name: "ankibase")
+        config.userContentController.addUserScript(WKUserScript(source: Self.bootScript, injectionTime: .atDocumentStart, forMainFrameOnly: true))
 
         let web = WKWebView(frame: .zero, configuration: config)
-        let background = UIColor(red: 0x16 / 255, green: 0x21 / 255, blue: 0x3e / 255, alpha: 1)
+        let theme = Theme.shared
         web.isOpaque = false
-        web.backgroundColor = background
-        web.scrollView.backgroundColor = background
-        // The web UI handles the notch and home indicator itself (viewport-fit=cover).
+        web.backgroundColor = theme.page
+        web.scrollView.backgroundColor = theme.page
+        // The page handles the notch, Dynamic Island and home indicator (viewport-fit=cover).
         web.scrollView.contentInsetAdjustmentBehavior = .never
+        web.scrollView.bounces = false
+        web.scrollView.alwaysBounceVertical = false
+        web.scrollView.pinchGestureRecognizer?.isEnabled = false
         web.allowsBackForwardNavigationGestures = true
+        web.allowsLinkPreview = false
         web.isInspectable = true
         web.navigationDelegate = context.coordinator
         web.uiDelegate = context.coordinator
+        context.coordinator.web = web
         web.load(URLRequest(url: AppSchemeHandler.start))
         return web
     }
 
     func updateUIView(_ web: WKWebView, context: Context) {}
 
-    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
-        let handler = AppSchemeHandler(server: WebAppView.server)
+    /// Runs before the page: tells it it's in the app, and turns off zooming.
+    private static var bootScript: String {
+        let info = Bundle.main.infoDictionary ?? [:]
+        let native: [String: String] = [
+            "version": info["CFBundleShortVersionString"] as? String ?? "",
+            "build": info["CFBundleVersion"] as? String ?? "",
+            "platform": "ios",
+        ]
+        let json = (try? JSONSerialization.data(withJSONObject: native)).map { String(decoding: $0, as: UTF8.self) } ?? "{}"
+        return """
+        window.ankibaseNative = \(json);
+        (function () {
+          var content = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover';
+          function apply() {
+            var meta = document.querySelector('meta[name=viewport]');
+            if (!meta) { meta = document.createElement('meta'); meta.name = 'viewport'; (document.head || document.documentElement).appendChild(meta); }
+            if (meta.content !== content) meta.content = content;
+          }
+          if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', apply); else apply();
+        })();
+        """
+    }
 
-        /// Links out of the app open in Safari.
+    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
+        let handler = AppSchemeHandler()
+        weak var web: WKWebView?
+
+        // MARK: Messages from the page (native.ts)
+
+        func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+            guard let body = message.body as? [String: Any], let type = body["type"] as? String else { return }
+            switch type {
+            case "theme":
+                let page = body["page"] as? String ?? ""
+                Theme.shared.update(page: page, bar: body["bar"] as? String ?? "",
+                                    dark: body["dark"] as? Bool ?? true, icon: body["icon"] as? String)
+                if let web, let color = UIColor(hex: page) {
+                    web.backgroundColor = color
+                    web.scrollView.backgroundColor = color
+                }
+            case "haptic":
+                switch body["style"] as? String {
+                case "success": UINotificationFeedbackGenerator().notificationOccurred(.success)
+                case "warning": UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                case "medium": UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                default: UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
+            default:
+                break
+            }
+        }
+
+        // MARK: Navigation
+
+        /// Links out of the app open in Safari (or the app they belong to, like SideStore).
         func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
                      decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
             guard let url = action.request.url, url.scheme != AppSchemeHandler.scheme, url.scheme != "about" else {
@@ -56,10 +109,17 @@ struct WebAppView: UIViewRepresentable {
             return nil
         }
 
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            // WebKit re-creates the pinch recognizer for new pages.
+            webView.scrollView.pinchGestureRecognizer?.isEnabled = false
+        }
+
         /// The web view's process can be killed in the background; start over.
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
             webView.reload()
         }
+
+        // MARK: alert() and confirm()
 
         func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
                      initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {

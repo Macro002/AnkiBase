@@ -41,14 +41,16 @@
 
 body {
   margin: 0;
-  background-color: var(--bg-secondary);
+  background-color: var(--bg-primary);
   color: var(--text-primary);
   font-family: system-ui, -apple-system, sans-serif;
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 #root {
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 /* Buttons - using plain CSS hover (not Tailwind's hover: which uses media query) */
@@ -505,3 +507,71 @@ input[type="checkbox"]:checked::after {
 .answer-btn { background: color-mix(in srgb, var(--btn) 13%, var(--bg-secondary)); border: 1px solid color-mix(in srgb, var(--btn) 22%, transparent) }
 .answer-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--btn) 22%, var(--bg-secondary)); border-color: color-mix(in srgb, var(--btn) 40%, transparent) }
 .answer-btn-label { color: color-mix(in srgb, var(--btn) 72%, var(--text-primary)) }
+
+/* ── Safe areas (notch, Dynamic Island, home indicator) ───────────────────── */
+html {
+  background: var(--bg-primary);
+  /* scrollIntoView keeps targets below the sticky header */
+  scroll-padding-top: calc(4rem + env(safe-area-inset-top, 0px));
+}
+.app-header {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+.app-tabbar {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.toast-stack {
+  top: calc(env(safe-area-inset-top, 0px) + 4rem);
+}
+.safe-pad-y {
+  padding-top: max(1rem, env(safe-area-inset-top, 0px));
+  padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+}
+/* Full-screen sheets on phones: content clears the status bar and home indicator. */
+.sheet-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.header-btn {
+  height: 2.25rem;
+  padding: 0 0.625rem;
+}
+@media (min-width: 640px) {
+  .header-btn { padding: 0 1rem; }
+}
+
+/* ── The iPhone app: behave like an app, not a web page ──────────────────── */
+html.native,
+html.native body {
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+html.native body {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+html.native button,
+html.native a,
+html.native nav,
+html.native label {
+  -webkit-user-select: none;
+  user-select: none;
+}
+/* No hover effects stuck on after a tap. */
+@media (hover: none) {
+  html.native .icon-btn:hover { transform: none; }
+}
+
+/* Floating notices sit above the phone tab bar. */
+.above-tabbar {
+  bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px) + 0.75rem);
+}
+@media (min-width: 768px) {
+  .above-tabbar { bottom: 1.5rem; }
+}
+@media (max-width: 639px) {
+  .answer-bar { padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px)); }
+}

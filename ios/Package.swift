@@ -20,7 +20,7 @@ let package = Package(
         .target(
             name: "AnkiBase",
             dependencies: ["AnkiEngine"],
-            resources: [.copy("Resources/web"), .copy("Resources/AppIcon.png")],
+            resources: [.copy("Resources/web"), .copy("Resources/pages"), .copy("Resources/AppIcon.png")],
             swiftSettings: [.swiftLanguageMode(.v5)],
             linkerSettings: [
                 // Match the installed SDK so iOS 26 gets its native look; iOS 17 and later run it.

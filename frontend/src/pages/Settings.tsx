@@ -1,11 +1,14 @@
 import { useState, useEffect, useLayoutEffect, useRef } from 'react';
-import { Globe, Palette, RotateCcw, X, Download, Upload, Trash2, Sparkles, Users, User as UserIcon, Check, ChevronRight } from 'lucide-react';
+import { Globe, Palette, RotateCcw, X, Download, Upload, Trash2, Sparkles, Users, User as UserIcon, Check, ChevronRight, RefreshCw, Server } from 'lucide-react';
 import { Segmented } from '../components/quizlet/ui';
 import { AiPanel, type AiChoice } from '../components/story/AiPanel';
 import { useSpring } from '../hooks/useSpring';
 import { auth, theme as themeApi, settings as settingsApi, type User, type ProviderInfo } from '../api';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { UserManagement } from '../components/UserManagement';
+import { SyncSection } from '../components/settings/SyncSection';
+import { ServerSection } from '../components/settings/ServerSection';
+import { hasServer, isNative, useAppStatus } from '../native';
 import { Logo } from '../components/Logo';
 import { useTranslation } from 'react-i18next';
 import {
@@ -174,7 +177,7 @@ function isValidThemeFile(data: unknown): data is ThemeFile {
     .every(k => typeof b[k] === 'string');
 }
 
-type SettingsTab = 'appearance' | 'language' | 'account' | 'ai' | 'users';
+type SettingsTab = 'appearance' | 'sync' | 'server' | 'language' | 'account' | 'ai' | 'users';
 
 /** Vertical section list (desktop) with the spring highlight. */
 function SectionNav({ sections, active, onChange }: { sections: { id: SettingsTab; label: string; icon: React.ReactNode }[]; active: SettingsTab; onChange: (t: SettingsTab) => void }) {
@@ -242,6 +245,9 @@ export function Settings() {
   const setTab = (t: SettingsTab) => setSearchParams(t === 'appearance' ? {} : { tab: t }, { replace: true });
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
+  const app = useAppStatus();
+  // In the app without a server there's no account, AI or users to manage.
+  const serverFeatures = hasServer(app) && (!isNative || !!app?.server_login);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -522,10 +528,14 @@ export function Settings() {
 
   const sections: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
     { id: 'appearance', label: 'Appearance', icon: <Palette className="w-4 h-4" /> },
+    { id: 'sync', label: 'Sync', icon: <RefreshCw className="w-4 h-4" /> },
+    ...(isNative ? [{ id: 'server' as const, label: 'Server', icon: <Server className="w-4 h-4" /> }] : []),
     { id: 'language', label: t('settings.language'), icon: <Globe className="w-4 h-4" /> },
-    { id: 'account', label: 'Account', icon: <UserIcon className="w-4 h-4" /> },
-    { id: 'ai', label: 'AI', icon: <Sparkles className="w-4 h-4" /> },
-    ...(currentUser?.is_admin ? [{ id: 'users' as const, label: 'Users', icon: <Users className="w-4 h-4" /> }] : []),
+    ...(serverFeatures ? [
+      { id: 'account' as const, label: 'Account', icon: <UserIcon className="w-4 h-4" /> },
+      { id: 'ai' as const, label: 'AI', icon: <Sparkles className="w-4 h-4" /> },
+    ] : []),
+    ...(serverFeatures && currentUser?.is_admin ? [{ id: 'users' as const, label: 'Users', icon: <Users className="w-4 h-4" /> }] : []),
   ];
   const active = sections.some(x => x.id === tab) ? tab : 'appearance';
 
@@ -544,7 +554,10 @@ export function Settings() {
     <div className="max-w-5xl mx-auto pb-10 space-y-5">
       <div>
         <h2 className="text-xl font-bold">Settings</h2>
-        <p className="text-sm text-(--text-secondary) mt-0.5">{currentUser ? <>Signed in as <span className="text-white">{currentUser.username}</span>{currentUser.is_admin ? ' · admin' : ''}</> : ' '}</p>
+        <p className="text-sm text-(--text-secondary) mt-0.5">
+          {isNative && app && !app.server ? 'AnkiBase on this iPhone'
+            : currentUser ? <>Signed in as <span className="text-(--text-primary)">{currentUser.username}</span>{currentUser.is_admin ? ' · admin' : ''}</> : ' '}
+        </p>
       </div>
 
       {/* Phones: a slider of sections */}
@@ -695,6 +708,8 @@ export function Settings() {
             </section>
           </>)}
 
+          {active === 'sync' && <SyncSection />}
+          {active === 'server' && <ServerSection user={app?.server ? currentUser : null} />}
           {active === 'ai' && <AiSection />}
           {active === 'users' && currentUser?.is_admin && <UserManagement />}
         </div>

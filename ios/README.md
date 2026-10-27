@@ -1,31 +1,35 @@
 # AnkiBase for iPhone
 
-AnkiBase's web UI as an iPhone app, with **Anki's own engine running on the phone**: your
-collection lives on the device, studying works offline, and it syncs straight with AnkiWeb.
+AnkiBase as an iPhone app with **Anki's own engine on the phone**: your collection lives on
+the device and everything Anki works offline. Internet is only needed to sync — with
+AnkiWeb or your own sync server — and for what only an AnkiBase server can do.
 
 | Part | Where it runs |
 | --- | --- |
-| Decks, studying (Anki's scheduler), undo, card media | On the phone (`engine/`, Anki's Rust library) |
-| AnkiWeb login and sync, including media | Phone ↔ AnkiWeb directly |
-| The web UI | Bundled in the app (`../frontend`, served at `ankibase://app/`) |
-| Everything else: stories, AI, Quizlet, dictionary, statistics, deck options | Your AnkiBase server (`AnkiBaseServer` in Info.plist) |
+| Decks, studying (Anki's scheduler), undo, media, search, editing and adding notes, `.apkg` import, deck rename/delete, stats, Anki's Statistics / Deck Options / Card Info pages | On the phone |
+| Sync, including media | Phone ↔ AnkiWeb, or your own sync server (Settings → Sync) |
+| The web UI and Anki's pages | Bundled in the app, served at `ankibase://app/` |
+| Stories, AI, Quizlet sets, dictionary, shared-deck links | Your AnkiBase server (optional; Settings → Server) |
 
-When the phone is offline, requests for the server get the server's last answer if there
-is one (so you stay logged in), otherwise an "offline" error.
+Without a server the app works on its own ("Use on this iPhone only"): the profile and
+study sessions are kept on the phone. With one, the server's answers are kept for offline
+use, and study progress saved offline (sessions, Quizlet answers and favourites, card edits)
+is queued and sent once the server is reachable again. The header shows *Offline* and how
+many changes are waiting.
 
 ## How it fits together
 
-- `engine/` (Rust) wraps Anki 26.09.3's `rslib` and answers AnkiBase's API on the phone:
-  `GET /api/decks`, `/api/decks/names`, `POST /api/review/{current,answer,undo}`,
-  `GET /api/media-file/<name>`, `POST /api/sync`, `/api/sync/full-{download,upload}`,
-  `GET /api/sync/media`, `POST /api/ankiweb/login` (an optional `endpoint` selects a
-  self-hosted sync server), `GET /api/ankiweb/status`, `DELETE /api/ankiweb/credentials`.
-  Anything else returns "not mine" and goes to the server. The C interface is
-  `Sources/AnkiEngine/include/ankibase_engine.h`.
-- `Sources/AnkiBase/` (Swift) is the app: a full-screen `WKWebView` and
-  `AppSchemeHandler`, which serves the bundled UI, asks the engine first for `/api/…`, and
-  forwards the rest (and `/anki-pages/`) to the server with `URLSession`, whose cookies
-  keep the server login.
+- `engine/` (Rust) is the app's core. `app.rs` answers every request from the web view:
+  the bundled UI and Anki's pages, Anki's API from the collection (`engine.rs`, `notes.rs`,
+  `stats.rs`, `pages.rs` on Anki 26.09.3's `rslib`), merged answers where the phone and the
+  server each have a part (search, stats), and the rest through `server.rs`, which keeps the
+  server's login cookie and answers, and the queue of offline changes. Without a server it
+  answers the profile and sessions itself (`sessions.rs`).
+- `Sources/AnkiBase/` (Swift) is a thin shell: a full-screen `WKWebView` whose
+  `AppSchemeHandler` hands each request to the core (C interface:
+  `Sources/AnkiEngine/include/ankibase_engine.h`) and streams the reply back. It turns off
+  zooming and rubber-banding, and follows the web UI's theme (`native.ts`): status bar,
+  background and the home screen icon (one per built-in theme).
 
 ## Build
 
@@ -38,7 +42,8 @@ scripts/build.sh    # → dist/AnkiBase-<version>-<build>.ipa (unsigned; SideSto
 ```
 
 The script cross-compiles the engine for `aarch64-apple-ios` with the SDK's headers,
-builds `../frontend`, copies it into the app and packages it. Bump `CFBundleVersion` in
+builds `../frontend`, takes Anki's pages from the matching `aqt` wheel
+(`scripts/anki-pages.py`), draws the theme icons (`scripts/icons.py`) and packages it all. Bump `CFBundleVersion` in
 `Info.plist` for every build you hand out.
 
 ## Publish
@@ -53,18 +58,23 @@ https://watch.macr0.dev/static/ios/ankibase-source.json (AnkiBase only).
 
 ## Develop without a phone
 
-`engine/examples/emulate.rs` is the app on a computer, routing exactly like the phone,
-with Anki's own sync server standing in for AnkiWeb:
+`engine/examples/emulate.rs` is the app on a computer: the same core, over HTTP. With
+`--sync-server`, Anki's own sync server stands in for AnkiWeb:
 
 ```sh
+scripts/anki-pages.py .build/anki-pages
 cd engine
-cargo run --example emulate -- --web ../../frontend/dist --upstream http://127.0.0.1:8000 \
-    --dir /tmp/phone --sync-server /tmp/syncsrv
-# open http://127.0.0.1:8800/ at phone size; AnkiWeb login: user@example.com / secret
+cargo run --example emulate -- --web ../../frontend/dist --pages ../.build/anki-pages \
+    --dir /tmp/phone --sync-server /tmp/syncsrv [--server http://127.0.0.1:8000]
+# open http://127.0.0.1:8800/ at phone size; sync login: user@example.com / secret
 ```
 
-`cargo test` runs two devices through login, a first upload, a full download, studying,
-undo, media and a normal sync against that sync server.
+The web UI acts as the app when `window.ankibaseNative` is set (inject it in the browser).
+
+`cargo test` covers two devices syncing through login, upload, download, studying, undo,
+media and stats; search, note edits, deck rename/delete and `.apkg` import; Anki's pages;
+and a stand-in AnkiBase server going offline, hanging and coming back (kept answers, the
+offline queue, logins), plus the app without any server.
 
 ## License
 

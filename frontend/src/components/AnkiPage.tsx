@@ -53,10 +53,11 @@ export function AnkiPageModal({ title, path, onClose, onSaved }: AnkiPageModalPr
   }, []);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-stretch sm:items-center justify-center sm:p-6" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] bg-black/60 flex items-stretch sm:items-center justify-center sm:p-6" onClick={onClose}>
       <div className="bg-(--bg-secondary) w-full sm:max-w-5xl h-full sm:h-[90vh] sm:rounded-xl overflow-hidden flex flex-col shadow-2xl"
         onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-(--bg-tertiary) pt-[max(0.75rem,env(safe-area-inset-top))]">
+        <div className="flex items-center justify-between gap-3 px-4 pb-3 border-b border-(--bg-tertiary)"
+          style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top, 0px))' }}>
           <h2 className="font-semibold truncate">{title}</h2>
           <button onClick={onClose} className="icon-btn" title="Close">
             <X className="w-4 h-4" />

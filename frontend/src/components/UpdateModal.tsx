@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { X, RefreshCw, Loader2, Copy, Check } from 'lucide-react';
-import { update } from '../api';
+import { update, streamEvents } from '../api';
 
 interface UpdateModalProps {
   isOpen: boolean;
@@ -21,7 +21,7 @@ export function UpdateModal({ isOpen, onClose }: UpdateModalProps) {
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
-  const esRef = useRef<EventSource | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
@@ -29,7 +29,7 @@ export function UpdateModal({ isOpen, onClose }: UpdateModalProps) {
 
   useEffect(() => {
     if (!isOpen) {
-      esRef.current?.close();
+      abortRef.current?.abort();
       setStarted(false);
       setProgress(0);
       setLogs([]);
@@ -45,35 +45,38 @@ export function UpdateModal({ isOpen, onClose }: UpdateModalProps) {
     setDone(false);
     setError('');
 
-    const es = new EventSource(update.applyUrl(), { withCredentials: true });
-    esRef.current = es;
+    const abort = new AbortController();
+    abortRef.current = abort;
+    let finished = false;
+    let reached = 0;
+    const reloadSoon = (ms: number) => setTimeout(() => { window.location.reload(); }, ms);
 
-    es.onmessage = (e) => {
-      const data: ProgressEvent = JSON.parse(e.data);
-      if (data.progress !== undefined) setProgress(data.progress);
+    streamEvents(update.applyUrl(), (event) => {
+      const data = event as ProgressEvent;
+      if (data.progress !== undefined) { setProgress(data.progress); reached = data.progress; }
       if (data.type === 'step' || data.type === 'log') {
         setLogs(prev => [...prev, data.message]);
       } else if (data.type === 'done') {
+        finished = true;
         setLogs(prev => [...prev, '✓ ' + data.message]);
         setProgress(100);
         setDone(true);
-        es.close();
-        // Wait for service restart then reload
-        setTimeout(() => { window.location.reload(); }, 5000);
+        // Wait for the service to restart, then reload
+        reloadSoon(5000);
       } else if (data.type === 'error') {
+        finished = true;
         setError(data.message);
         setLogs(prev => [...prev, '✗ ' + data.message]);
-        es.close();
       }
-    };
-
-    es.onerror = () => {
-      // Connection drop likely means service restarted — reload
-      if (!done && !error) {
-        setTimeout(() => { window.location.reload(); }, 3000);
-      }
-      es.close();
-    };
+    }, abort.signal).then(() => {
+      // The stream ending early means the service restarted: reload.
+      if (!finished) reloadSoon(3000);
+    }).catch(err => {
+      if (abort.signal.aborted || finished) return;
+      // Cut off while restarting: that's the new version starting up.
+      if (reached >= 90) reloadSoon(3000);
+      else setError(err instanceof Error ? err.message : 'The update stopped');
+    });
   };
 
   if (!isOpen) return null;

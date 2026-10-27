@@ -37,7 +37,9 @@ with zipfile.ZipFile(ipa) as archive:
     assert app_dir + "AnkiBase_AnkiBase.bundle/web/index.html" in names, "Missing web UI"
     executable = archive.read(app_dir + built["CFBundleExecutable"])
     assert struct.unpack_from("<II", executable) == (0xFEEDFACF, 0x0100000C), "Expected ARM64 Mach-O"
-    assert b"_ab_request" in executable, "Anki engine not linked"
+    assert b"_ab_handle" in executable, "Anki engine not linked"
+    assert app_dir + "AnkiBase_AnkiBase.bundle/pages/index.html" in names, "Missing Anki's pages"
+    assert app_dir + "Icon-Midnight@3x.png" in names, "Missing theme icons"
     assert not any("embedded.mobileprovision" in n for n in names), "Expected unsigned build"
 
 date = datetime.date.today().isoformat()

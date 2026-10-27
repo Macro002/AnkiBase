@@ -196,11 +196,18 @@ version = "0.1.0"
 dependencies = [
  "anki",
  "anki_proto",
+ "base64 0.22.1",
+ "chrono",
+ "httpdate",
  "percent-encoding",
+ "prost",
+ "regex",
  "reqwest",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tokio",
+ "unicode-normalization",
 ]
 
 [[package]]

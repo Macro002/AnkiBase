@@ -5,6 +5,7 @@ import { BookOpen, Clock, Plus, Pencil, Trash2, ChevronRight, FolderOpen, X, Ext
 import { AnkiPageModal } from './AnkiPage';
 import { decks, quizlet, type DeckStats, type QuizletDeck } from '../api';
 import { Heatmap } from './Heatmap';
+import { hasServer, useAppStatus } from '../native';
 
 interface DeckInfo {
   name: string;
@@ -20,6 +21,8 @@ export function Decks() {
   const { t } = useTranslation();
   const [deckList, setDeckList] = useState<DeckInfo[]>([]);
   const [quizletDecks, setQuizletDecks] = useState<QuizletDeck[]>([]);
+  // Quizlet sets live on the AnkiBase server.
+  const showQuizlet = hasServer(useAppStatus());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [currentPath, setCurrentPath] = useState<string[]>([]);
@@ -237,9 +240,9 @@ export function Decks() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Heatmap */}
-      <Heatmap />
+    <div className="flex flex-col gap-6">
+      {/* Heatmap: on top on wide screens, below the decks on phones */}
+      <div className="order-last md:order-first"><Heatmap /></div>
 
       {/* Breadcrumb navigation */}
       {currentPath.length > 0 && (
@@ -377,7 +380,7 @@ export function Decks() {
       )}
 
       {/* Quizlet Decks section */}
-      {currentPath.length === 0 && (
+      {currentPath.length === 0 && showQuizlet && (
         <div className="space-y-3">
           <h2 className="text-xl font-bold">My Quizlet Decks</h2>
           {quizletDecks.length === 0 ? (

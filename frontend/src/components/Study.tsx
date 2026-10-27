@@ -229,8 +229,8 @@ function Reviewer({ deckId }: { deckId: number }) {
         {busy && <div className="absolute inset-0 bg-(--bg-secondary)/40 flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin" /></div>}
       </div>
 
-      {/* Answer bar — pinned above the tab bar on phones */}
-      <div className="fixed sm:static bottom-16 left-0 right-0 px-4 sm:px-0 pt-3 sm:pt-0 pb-3 sm:pb-0 z-30 bg-(--bg-primary)/95 sm:bg-transparent backdrop-blur sm:backdrop-blur-none">
+      {/* Answer bar — pinned to the bottom on phones (the tab bar hides while studying) */}
+      <div className="answer-bar fixed sm:static bottom-0 left-0 right-0 px-4 sm:px-0 pt-3 sm:pt-0 z-30 bg-(--bg-primary)/95 sm:bg-transparent backdrop-blur sm:backdrop-blur-none">
         {!revealed ? (
           <button onClick={reveal} className="btn btn-primary w-full h-14 text-base font-semibold">
             Show answer <span className="opacity-60 text-xs ml-1.5 hidden sm:inline">Space</span>

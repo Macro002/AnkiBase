@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, Server, Smartphone } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { auth, setup, theme as themeApi } from '../api';
 
 import { Logo } from './Logo';
 import { applyAccentColor, saveAccentColor, applyBaseColors, saveBaseColors } from '../hooks/useAccentColor';
+import { appStatus, isNative, useAppStatus } from '../native';
 
 const MAX_ATTEMPTS = 5;
 const SS_UNTIL = 'ankibase-login-lockout';
@@ -19,6 +20,10 @@ export function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [lockedUntil, setLockedUntil] = useState<number | null>(null);
+  const app = useAppStatus();
+  const [editingServer, setEditingServer] = useState(false);
+  const [serverUrl, setServerUrl] = useState('');
+  const [serverError, setServerError] = useState('');
 
   // Restore lockout from sessionStorage on mount
   useEffect(() => {
@@ -103,13 +108,44 @@ export function Login() {
 
   const inputCls = `input w-full${isLocked ? ' opacity-50 cursor-not-allowed' : ''}`;
 
+  // The app: pick the server, or use the app without one.
+  const saveServer = async (url: string | null) => {
+    setServerError('');
+    try {
+      const next = await appStatus.setServer(url);
+      setEditingServer(false);
+      if (!next.server) window.location.replace('/');
+      else if (!next.online) setServerError(`Couldn't reach ${next.server}. Check the address, or try again when you're online.`);
+    } catch (err) {
+      setServerError(err instanceof Error ? err.message : 'Could not change the server');
+    }
+  };
+  const serverHost = app?.server ? app.server.replace(/^https?:\/\//, '') : '';
+
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-(--bg-primary)">
+    <div className="min-h-dvh flex items-center justify-center p-4 bg-(--bg-primary) safe-pad-y">
       <div className="card w-full max-w-md">
         <div className="flex items-center justify-center mb-6">
           <Logo className="w-16 h-16" />
         </div>
-        <h1 className="text-2xl font-bold text-center mb-6">AnkiBase</h1>
+        <h1 className="text-2xl font-bold text-center mb-2">AnkiBase</h1>
+        {isNative ? (
+          <div className="text-center mb-6">
+            {editingServer ? (
+              <form onSubmit={e => { e.preventDefault(); saveServer(serverUrl); }} className="flex gap-2 mt-3">
+                <input value={serverUrl} onChange={e => setServerUrl(e.target.value)} className="input flex-1 min-w-0" autoFocus
+                  placeholder="anki.example.com" inputMode="url" autoCapitalize="off" autoCorrect="off" spellCheck={false} />
+                <button className="btn btn-primary" type="submit">Use</button>
+              </form>
+            ) : (
+              <button onClick={() => { setServerUrl(app?.server ?? ''); setEditingServer(true); }}
+                className="inline-flex items-center gap-1.5 text-sm text-(--text-secondary) hover:text-white">
+                <Server className="w-3.5 h-3.5" />{serverHost || 'No server'} · <span className="text-(--accent)">change</span>
+              </button>
+            )}
+            {serverError && <p className="text-(--error) text-sm mt-2">{serverError}</p>}
+          </div>
+        ) : <div className="mb-4" />}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -119,7 +155,10 @@ export function Login() {
               onChange={(e) => setUsername(e.target.value)}
               placeholder={t('login.username')}
               className={inputCls}
-              autoFocus
+              autoFocus={!isNative}
+              autoCapitalize="off"
+              autoCorrect="off"
+              autoComplete="username"
               disabled={isLocked || loading}
               required
             />
@@ -158,6 +197,18 @@ export function Login() {
             {loading ? t('login.loggingIn') : t('login.loginButton')}
           </button>
         </form>
+
+        {isNative && (
+          <div className="mt-6 pt-5 border-t border-(--bg-tertiary) space-y-3">
+            <button onClick={() => saveServer(null)} className="btn btn-secondary w-full flex items-center justify-center gap-2">
+              <Smartphone className="w-4 h-4" /> Use on this iPhone only
+            </button>
+            <p className="text-xs text-(--text-secondary) text-center leading-relaxed">
+              Decks, studying, stats and sync with AnkiWeb (or your own sync server) all work without a server.
+              Stories, AI and Quizlet need one; you can add it later in Settings.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

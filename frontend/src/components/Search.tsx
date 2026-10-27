@@ -7,6 +7,7 @@ import {
 } from '../api';
 import { createPortal } from 'react-dom';
 import { Segmented } from './quizlet/ui';
+import { hasServer, useAppStatus } from '../native';
 import { AddCardDialog } from './AddCardDialog';
 
 const LANGUAGES = ['French', 'Japanese', 'German', 'Spanish', 'Italian', 'Portuguese', 'English', 'Korean', 'Chinese', 'Russian', 'Dutch', 'Latin'];
@@ -75,6 +76,8 @@ export function Search() {
   const [lang, setLang] = useState<string>(() => store.get(LANG_KEY, 'French'));
   const [input, setInput] = useState(q);
   const [dict, setDict] = useState<{ key: string; data: DictionaryResult } | null>(null);
+  // The dictionary is looked up by the AnkiBase server; your cards are searched on the phone.
+  const dictAvailable = hasServer(useAppStatus());
   const [cards, setCards] = useState<{ key: string; data: CardSearchResult } | null>(null);
   const [recent, setRecent] = useState<string[]>(() => store.get(RECENT_KEY, []));
   const [adding, setAdding] = useState<{ front: string; back: string } | null>(null);
@@ -114,7 +117,7 @@ export function Search() {
 
   // Dictionary: remote, so wait a beat longer before asking.
   useEffect(() => {
-    if (!q) return;
+    if (!q || !dictAvailable) return;
     let cancelled = false;
     const t = setTimeout(() => {
       dictionary.lookup(q, lang).then(data => {
@@ -126,7 +129,7 @@ export function Search() {
       }).catch(e => { if (!cancelled) setDict({ key: `${q}|${lang}`, data: { wiktionary: null, jisho: [], error: e instanceof Error ? e.message : 'Lookup failed' } }); });
     }, 250);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [q, lang]);
+  }, [q, lang, dictAvailable]);
 
   // "/" focuses the search box from anywhere on the page.
   useEffect(() => {
@@ -177,14 +180,14 @@ export function Search() {
       {!q ? (
         <EmptyState recent={recent} onPick={go} onClear={() => { setRecent([]); store.set(RECENT_KEY, []); }} />
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] gap-5 items-start">
-          <section className={`transition-opacity ${dictLoading && showDict ? 'opacity-60' : ''}`}>
+        <div className={`grid grid-cols-1 gap-5 items-start ${dictAvailable ? 'lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]' : 'max-w-2xl'}`}>
+          {dictAvailable && <section className={`transition-opacity ${dictLoading && showDict ? 'opacity-60' : ''}`}>
             {showDict ? (
               <DictionaryPanel data={showDict} lang={lang} onSearch={go} onAdd={setAdding} />
             ) : (
               <div className="card space-y-3">{[60, 20, 90, 70].map((w, i) => <div key={i} className="skeleton h-5 rounded" style={{ width: `${w}%` }} />)}</div>
             )}
-          </section>
+          </section>}
           <section className={`lg:sticky lg:top-4 transition-opacity ${cardsLoading && showCards ? 'opacity-60' : ''}`}>
             <CardsPanel data={showCards} q={q} onSaved={() => setToast('Saved')} />
           </section>
@@ -194,7 +197,7 @@ export function Search() {
       {adding && <AddCardDialog prefill={adding} onClose={() => setAdding(null)}
         onAdded={dest => { setAdding(null); setToast(`Added to ${dest}`); dictionary.searchCards(q).then(data => setCards({ key: q, data })).catch(() => {}); }} />}
       {toast && createPortal(
-        <div className="fixed bottom-20 sm:bottom-6 left-1/2 -translate-x-1/2 z-[300] rounded-lg bg-(--bg-secondary) border border-white/10 shadow-xl px-4 py-2.5 text-sm flex items-center gap-2 section-summary-in">
+        <div className="fixed above-tabbar left-1/2 -translate-x-1/2 z-[300] rounded-lg bg-(--bg-secondary) border border-white/10 shadow-xl px-4 py-2.5 text-sm flex items-center gap-2 section-summary-in">
           <Check className="w-4 h-4 text-green-400" /> {toast}
         </div>, document.body)}
       <style>{`@keyframes sIn { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: none } } .section-summary-in { animation: sIn .25s ease-out }`}</style>

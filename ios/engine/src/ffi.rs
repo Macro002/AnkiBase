@@ -1,21 +1,15 @@
 //! The C interface the iPhone app calls (see include/ankibase_engine.h).
 
-use std::ffi::{c_char, CStr};
-use std::sync::Mutex;
+use std::ffi::{c_char, c_void, CStr, CString};
+use std::sync::OnceLock;
 
-use crate::api::handle;
-use crate::engine::Engine;
+use crate::app::{App, Config};
+use crate::http::{Reply, Request, Sink};
 
-static ENGINE: Mutex<Option<Engine>> = Mutex::new(None);
+static APP: OnceLock<App> = OnceLock::new();
 
-#[repr(C)]
-pub struct AbReply {
-    /// 0: not an Anki request, send it to the AnkiBase server instead.
-    pub status: u16,
-    pub content_type: *mut c_char,
-    pub body: *mut u8,
-    pub body_len: usize,
-}
+pub type HeadFn = unsafe extern "C" fn(ctx: *mut c_void, status: u16, headers_json: *const c_char);
+pub type DataFn = unsafe extern "C" fn(ctx: *mut c_void, data: *const u8, len: usize) -> bool;
 
 unsafe fn text<'a>(ptr: *const c_char) -> &'a str {
     if ptr.is_null() {
@@ -25,67 +19,80 @@ unsafe fn text<'a>(ptr: *const c_char) -> &'a str {
     }
 }
 
-/// Open the collection in `dir` (created if needed). Returns NULL on success, or an
-/// error message to free with `ab_string_free`.
+/// Start the app with a JSON config (app.rs `Config`). NULL on success, otherwise an error
+/// message to free with `ab_string_free`. Later calls do nothing.
 #[no_mangle]
-pub unsafe extern "C" fn ab_open(dir: *const c_char) -> *mut c_char {
-    let mut engine = ENGINE.lock().unwrap_or_else(|e| e.into_inner());
-    if engine.is_some() {
+pub unsafe extern "C" fn ab_start(config_json: *const c_char) -> *mut c_char {
+    if APP.get().is_some() {
         return std::ptr::null_mut();
     }
-    match Engine::open(text(dir)) {
-        Ok(opened) => {
-            *engine = Some(opened);
+    match serde_json::from_str::<Config>(text(config_json)) {
+        Ok(config) => {
+            let _ = APP.set(App::start(config));
             std::ptr::null_mut()
         }
-        Err(failure) => std::ffi::CString::new(failure.detail).unwrap_or_default().into_raw(),
+        Err(err) => CString::new(format!("Bad config: {err}")).unwrap_or_default().into_raw(),
     }
 }
 
-/// Answer an AnkiBase API request. Free the reply with `ab_reply_free`.
+struct Callbacks {
+    ctx: *mut c_void,
+    head: HeadFn,
+    data: DataFn,
+    started: bool,
+}
+
+impl Sink for Callbacks {
+    fn head(&mut self, status: u16, headers: &[(String, String)]) {
+        let map: serde_json::Map<String, serde_json::Value> =
+            headers.iter().map(|(n, v)| (n.clone(), serde_json::Value::String(v.clone()))).collect();
+        let json = CString::new(serde_json::to_string(&map).unwrap()).unwrap_or_default();
+        self.started = true;
+        unsafe { (self.head)(self.ctx, status, json.as_ptr()) }
+    }
+
+    fn data(&mut self, bytes: &[u8]) -> bool {
+        unsafe { (self.data)(self.ctx, bytes.as_ptr(), bytes.len()) }
+    }
+}
+
+/// Answer a request: `head` is called once, then `data` for each piece of the body (return
+/// false from it to stop). Blocks until the reply is complete, so call it off the main thread.
 #[no_mangle]
-pub unsafe extern "C" fn ab_request(
+pub unsafe extern "C" fn ab_handle(
     method: *const c_char,
-    path: *const c_char,
+    target: *const c_char,
+    headers_json: *const c_char,
     body: *const u8,
     body_len: usize,
-) -> AbReply {
-    let data = if body.is_null() { &[][..] } else { std::slice::from_raw_parts(body, body_len) };
-    let mut engine = ENGINE.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(engine) = engine.as_mut() else {
-        return AbReply { status: 0, content_type: std::ptr::null_mut(), body: std::ptr::null_mut(), body_len: 0 };
+    ctx: *mut c_void,
+    head: HeadFn,
+    data: DataFn,
+) {
+    let mut sink = Callbacks { ctx, head, data, started: false };
+    let Some(app) = APP.get() else {
+        return Reply::error(500, "The app hasn't started").send(&mut sink);
     };
-    let reply = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        handle(engine, text(method), text(path), data)
-    })) {
-        Ok(reply) => reply,
-        Err(_) => crate::api::Reply {
-            status: 500,
-            content_type: "application/json".into(),
-            body: br#"{"detail":"The Anki engine crashed on this request"}"#.to_vec(),
-        },
+    let headers: Vec<(String, String)> = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(text(headers_json))
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(n, v)| (n, v.as_str().unwrap_or_default().to_string()))
+        .collect();
+    let request = Request {
+        method: text(method).to_string(),
+        target: text(target).to_string(),
+        headers,
+        body: if body.is_null() { Vec::new() } else { std::slice::from_raw_parts(body, body_len).to_vec() },
     };
-    let body = reply.body.into_boxed_slice();
-    let body_len = body.len();
-    AbReply {
-        status: reply.status,
-        content_type: std::ffi::CString::new(reply.content_type).unwrap_or_default().into_raw(),
-        body: Box::into_raw(body) as *mut u8,
-        body_len,
-    }
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn ab_reply_free(reply: AbReply) {
-    ab_string_free(reply.content_type);
-    if !reply.body.is_null() {
-        drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(reply.body, reply.body_len)));
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| app.handle(&request, &mut sink)));
+    if outcome.is_err() && !sink.started {
+        Reply::error(500, "The app crashed on this request").send(&mut sink);
     }
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn ab_string_free(text: *mut c_char) {
     if !text.is_null() {
-        drop(std::ffi::CString::from_raw(text));
+        drop(CString::from_raw(text));
     }
 }

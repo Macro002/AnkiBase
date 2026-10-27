@@ -1,3 +1,5 @@
+import { syncNativeTheme } from '../native';
+
 const STORAGE_KEY = 'ankibase-accent';
 const BASE_COLORS_KEY = 'ankibase-base-colors';
 
@@ -27,6 +29,7 @@ export function applyAccentColor(accent: string, hover?: string) {
   document.documentElement.style.setProperty('--accent-hover', h);
   document.documentElement.style.setProperty('--accent-rgb', rgb);
   updateFavicon(accent);
+  syncNativeTheme();
 }
 
 export function loadAccentColor() {
@@ -78,6 +81,9 @@ export function applyBaseColors(colors: Partial<BaseColors>) {
   root.style.setProperty('--bg-tertiary', c.bg_tertiary);
   root.style.setProperty('--text-primary', c.text_primary);
   root.style.setProperty('--text-secondary', c.text_secondary);
+  // The browser's (and the app's) bars match the header.
+  document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute('content', c.bg_secondary);
+  syncNativeTheme();
 }
 
 export function saveBaseColors(colors: Partial<BaseColors>) {

@@ -1,17 +1,16 @@
 import { NavLink, Outlet, useNavigate, Link, useLocation } from 'react-router-dom';
-import { BookOpen, Search, Sparkles, RefreshCw, LogOut, Layers, X, Upload, BarChart3, Library, Menu, LogIn, Server, Settings, CheckCircle, AlertCircle } from 'lucide-react';
-import { auth, sync, update } from '../api';
+import { BookOpen, Search, Sparkles, RefreshCw, LogOut, Layers, X, Upload, BarChart3, Library, Menu, LogIn, Server, Settings, CheckCircle, AlertCircle, CloudOff } from 'lucide-react';
+import { auth, update } from '../api';
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AnkiWebLoginModal } from './AnkiWebLoginModal';
 import { Logo } from './Logo';
 import { AccountSwitcherModal } from './AccountSwitcherModal';
 import { SyncConflictModal } from './SyncConflictModal';
 import { UpdateModal } from './UpdateModal';
 import { createPortal } from 'react-dom';
 import { MotionLayer } from './MotionLayer';
-
-type SyncStatus = 'idle' | 'syncing' | 'success' | 'error';
+import { appStatus, hasServer, isNative, useAppStatus } from '../native';
+import { runSync, useAutoSync, useSyncState, type SyncResult } from '../sync';
 
 interface ToastData {
   id: number;
@@ -36,7 +35,7 @@ function Toast({ icon, title, message, duration, onClose }: Omit<ToastData, 'id'
   }, []);
 
   return (
-    <div className={`w-80 bg-(--bg-secondary) border border-(--bg-tertiary) rounded-xl shadow-2xl overflow-hidden ${exiting ? 'toast-exit' : 'toast-enter'}`}>
+    <div className={`w-full sm:w-80 max-w-sm bg-(--bg-secondary) border border-(--bg-tertiary) rounded-xl shadow-2xl overflow-hidden ${exiting ? 'toast-exit' : 'toast-enter'}`}>
       <div className="flex items-start gap-3 px-4 pt-4 pb-3">
         <span className="shrink-0 mt-0.5" style={{ color: 'var(--accent)' }}>{icon}</span>
         <div className="flex-1 min-w-0">
@@ -66,11 +65,16 @@ export function Layout() {
   const location = useLocation();
   const { t } = useTranslation();
   const onStudyPath = location.pathname.startsWith('/anki/') || location.pathname.startsWith('/quizlet/');
-  const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
+  // Studying a deck on a phone: the answer buttons take the tab bar's place.
+  const studyingAnki = location.pathname.startsWith('/anki/');
+  const syncing = useSyncState() === 'syncing';
+  const app = useAppStatus();
+  const serverFeatures = hasServer(app);
+  const offline = isNative && !!app?.server && !app.online;
+  useAutoSync();
   const [toasts, setToasts] = useState<ToastData[]>([]);
   const toastIdRef = useRef(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [showAnkiWebModal, setShowAnkiWebModal] = useState(false);
   const [showAccountSwitcher, setShowAccountSwitcher] = useState(false);
   const [showSyncConflict, setShowSyncConflict] = useState(false);
   const [syncConflictRecommendation, setSyncConflictRecommendation] = useState<'choose' | 'download' | 'upload'>('choose');
@@ -83,8 +87,11 @@ export function Layout() {
     { to: '/search', icon: Search, label: t('nav.search') },
     { to: '/stats', icon: BarChart3, label: t('nav.stats') },
     { to: '/import', icon: Upload, label: t('nav.import') },
-    { to: '/story', icon: Sparkles, label: t('nav.story') },
-    { to: '/reading', icon: Library, label: t('nav.reading') },
+    // Stories need the AnkiBase server (the AI and the saved stories live there).
+    ...(serverFeatures ? [
+      { to: '/story', icon: Sparkles, label: t('nav.story') },
+      { to: '/reading', icon: Library, label: t('nav.reading') },
+    ] : []),
   ];
 
   const mobileNavItems = navItems.slice(0, 5);
@@ -97,36 +104,27 @@ export function Layout() {
 
   const removeToast = (id: number) => setToasts(prev => prev.filter(t => t.id !== id));
 
-  const handleSync = async () => {
-    setSyncStatus('syncing');
-    try {
-      await sync.trigger();
-      setSyncStatus('idle');
-      window.dispatchEvent(new CustomEvent('anki-sync-complete'));
-      pushToast({
-        icon: <CheckCircle className="w-5 h-5" />,
-        title: 'Sync complete',
-        message: 'Your cards are up to date.',
-        duration: 3000,
-      });
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : t('sync.syncFailed');
-      setSyncStatus('idle');
-
-      if (errorMsg.includes('Full sync required')) {
-        const rec = errorMsg.split(':')[1] as 'choose' | 'download' | 'upload' | undefined;
-        setSyncConflictRecommendation(rec ?? 'choose');
+  // Sync results from anywhere (this button, Settings, automatic syncs): toasts, or the
+  // "which copy wins" choice.
+  useEffect(() => {
+    const onResult = (event: Event) => {
+      const result = (event as CustomEvent<SyncResult>).detail;
+      if (result.kind === 'done') {
+        pushToast({ icon: <CheckCircle className="w-5 h-5" />, title: 'Sync complete', message: 'Your cards are up to date.', duration: 3000 });
+      } else if (result.kind === 'conflict') {
+        setSyncConflictRecommendation(result.recommendation);
         setShowSyncConflict(true);
+      } else if (result.kind === 'not-configured') {
+        navigate('/settings?tab=sync');
       } else {
-        pushToast({
-          icon: <AlertCircle className="w-5 h-5" />,
-          title: 'Sync failed',
-          message: errorMsg,
-          duration: 6000,
-        });
+        pushToast({ icon: <AlertCircle className="w-5 h-5" />, title: 'Sync failed', message: result.message, duration: 6000 });
       }
-    }
-  };
+    };
+    window.addEventListener('anki-sync-result', onResult);
+    return () => window.removeEventListener('anki-sync-result', onResult);
+  }, [navigate]);
+
+  const handleSync = () => { runSync(); };
 
   const handleConflictResolved = () => {
     window.dispatchEvent(new CustomEvent('anki-sync-complete'));
@@ -139,7 +137,8 @@ export function Layout() {
   };
 
   useEffect(() => {
-    update.check().then(r => { if (r.has_update) setHasUpdate(true); }).catch(() => {});
+    // The app updates through SideStore; the server's own update is in Settings → Server.
+    if (!isNative) update.check().then(r => { if (r.has_update) setHasUpdate(true); }).catch(() => {});
   }, []);
 
   const handleLogout = async () => {
@@ -147,17 +146,25 @@ export function Layout() {
     navigate('/login');
   };
 
+  const pending = app?.pending ?? 0;
+
   return (
-    <div className="min-h-screen flex flex-col bg-(--bg-primary)">
-      {/* Header */}
-      <header className="bg-(--bg-secondary)" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
-        <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 h-14 flex items-center justify-between w-full gap-2">
+    <div className="min-h-dvh flex flex-col bg-(--bg-primary)">
+      {/* Header: stays put, and covers the status bar / Dynamic Island area while scrolling */}
+      <header className="app-header sticky top-0 z-40 bg-(--bg-secondary)">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8 h-14 flex items-center justify-between w-full gap-2">
           <Link to="/" className="flex items-center gap-2 hover-opacity-80 transition-opacity shrink-0">
             <Logo className="w-7 h-7" />
-            <h1 className="text-lg sm:text-xl font-bold text-(--accent) hidden sm:block">AnkiBase</h1>
+            <h1 className={`text-lg sm:text-xl font-bold text-(--accent) ${isNative ? '' : 'hidden sm:block'}`}>AnkiBase</h1>
           </Link>
 
-          <div className="flex items-center gap-1 sm:gap-2 shrink-0 overflow-x-auto">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            {offline && (
+              <button onClick={() => appStatus.check()} title="Offline: tap to try again"
+                className="h-9 px-2.5 rounded-lg flex items-center gap-1.5 text-xs font-medium bg-(--warning)/15 text-(--warning)">
+                <CloudOff className="w-4 h-4" /> Offline{pending ? ` · ${pending}` : ''}
+              </button>
+            )}
 
             {hasUpdate && (
               <button
@@ -172,49 +179,53 @@ export function Layout() {
 
             <button
               onClick={handleSync}
-              disabled={syncStatus === 'syncing'}
-              className="btn btn-secondary flex items-center gap-2 px-2 sm:px-4"
+              disabled={syncing}
+              className="btn btn-secondary header-btn flex items-center gap-2"
               title={t('sync.sync')}
+              aria-label={t('sync.sync')}
             >
-              <RefreshCw className={`w-4 h-4 ${syncStatus === 'syncing' ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
               <span className="hidden sm:inline">{t('sync.sync')}</span>
             </button>
 
-            <button
-              onClick={() => setShowAnkiWebModal(true)}
-              className="btn btn-secondary flex items-center gap-2 px-2 sm:px-4"
-              title={t('ankiweb.title')}
-            >
-              <LogIn className="w-4 h-4" />
-              <span className="hidden sm:inline">AnkiWeb</span>
-            </button>
+            {!isNative && (
+              <Link to="/settings?tab=sync" className="btn btn-secondary header-btn flex items-center gap-2" title={t('ankiweb.title')}>
+                <LogIn className="w-4 h-4" />
+                <span className="hidden sm:inline">AnkiWeb</span>
+              </Link>
+            )}
 
-            <button
-              onClick={() => setShowAccountSwitcher(true)}
-              className="btn btn-secondary flex items-center gap-2 px-2 sm:px-4"
-              title={t('accounts.switchAccount')}
-            >
-              <Server className="w-4 h-4" />
-              <span className="hidden sm:inline">{t('accounts.switch')}</span>
-            </button>
+            {!isNative && (
+              <button
+                onClick={() => setShowAccountSwitcher(true)}
+                className="btn btn-secondary header-btn flex items-center gap-2"
+                title={t('accounts.switchAccount')}
+              >
+                <Server className="w-4 h-4" />
+                <span className="hidden sm:inline">{t('accounts.switch')}</span>
+              </button>
+            )}
 
             <Link
               to="/settings"
-              className="btn btn-secondary flex items-center gap-2 px-2 sm:px-4"
+              className="btn btn-secondary header-btn flex items-center gap-2"
               title={t('settings.title')}
+              aria-label={t('settings.title')}
             >
               <Settings className="w-4 h-4" />
               <span className="hidden sm:inline">{t('settings.title')}</span>
             </Link>
 
-            <button
-              onClick={handleLogout}
-              className="btn btn-secondary flex items-center gap-2 px-2 sm:px-4"
-              title={t('common.logout')}
-            >
-              <LogOut className="w-4 h-4" />
-              <span className="hidden sm:inline">{t('common.logout')}</span>
-            </button>
+            {!isNative && (
+              <button
+                onClick={handleLogout}
+                className="btn btn-secondary header-btn flex items-center gap-2"
+                title={t('common.logout')}
+              >
+                <LogOut className="w-4 h-4" />
+                <span className="hidden sm:inline">{t('common.logout')}</span>
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -260,8 +271,8 @@ export function Layout() {
       </main>
 
       {/* Mobile Bottom Navigation */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-(--bg-secondary) border-t border-(--bg-tertiary) z-50" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
-        <div className="flex justify-around items-center h-16">
+      <nav className={`app-tabbar md:hidden fixed ${studyingAnki ? 'hidden' : ''} bottom-0 left-0 right-0 bg-(--bg-secondary) border-t border-(--bg-tertiary) z-40`}>
+        <div className="flex justify-around items-stretch h-14">
           {mobileNavItems.map(({ to, icon: Icon, label }) => (
             <NavLink
               key={to}
@@ -269,59 +280,55 @@ export function Layout() {
               end={to === '/'}
               className={({ isActive }) => {
                 const active = isActive || (to === '/study' && onStudyPath);
-                return `flex flex-col items-center justify-center px-2 py-1 min-w-[60px] ${
+                return `flex-1 flex flex-col items-center justify-center gap-0.5 min-w-0 ${
                   active ? 'text-(--accent)' : 'text-(--text-secondary)'
                 }`;
               }}
             >
-              <Icon className="w-5 h-5" />
-              <span className="text-xs mt-1">{label}</span>
+              <Icon className="w-[22px] h-[22px]" />
+              <span className="text-[10px] font-medium leading-tight truncate max-w-full px-1">{label}</span>
             </NavLink>
           ))}
 
-          {/* More menu for additional items */}
-          <div className="relative">
-            <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className={`flex flex-col items-center justify-center px-2 py-1 min-w-[60px] ${
-                mobileMenuOpen ? 'text-(--accent)' : 'text-(--text-secondary)'
-              }`}
-            >
-              <Menu className="w-5 h-5" />
-              <span className="text-xs mt-1">{t('nav.more')}</span>
-            </button>
+          {mobileMoreItems.length > 0 && (
+            <div className="relative flex-1 flex">
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className={`flex-1 flex flex-col items-center justify-center gap-0.5 ${
+                  mobileMenuOpen || mobileMoreItems.some(i => location.pathname.startsWith(i.to)) ? 'text-(--accent)' : 'text-(--text-secondary)'
+                }`}
+                aria-expanded={mobileMenuOpen}
+              >
+                <Menu className="w-[22px] h-[22px]" />
+                <span className="text-[10px] font-medium leading-tight">{t('nav.more')}</span>
+              </button>
 
-            {/* Dropdown menu */}
-            {mobileMenuOpen && (
-              <>
-                {/* Backdrop */}
-                <div
-                  className="fixed inset-0 z-40"
-                  onClick={() => setMobileMenuOpen(false)}
-                />
-                {/* Menu */}
-                <div className="absolute bottom-full right-0 mb-2 w-40 bg-(--bg-secondary) border border-(--bg-tertiary) rounded-lg shadow-xl z-50 overflow-hidden">
-                  {mobileMoreItems.map(({ to, icon: Icon, label }) => (
-                    <NavLink
-                      key={to}
-                      to={to}
-                      onClick={() => setMobileMenuOpen(false)}
-                      className={({ isActive }) =>
-                        `flex items-center gap-3 px-4 py-3 text-sm ${
-                          isActive
-                            ? 'text-(--accent) bg-(--bg-tertiary)'
-                            : 'text-(--text-secondary) hover-bg-tertiary hover-white'
-                        }`
-                      }
-                    >
-                      <Icon className="w-4 h-4" />
-                      <span>{label}</span>
-                    </NavLink>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
+              {mobileMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setMobileMenuOpen(false)} />
+                  <div className="absolute bottom-full right-2 mb-2 w-48 bg-(--bg-secondary) border border-(--bg-tertiary) rounded-xl shadow-2xl z-50 overflow-hidden anim-rise">
+                    {mobileMoreItems.map(({ to, icon: Icon, label }) => (
+                      <NavLink
+                        key={to}
+                        to={to}
+                        onClick={() => setMobileMenuOpen(false)}
+                        className={({ isActive }) =>
+                          `flex items-center gap-3 px-4 py-3.5 text-sm ${
+                            isActive
+                              ? 'text-(--accent) bg-(--bg-tertiary)'
+                              : 'text-(--text-primary) hover-bg-tertiary'
+                          }`
+                        }
+                      >
+                        <Icon className="w-4 h-4" />
+                        <span>{label}</span>
+                      </NavLink>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </nav>
 
@@ -333,18 +340,6 @@ export function Layout() {
           // Reload the entire page to refresh all data (API keys, stories, etc.)
           window.location.reload();
         }}
-      />
-
-      {/* AnkiWeb Login Modal */}
-      <AnkiWebLoginModal
-        isOpen={showAnkiWebModal}
-        onClose={() => setShowAnkiWebModal(false)}
-        onSuccess={() => pushToast({
-          icon: <CheckCircle className="w-5 h-5" />,
-          title: 'AnkiWeb connected',
-          message: 'Your credentials have been saved.',
-          duration: 3000,
-        })}
       />
 
       {/* Sync Conflict Modal */}
@@ -362,7 +357,7 @@ export function Layout() {
 
       {/* Toast notifications */}
       {toasts.length > 0 && createPortal(
-        <div className="fixed top-[3.75rem] right-4 z-[300] flex flex-col gap-2 pointer-events-none">
+        <div className="toast-stack fixed right-4 left-4 sm:left-auto z-[300] flex flex-col items-end gap-2 pointer-events-none">
           {toasts.map(toast => (
             <div key={toast.id} className="pointer-events-auto">
               <Toast

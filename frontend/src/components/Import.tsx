@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Upload, ExternalLink, Loader2, CheckCircle, AlertCircle, FileArchive, X, Link, Layers, GalleryVerticalEnd } from 'lucide-react';
 import { Segmented } from './quizlet/ui';
 import { importDeck, quizlet } from '../api';
+import { hasServer, useAppStatus } from '../native';
 
 function AnkiUrlImport() {
   const [url, setUrl] = useState('');
@@ -618,22 +619,26 @@ function QuizletBrowse() {
 
 export function Import() {
   const [tab, setTab] = useState<'anki' | 'quizlet'>('anki');
+  // Links (AnkiWeb, Quizlet) are fetched by the AnkiBase server; files import on the phone.
+  const server = hasServer(useAppStatus());
 
   return (
     <div className="space-y-5">
       {/* Big two-way switch: where are you importing from? */}
-      <Segmented size="lg" full value={tab} onChange={setTab} options={[
-        { value: 'anki', label: 'Anki', icon: <Layers className="w-[18px] h-[18px] shrink-0" /> },
-        { value: 'quizlet', label: 'Quizlet', icon: <GalleryVerticalEnd className="w-[18px] h-[18px] shrink-0" /> },
-      ]} />
+      {server && (
+        <Segmented size="lg" full value={tab} onChange={setTab} options={[
+          { value: 'anki', label: 'Anki', icon: <Layers className="w-[18px] h-[18px] shrink-0" /> },
+          { value: 'quizlet', label: 'Quizlet', icon: <GalleryVerticalEnd className="w-[18px] h-[18px] shrink-0" /> },
+        ]} />
+      )}
 
-      {tab === 'anki' && (
+      {(tab === 'anki' || !server) && (
         <div className="space-y-4">
-          <AnkiUrlImport />
+          {server && <AnkiUrlImport />}
           <AnkiImport />
         </div>
       )}
-      {tab === 'quizlet' && (
+      {tab === 'quizlet' && server && (
         <div className="space-y-4">
           <QuizletImport />
           <QuizletBrowse />

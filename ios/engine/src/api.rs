@@ -1,27 +1,10 @@
-//! AnkiBase's HTTP API, for the requests the phone answers itself.
+//! AnkiBase's HTTP API for Anki, answered from the collection on the phone.
 
-use percent_encoding::percent_decode_str;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 
 use crate::engine::{Engine, Failure, Outcome};
-
-pub struct Reply {
-    /// 0 means "not answered here": the request goes to the AnkiBase server.
-    pub status: u16,
-    pub content_type: String,
-    pub body: Vec<u8>,
-}
-
-impl Reply {
-    fn json(status: u16, value: Value) -> Reply {
-        Reply { status, content_type: "application/json".into(), body: serde_json::to_vec(&value).unwrap() }
-    }
-
-    fn not_here() -> Reply {
-        Reply { status: 0, content_type: String::new(), body: Vec::new() }
-    }
-}
+use crate::http::{mime_type, Reply, Request};
 
 #[derive(Deserialize)]
 struct ReviewRequest {
@@ -38,23 +21,52 @@ struct LoginRequest {
     endpoint: Option<String>,
 }
 
+#[derive(Deserialize)]
+struct DeckName {
+    deck_name: String,
+}
+
+#[derive(Deserialize)]
+struct Rename {
+    old_name: String,
+    new_name: String,
+}
+
+#[derive(Deserialize)]
+struct Fields {
+    fields: Map<String, Value>,
+}
+
+#[derive(Deserialize)]
+struct FrontBack {
+    front: String,
+    back: String,
+}
+
 fn body<'a, T: Deserialize<'a>>(data: &'a [u8]) -> Outcome<T> {
     serde_json::from_slice(data).map_err(|e| Failure::new(422, e.to_string()))
 }
 
-/// Answer `method path` (path may carry a query) if it's one of the Anki requests.
-pub fn handle(engine: &mut Engine, method: &str, path: &str, data: &[u8]) -> Reply {
-    let path = path.split(['?', '#']).next().unwrap_or_default();
-    let Some(route) = path.strip_prefix("/api/") else {
-        return Reply::not_here();
-    };
-    let segments: Vec<String> =
-        route.split('/').map(|s| percent_decode_str(s).decode_utf8_lossy().into_owned()).collect();
-    let segments: Vec<&str> = segments.iter().map(String::as_str).collect();
+pub fn failure(failure: Failure) -> Reply {
+    Reply::error(failure.status, failure.detail)
+}
 
-    let result: Outcome<Value> = match (method, segments.as_slice()) {
+/// Answer `request` if it's one of Anki's; None sends it on (to the AnkiBase server).
+pub fn handle(engine: &mut Engine, request: &Request) -> Option<Reply> {
+    let segments = request.segments("/api/")?;
+    let segments: Vec<&str> = segments.iter().map(String::as_str).collect();
+    let data = request.body.as_slice();
+    let query = |key: &str| request.query(key).unwrap_or_default();
+
+    let result: Outcome<Value> = match (request.method.as_str(), segments.as_slice()) {
         ("GET", ["decks"]) => engine.decks(),
         ("GET", ["decks", "names"]) => engine.deck_names().map(|names| json!({"decks": names})),
+        ("GET", ["decks", deck, "words"]) => {
+            let limit = query("limit").parse().unwrap_or(500).min(5000);
+            engine.deck_words(deck, limit, &query("field"))
+        }
+        ("POST", ["decks", "delete"]) => body::<DeckName>(data).and_then(|r| engine.delete_deck(&r.deck_name)),
+        ("POST", ["decks", "rename"]) => body::<Rename>(data).and_then(|r| engine.rename_deck(&r.old_name, &r.new_name)),
         ("POST", ["review", "current"]) => body::<ReviewRequest>(data).and_then(|r| engine.current(&r.deck)),
         ("POST", ["review", "answer"]) => body::<ReviewRequest>(data).and_then(|r| match (r.card_id, r.ease) {
             (Some(card_id), Some(ease)) => engine.answer(&r.deck, card_id, ease),
@@ -62,11 +74,24 @@ pub fn handle(engine: &mut Engine, method: &str, path: &str, data: &[u8]) -> Rep
         }),
         ("POST", ["review", "undo"]) => body::<ReviewRequest>(data).and_then(|r| engine.undo(&r.deck)),
         ("GET", ["media-file", name]) => {
-            return match engine.media_file(name) {
-                Ok(bytes) => Reply { status: 200, content_type: mime_type(name).into(), body: bytes },
-                Err(failure) => error(failure),
-            };
+            return Some(match engine.media_file(name) {
+                Ok(bytes) => Reply::new(200, mime_type(name), bytes).with_header("Cache-Control", "max-age=3600"),
+                Err(err) => failure(err),
+            });
         }
+        ("GET", ["media", name]) => engine.media_base64(name),
+        ("GET", ["cards", id]) if id.parse::<i64>().is_ok() => engine.card_info(id.parse().unwrap()),
+        ("PUT", ["notes", id, "fields"]) => match id.parse::<i64>() {
+            Ok(id) => body::<Fields>(data).and_then(|r| engine.update_note_fields(id, &r.fields)),
+            Err(_) => Err(Failure::new(400, "Invalid note id")),
+        },
+        ("POST", ["notes", "basic"]) => {
+            body::<FrontBack>(data).and_then(|r| engine.add_basic_note(&query("deck"), &r.front, &r.back))
+        }
+        ("POST", ["import"]) => match multipart_file(request) {
+            Some((name, bytes)) => engine.import_package(&name, &bytes),
+            None => Err(Failure::new(400, "Send the .apkg file as multipart form data (field \"file\")")),
+        },
         ("POST", ["sync"]) => engine
             .sync()
             .map(|outcome| json!({"success": true, "message": "Sync completed", "outcome": outcome})),
@@ -79,38 +104,57 @@ pub fn handle(engine: &mut Engine, method: &str, path: &str, data: &[u8]) -> Rep
         ("GET", ["sync", "media"]) => Ok(engine.media_status()),
         ("POST", ["ankiweb", "login"]) => body::<LoginRequest>(data)
             .and_then(|r| engine.login(r.email.trim(), &r.password, r.endpoint.filter(|e| !e.trim().is_empty())))
-            .map(|_| json!({"success": true, "message": "Logged in to AnkiWeb"})),
+            .map(|_| json!({"success": true, "message": "Logged in"})),
         ("GET", ["ankiweb", "status"]) => Ok(engine.status()),
         ("DELETE", ["ankiweb", "credentials"]) => engine.logout().map(|_| json!({"success": true})),
-        _ => return Reply::not_here(),
+        _ => return None,
     };
-    match result {
-        Ok(value) => Reply::json(200, value),
-        Err(failure) => error(failure),
+    Some(match result {
+        Ok(value) => Reply::ok(value),
+        Err(err) => failure(err),
+    })
+}
+
+/// The `file` field of a multipart/form-data body: (file name, contents).
+fn multipart_file(request: &Request) -> Option<(String, Vec<u8>)> {
+    let content_type = request.header("content-type")?;
+    let boundary = content_type
+        .split(';')
+        .map(str::trim)
+        .find_map(|p| p.strip_prefix("boundary="))?
+        .trim_matches('"');
+    let delimiter = format!("--{boundary}").into_bytes();
+    let body = &request.body;
+    let mut start = find(body, &delimiter, 0)? + delimiter.len();
+    loop {
+        let end = find(body, &delimiter, start)?;
+        // Each part: CRLF, headers, CRLF CRLF, contents, CRLF.
+        let part = &body[start..end];
+        let part = part.strip_prefix(b"\r\n").unwrap_or(part);
+        if let Some(split) = find(part, b"\r\n\r\n", 0) {
+            let headers = String::from_utf8_lossy(&part[..split]);
+            let contents = &part[split + 4..];
+            let contents = contents.strip_suffix(b"\r\n").unwrap_or(contents);
+            let disposition = headers
+                .lines()
+                .find(|l| l.to_ascii_lowercase().starts_with("content-disposition"))
+                .unwrap_or_default();
+            let param = |key: &str| {
+                disposition.split(';').map(str::trim).find_map(|p| {
+                    p.strip_prefix(&format!("{key}=")).map(|v| v.trim_matches('"').to_string())
+                })
+            };
+            if param("name").as_deref() == Some("file") {
+                return Some((param("filename").unwrap_or_else(|| "deck.apkg".into()), contents.to_vec()));
+            }
+        }
+        start = end + delimiter.len();
+        if body[start..].starts_with(b"--") {
+            return None;
+        }
     }
 }
 
-fn error(failure: Failure) -> Reply {
-    Reply::json(failure.status, json!({"detail": failure.detail}))
-}
-
-fn mime_type(name: &str) -> &'static str {
-    let ext = name.rsplit('.').next().unwrap_or_default().to_ascii_lowercase();
-    match ext.as_str() {
-        "jpg" | "jpeg" => "image/jpeg",
-        "png" => "image/png",
-        "gif" => "image/gif",
-        "webp" => "image/webp",
-        "svg" => "image/svg+xml",
-        "mp3" => "audio/mpeg",
-        "m4a" | "mp4" => "audio/mp4",
-        "ogg" | "oga" => "audio/ogg",
-        "wav" => "audio/wav",
-        "webm" => "audio/webm",
-        "css" => "text/css",
-        "js" => "text/javascript",
-        "woff2" => "font/woff2",
-        "ttf" => "font/ttf",
-        _ => "application/octet-stream",
-    }
+fn find(haystack: &[u8], needle: &[u8], from: usize) -> Option<usize> {
+    haystack.get(from..)?.windows(needle.len()).position(|w| w == needle).map(|i| i + from)
 }

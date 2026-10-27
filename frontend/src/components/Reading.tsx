@@ -450,7 +450,7 @@ function Reader({ id, onBack }: { id: number; onBack: () => void }) {
       )}
       {adding && <AddCardDialog prefill={adding} onClose={() => setAdding(null)} onAdded={d => { setAdding(null); setToast(`Added to ${d}`); }} />}
       {toast && createPortal(
-        <div className="fixed bottom-20 sm:bottom-6 left-1/2 -translate-x-1/2 z-[300] rounded-lg bg-(--bg-secondary) border border-white/10 shadow-xl px-4 py-2.5 text-sm flex items-center gap-2">
+        <div className="fixed above-tabbar left-1/2 -translate-x-1/2 z-[300] rounded-lg bg-(--bg-secondary) border border-white/10 shadow-xl px-4 py-2.5 text-sm flex items-center gap-2">
           <Check className="w-4 h-4 text-green-400" /> {toast}
         </div>, document.body)}
     </div>

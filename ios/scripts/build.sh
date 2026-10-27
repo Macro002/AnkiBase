@@ -29,16 +29,20 @@ export CC_aarch64_apple_ios="$toolchain/clang" AR_aarch64_apple_ios="$toolchain/
 export CFLAGS_aarch64_apple_ios="--target=arm64-apple-ios17.0 -isysroot $sdk"
 (cd engine && cargo build --release --target aarch64-apple-ios)
 
-echo "== App icon (the logo on AnkiBase's navy)"
-python3 - <<'PY' > .build/icon.svg
-import re
-logo = open("../frontend/public/logo.svg").read()
-paths = re.sub(r"^<svg[^>]*>|</svg>\s*$", "", logo.strip())
-print('<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">'
-      '<rect width="1024" height="1024" fill="#16213e"/>'
-      f'<g transform="translate(192 192) scale({640 / 24})" fill="#e94560">{paths}</g></svg>')
-PY
-rsvg-convert -w 1024 -h 1024 .build/icon.svg -o Sources/AnkiBase/Resources/AppIcon.png
+echo "== App icons (the logo on each theme's colours)"
+python3 scripts/icons.py svg .build/icons
+for svg in .build/icons/*.svg; do
+  name="${svg%.svg}"
+  rsvg-convert -w 1024 -h 1024 "$svg" -o "$name.png"
+  rsvg-convert -w 120 -h 120 "$svg" -o "$name@2x.png"
+  rsvg-convert -w 180 -h 180 "$svg" -o "$name@3x.png"
+done
+cp .build/icons/AnkiBase.png Sources/AnkiBase/Resources/AppIcon.png
+
+echo "== Anki's own pages (Statistics, Deck Options…)"
+[ -f .build/anki-pages/index.html ] || python3 scripts/anki-pages.py .build/anki-pages
+rm -rf Sources/AnkiBase/Resources/pages
+cp -R .build/anki-pages Sources/AnkiBase/Resources/pages
 
 echo "== Web UI"
 (cd ../frontend && npm run build)
@@ -51,4 +55,5 @@ version=$(plutil -extract CFBundleShortVersionString raw Info.plist 2>/dev/null 
 build=$(sed -n 's:.*<key>CFBundleVersion</key><string>\(.*\)</string>.*:\1:p' Info.plist)
 mkdir -p dist
 cp xtool/AnkiBase.ipa "dist/AnkiBase-$version-$build.ipa"
+python3 scripts/icons.py ipa "dist/AnkiBase-$version-$build.ipa" .build/icons
 ls -la "dist/AnkiBase-$version-$build.ipa"

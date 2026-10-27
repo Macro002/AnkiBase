@@ -49,9 +49,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Simple session store (in production, use Redis or similar)
-# session_id -> user info
-sessions: dict[str, dict] = {}
+# session_id -> user info, kept in the database across restarts
+from database import LoginSessions
+sessions = LoginSessions()
 
 # Login rate limiting constants (DB-backed, persistent)
 _LOGIN_WINDOW      = 900   # 15-minute sliding window
@@ -183,6 +183,28 @@ class SetUserContainersRequest(BaseModel):
 class AnkiWebLoginRequest(BaseModel):
     email: str
     password: str
+    # A self-hosted sync server (Anki's sync server) instead of AnkiWeb.
+    endpoint: Optional[str] = None
+
+
+def _sync_endpoint(endpoint: Optional[str]) -> Optional[str]:
+    """A sync server address as Anki expects it (http(s), trailing slash); None for AnkiWeb."""
+    from urllib.parse import urlsplit
+    endpoint = (endpoint or "").strip()
+    if not endpoint:
+        return None
+    if "://" not in endpoint:
+        endpoint = "https://" + endpoint
+    parts = urlsplit(endpoint)
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        raise HTTPException(status_code=400, detail=f"{endpoint} isn't a valid sync server address")
+    return endpoint if endpoint.endswith("/") else endpoint + "/"
+
+
+def _is_ankiweb(endpoint: Optional[str]) -> bool:
+    from urllib.parse import urlsplit
+    host = urlsplit(endpoint or "").hostname or ""
+    return host == "ankiweb.net" or host.endswith(".ankiweb.net")
 
 
 class CreateAccountRequest(BaseModel):
@@ -589,7 +611,7 @@ async def change_language_endpoint(
         # Update session
         session_id = req.cookies.get("session_id")
         if session_id and session_id in sessions:
-            sessions[session_id]['language'] = request.language
+            sessions.update(session_id, language=request.language)
         return {"success": True, "message": "Language changed successfully", "language": request.language}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to change language: {str(e)}")
@@ -676,6 +698,7 @@ async def delete_user_endpoint(user_id: int, _: dict = Depends(require_admin)):
     try:
         success = delete_user(user_id)
         if success:
+            sessions.drop_user(user_id)
             return {"success": True, "message": "User deleted successfully"}
         raise HTTPException(status_code=404, detail="User not found or cannot be deleted (root user)")
     except Exception as e:
@@ -2202,8 +2225,11 @@ async def anki_pages(path: str, request: Request, client: AnkiConnectClient = De
 @app.post("/api/ankiweb/login")
 async def ankiweb_login(request: AnkiWebLoginRequest, client: AnkiConnectClient = Depends(get_anki_client),
                         _: str = Depends(require_auth)):
+    endpoint = _sync_endpoint(request.endpoint)
     try:
-        await client.rpc("sync.login", timeout=60.0, username=request.email.strip(), password=request.password)
+        params = {"endpoint": endpoint} if endpoint else {}
+        await client.rpc("sync.login", timeout=60.0, username=request.email.strip(), password=request.password,
+                         **params)
     except AnkiError as e:
         raise HTTPException(status_code=401 if e.code == "authenticationRequired" else 500,
                             detail=str(e) or "Failed to log in to AnkiWeb. Check your email and password.")
@@ -2220,9 +2246,12 @@ async def ankiweb_status(client: AnkiConnectClient = Depends(get_anki_client), _
         account = await client.rpc("sync.account")
     except Exception as e:
         return {"has_credentials": False, "configured": False, "error": str(e)}
+    endpoint = account.get("endpoint") if account["loggedIn"] else None
     return {"has_credentials": account["loggedIn"], "configured": account["loggedIn"],
             "email": account.get("username") if account["loggedIn"] else None,
-            "last_sync": account.get("lastSync")}
+            "last_sync": account.get("lastSync"),
+            # Set when syncing with a self-hosted server (AnkiWeb hands out its own addresses).
+            "endpoint": None if _is_ankiweb(endpoint) else endpoint}
 
 
 @app.get("/api/ankiweb/debug")
@@ -2620,14 +2649,10 @@ class AnkiWebUrlImportRequest(BaseModel):
     url: str
 
 
-@app.post("/api/import/ankiweb-url")
-async def import_ankiweb_url(
-    request: AnkiWebUrlImportRequest,
-    client: AnkiConnectClient = Depends(get_anki_client),
-    _: str = Depends(require_auth),
-):
+async def _download_shared_deck(url: str) -> tuple[str, str, bytes]:
+    """A shared deck from AnkiWeb: (title, file name, .apkg contents)."""
     import re as _re, asyncio
-    url = request.url.strip()
+    url = url.strip()
     if not _re.match(r'https?://(www\.)?ankiweb\.net/shared/info/\d+', url):
         raise HTTPException(status_code=400, detail="Invalid URL. Expected: https://ankiweb.net/shared/info/<id>")
 
@@ -2648,28 +2673,48 @@ async def import_ankiweb_url(
         if resp.status_code != 200:
             raise HTTPException(status_code=500, detail=f"Download failed (HTTP {resp.status_code})")
 
-    active_account = get_active_account()
-    if not active_account:
-        raise HTTPException(status_code=400, detail="No active account")
-
-    export_dir = tempfile.mkdtemp(dir=_import_dir())
-
     cd = resp.headers.get('content-disposition', '')
     m = _re.search(r'filename="?([^";\n]+)', cd)
     filename = m.group(1).strip() if m else f"ankiweb_{url.rstrip('/').split('/')[-1]}.apkg"
     if not filename.endswith('.apkg'):
         filename += '.apkg'
+    return deck_title, filename, resp.content
 
-    file_path = os.path.join(export_dir, filename)
+
+@app.post("/api/import/ankiweb-url")
+async def import_ankiweb_url(
+    request: AnkiWebUrlImportRequest,
+    client: AnkiConnectClient = Depends(get_anki_client),
+    _: str = Depends(require_auth),
+):
+    deck_title, filename, content = await _download_shared_deck(request.url)
+    active_account = get_active_account()
+    if not active_account:
+        raise HTTPException(status_code=400, detail="No active account")
+
+    export_dir = tempfile.mkdtemp(dir=_import_dir())
+    file_path = os.path.join(export_dir, os.path.basename(filename))
     try:
         with open(file_path, 'wb') as f:
-            f.write(resp.content)
+            f.write(content)
         await client.import_package(file_path)
         return {"success": True, "message": f'Successfully imported "{deck_title}"', "deck_title": deck_title}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         shutil.rmtree(export_dir, ignore_errors=True)
+
+
+@app.post("/api/import/ankiweb-url/package")
+async def download_ankiweb_package(request: AnkiWebUrlImportRequest, _: str = Depends(require_auth)):
+    """The shared deck's .apkg itself, for the phone app to import into its own collection
+    (AnkiWeb only hands it out to a real browser, which runs here)."""
+    from urllib.parse import quote
+    deck_title, filename, content = await _download_shared_deck(request.url)
+    return Response(content=content, media_type="application/octet-stream", headers={
+        "X-Title": quote(deck_title),
+        "Content-Disposition": f'attachment; filename="{quote(filename)}"',
+    })
 
 
 # Import deck endpoint

@@ -56,15 +56,17 @@ struct Account {
 }
 
 pub struct Engine {
-    dir: PathBuf,
+    pub(crate) dir: PathBuf,
     col: Option<Collection>,
-    rt: tokio::runtime::Runtime,
-    web: reqwest::Client,
+    pub(crate) rt: tokio::runtime::Runtime,
+    pub(crate) web: reqwest::Client,
     account: Account,
     /// The card on screen and when it was shown, for the review's time taken.
-    shown: Option<(CardId, Instant)>,
+    pub(crate) shown: Option<(CardId, Instant)>,
     media_sync: Option<JoinHandle<Result<()>>>,
     media_error: Option<String>,
+    /// Desktop-only settings Anki's pages remember (`getProfileConfigJson`…), per launch.
+    pub(crate) page_settings: std::collections::HashMap<String, Vec<u8>>,
 }
 
 impl Engine {
@@ -90,6 +92,7 @@ impl Engine {
             shown: None,
             media_sync: None,
             media_error: None,
+            page_settings: Default::default(),
         })
     }
 
@@ -243,7 +246,9 @@ impl Engine {
 
     // AnkiWeb ------------------------------------------------------------------------
 
+    /// Log in to AnkiWeb, or to a self-hosted sync server at `endpoint`.
     pub fn login(&mut self, username: &str, password: &str, endpoint: Option<String>) -> Outcome<()> {
+        let endpoint = endpoint.map(|e| normalize_endpoint(&e)).transpose()?;
         let auth = self
             .rt
             .block_on(sync_login(username, password, endpoint.clone(), self.web.clone()))
@@ -274,6 +279,8 @@ impl Engine {
             "configured": logged_in,
             "email": self.account.username,
             "last_sync": self.account.last_sync,
+            // Set when syncing with a self-hosted server instead of AnkiWeb.
+            "endpoint": self.account.endpoint.as_deref().filter(|e| !is_ankiweb(e)),
         })
     }
 
@@ -387,7 +394,32 @@ impl Drop for Engine {
     }
 }
 
-fn open_collection(dir: &Path) -> Outcome<Collection> {
+/// A self-hosted sync server's address as Anki expects it: http(s), ending in a slash.
+fn normalize_endpoint(endpoint: &str) -> Outcome<String> {
+    let mut endpoint = endpoint.trim().to_string();
+    if !endpoint.contains("://") {
+        endpoint = format!("https://{endpoint}");
+    }
+    let url = reqwest::Url::parse(&endpoint)
+        .map_err(|_| Failure::new(400, format!("{endpoint} isn't a valid sync server address")))?;
+    if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
+        return Err(Failure::new(400, format!("{endpoint} isn't a valid sync server address")));
+    }
+    if !endpoint.ends_with('/') {
+        endpoint.push('/');
+    }
+    Ok(endpoint)
+}
+
+/// AnkiWeb hands out its own server addresses (sync1.ankiweb.net…) after a sync.
+fn is_ankiweb(endpoint: &str) -> bool {
+    reqwest::Url::parse(endpoint)
+        .ok()
+        .and_then(|url| url.host_str().map(|host| host == "ankiweb.net" || host.ends_with(".ankiweb.net")))
+        .unwrap_or(false)
+}
+
+pub(crate) fn open_collection(dir: &Path) -> Outcome<Collection> {
     Ok(CollectionBuilder::new(dir.join("collection.anki2"))
         .set_media_paths(dir.join("collection.media"), dir.join("collection.media.db"))
         .set_tr(I18n::new(&["en"]))

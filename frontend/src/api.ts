@@ -396,6 +396,32 @@ export const stories = {
     fetchAPI<{ explanation: string }>('/story/explain', { method: 'POST', body: JSON.stringify(p) }),
 };
 
+/** Read a server-sent event stream with fetch (EventSource doesn't work in the iPhone
+ *  app's web view). Calls `onEvent` with each event's parsed data; resolves when the
+ *  stream ends, rejects if it can't be opened or breaks. */
+export async function streamEvents(url: string, onEvent: (data: unknown) => void, signal?: AbortSignal): Promise<void> {
+  const response = await fetch(url, { credentials: 'include', headers: { Accept: 'text/event-stream' }, signal });
+  if (!response.ok || !response.body) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(typeof body.detail === 'string' ? body.detail : `Request failed (${response.status})`);
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let end: number;
+    while ((end = buffer.indexOf('\n\n')) >= 0) {
+      const chunk = buffer.slice(0, end);
+      buffer = buffer.slice(end + 2);
+      const data = chunk.split('\n').filter(l => l.startsWith('data:')).map(l => l.slice(5).trimStart()).join('\n');
+      if (data) { try { onEvent(JSON.parse(data)); } catch { onEvent(data); } }
+    }
+  }
+}
+
 // Update
 export const update = {
   check: () => fetchAPI<{ current: string; latest: string; has_update: boolean }>('/update/check'),
@@ -403,8 +429,12 @@ export const update = {
 };
 
 // Sync
+export interface MediaSyncStatus { active: boolean; error: string | null }
+
 export const sync = {
-  trigger: () => fetchAPI<{ success: boolean; message: string }>('/sync', { method: 'POST' }),
+  trigger: () => fetchAPI<{ success: boolean; message: string; outcome?: string }>('/sync', { method: 'POST' }),
+  /** The app only: media syncs in the background after a sync. */
+  media: () => fetchAPI<MediaSyncStatus>('/sync/media'),
   fullUpload: () => fetchAPI<{ success: boolean; message: string }>('/sync/full-upload', { method: 'POST' }),
   fullDownload: () => fetchAPI<{ success: boolean; message: string }>('/sync/full-download', { method: 'POST' }),
 };
@@ -413,14 +443,19 @@ export const sync = {
 export interface AnkiWebStatus {
   has_credentials: boolean;
   configured: boolean;
-  email?: string;
+  email?: string | null;
+  /** Unix seconds (the app) or what the server's engine reports. */
+  last_sync?: number | string | null;
+  /** A self-hosted sync server; null means AnkiWeb. */
+  endpoint?: string | null;
 }
 
 export const ankiweb = {
-  login: (email: string, password: string) =>
+  /** `endpoint`: a self-hosted sync server instead of AnkiWeb. */
+  login: (email: string, password: string, endpoint?: string | null) =>
     fetchAPI<{ success: boolean; message: string }>('/ankiweb/login', {
       method: 'POST',
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, endpoint: endpoint || null }),
     }),
   status: () => fetchAPI<AnkiWebStatus>('/ankiweb/status'),
   deleteCredentials: () =>

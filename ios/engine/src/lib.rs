@@ -1,13 +1,17 @@
-//! Anki's engine for the AnkiBase iPhone app.
-//!
-//! The app's web view talks to AnkiBase's usual HTTP API. Requests for the Anki parts of
-//! it (decks, studying, media, AnkiWeb sync) are answered here, by Anki's own Rust library
-//! working on a collection stored on the phone, so they keep working offline. Everything
-//! else (stories, AI, Quizlet) still goes to the AnkiBase server.
+//! The AnkiBase iPhone app's core: Anki's engine with the collection on the phone, and
+//! everything the app's web view asks for (see app.rs).
 
-mod api;
-mod engine;
+pub mod api;
+pub mod app;
+pub mod engine;
 mod ffi;
+pub mod http;
+mod notes;
+mod pages;
+pub mod server;
+mod sessions;
+mod stats;
 
-pub use api::{handle, Reply};
+pub use app::{App, Config};
 pub use engine::Engine;
+pub use http::{Collect, Reply, Request, Sink};

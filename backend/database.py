@@ -432,6 +432,83 @@ def init_db():
     """Initialize all database tables and migrate existing data."""
     init_global_db()
     migrate_to_per_account_data()
+    with get_db() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS login_sessions (
+                id TEXT PRIMARY KEY,
+                data TEXT NOT NULL,
+                expires_at INTEGER NOT NULL
+            )
+        """)
+        conn.execute("DELETE FROM login_sessions WHERE expires_at < ?", (int(time.time()),))
+        conn.commit()
+
+
+class LoginSessions:
+    """Logged-in sessions (session id -> user info), kept in the database so a restart or an
+    update doesn't log everyone out (the phone app stays logged in for its 7 days)."""
+
+    LIFETIME = 7 * 24 * 3600
+
+    def __init__(self):
+        self._cache: dict[str, dict] = {}
+
+    def _load(self, session_id: str) -> Optional[dict]:
+        if session_id in self._cache:
+            return self._cache[session_id]
+        with get_db() as conn:
+            row = conn.execute("SELECT data FROM login_sessions WHERE id = ? AND expires_at >= ?",
+                               (session_id, int(time.time()))).fetchone()
+        if row is None:
+            return None
+        data = json.loads(row["data"])
+        self._cache[session_id] = data
+        return data
+
+    def __contains__(self, session_id: object) -> bool:
+        return isinstance(session_id, str) and self._load(session_id) is not None
+
+    def __getitem__(self, session_id: str) -> dict:
+        data = self._load(session_id)
+        if data is None:
+            raise KeyError(session_id)
+        return data
+
+    def get(self, session_id: Optional[str], default=None):
+        data = self._load(session_id) if session_id else None
+        return default if data is None else data
+
+    def __setitem__(self, session_id: str, data: dict) -> None:
+        self._cache[session_id] = data
+        with get_db() as conn:
+            conn.execute("INSERT OR REPLACE INTO login_sessions (id, data, expires_at) VALUES (?, ?, ?)",
+                         (session_id, json.dumps(data), int(time.time()) + self.LIFETIME))
+            conn.commit()
+
+    def update(self, session_id: str, **changes) -> None:
+        """Change a session's user info (e.g. its language), keeping its expiry."""
+        data = self._load(session_id)
+        if data is None:
+            return
+        data.update(changes)
+        with get_db() as conn:
+            conn.execute("UPDATE login_sessions SET data = ? WHERE id = ?", (json.dumps(data), session_id))
+            conn.commit()
+
+    def __delitem__(self, session_id: str) -> None:
+        self._cache.pop(session_id, None)
+        with get_db() as conn:
+            conn.execute("DELETE FROM login_sessions WHERE id = ?", (session_id,))
+            conn.commit()
+
+    def drop_user(self, user_id: int) -> None:
+        """Log a user out everywhere (deleted users, changed passwords)."""
+        self._cache = {k: v for k, v in self._cache.items() if v.get("user_id") != user_id}
+        with get_db() as conn:
+            for row in conn.execute("SELECT id, data FROM login_sessions").fetchall():
+                if json.loads(row["data"]).get("user_id") == user_id:
+                    conn.execute("DELETE FROM login_sessions WHERE id = ?", (row["id"],))
+            conn.commit()
 
 
 # Story functions

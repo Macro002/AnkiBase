@@ -57,5 +57,12 @@ version=$(plutil -extract CFBundleShortVersionString raw Info.plist 2>/dev/null 
 build=$(sed -n 's:.*<key>CFBundleVersion</key><string>\(.*\)</string>.*:\1:p' Info.plist)
 mkdir -p dist
 cp xtool/AnkiBase.ipa "dist/AnkiBase-$version-$build.ipa"
+# The same app without this build's own settings, for GitHub releases: anyone's Apple ID
+# can sign it, it starts without a server and checks GitHub for updates.
+mkdir -p dist/release
+cp xtool/AnkiBase.ipa "dist/release/AnkiBase-v$version.ipa"
+env -u ANKIBASE_BUNDLE_ID -u ANKIBASE_SERVER \
+  ANKIBASE_UPDATE_FEED=https://api.github.com/repos/Macro002/AnkiBase/releases/latest \
+  python3 scripts/icons.py ipa "dist/release/AnkiBase-v$version.ipa" .build/icons
 python3 scripts/icons.py ipa "dist/AnkiBase-$version-$build.ipa" .build/icons
-ls -la "dist/AnkiBase-$version-$build.ipa"
+ls -la "dist/AnkiBase-$version-$build.ipa" "dist/release/AnkiBase-v$version.ipa"

@@ -250,8 +250,8 @@ impl App {
         })
     }
 
-    /// The newest version: from a SideStore/AltStore source (iPhone), or GitHub's latest
-    /// release with an .apk (Android).
+    /// The newest version: from a SideStore/AltStore source, or GitHub's latest release
+    /// with this platform's file (.apk on Android, .ipa on iPhone).
     fn app_update(&self) -> Value {
         let current = json!({"version": self.config.version, "build": self.config.build});
         let Some(feed) = self.config.update_feed.as_deref().filter(|f| !f.is_empty()) else {
@@ -263,14 +263,15 @@ impl App {
         if source.get("tag_name").is_some() {
             // GitHub: {"tag_name": "v1.2.0", "body": …, "assets": [{"name", "browser_download_url"}]}
             let version = source["tag_name"].as_str().unwrap_or_default().trim_start_matches('v').to_string();
-            let apk = source["assets"].as_array().and_then(|assets| {
-                assets.iter().find(|a| a["name"].as_str().is_some_and(|n| n.ends_with(".apk")))
+            let suffix = if cfg!(target_os = "android") { ".apk" } else { ".ipa" };
+            let file = source["assets"].as_array().and_then(|assets| {
+                assets.iter().find(|a| a["name"].as_str().is_some_and(|n| n.ends_with(suffix)))
             });
             let latest = json!({
                 "version": version, "build": null, "notes": source["body"], "date": source["published_at"],
-                "url": apk.map(|a| a["browser_download_url"].clone()).unwrap_or(source["html_url"].clone()),
+                "url": file.map(|a| a["browser_download_url"].clone()).unwrap_or(source["html_url"].clone()),
             });
-            let has_update = apk.is_some() && newer(&version, &self.config.version);
+            let has_update = file.is_some() && newer(&version, &self.config.version);
             return json!({"current": current, "latest": latest, "has_update": has_update, "source": feed});
         }
         let id = self.config.bundle_id.as_deref().unwrap_or("io.github.ankibase");

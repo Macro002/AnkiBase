@@ -92,14 +92,15 @@ jobs:
           files: dist/*.apk
           generate_release_notes: true
           body: |
-            ## Install or update
+            ## Update
 
-            **Server** (Debian or Ubuntu):
+            Click **Update** in AnkiBase (Settings → Server), or run this on the server:
             ```bash
-            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | sudo bash
+            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | sudo bash -s -- --update
             ```
-            Already running AnkiBase? Click **Update** in the app, or run the same command with `-s -- --update`.
 
-            **Android:** download the `.apk` below and open it (allow installs from your browser when asked). Updates install over it.
+            **Android:** download the `.apk` below and open it. It installs over the old version.
 
-            **iPhone:** build it with `ios/scripts/build.sh` and install it with SideStore or AltStore (see `ios/README.md`).
+            **iPhone:** download the `.ipa` below and open it in SideStore or AltStore.
+
+            New to AnkiBase? See the [install guide](https://github.com/${{ github.repository }}#-install).

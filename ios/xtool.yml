@@ -1,0 +1,4 @@
+version: 1
+bundleID: dev.macr0.ankibase
+infoPath: Info.plist
+iconPath: Sources/AnkiBase/Resources/AppIcon.png

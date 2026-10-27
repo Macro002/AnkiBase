@@ -1,0 +1,8 @@
+/.build
+/xtool
+/dist
+*.ipa
+/engine/target
+# Built from ../frontend by scripts/build.sh
+/Sources/AnkiBase/Resources/web
+/Sources/AnkiBase/Resources/AppIcon.png

@@ -1,0 +1,26 @@
+[package]
+name = "ankibase-engine"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+description = "Anki's engine for the AnkiBase iPhone app: answers AnkiBase's Anki API on the device"
+publish = false
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+# Anki's own Rust library, at the same release the server runs.
+anki = { git = "https://github.com/ankitects/anki.git", tag = "26.09.3", features = ["rustls"] }
+anki_proto = { git = "https://github.com/ankitects/anki.git", tag = "26.09.3" }
+reqwest = { version = "0.12.20", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1.45", features = ["rt-multi-thread"] }
+percent-encoding = "2"
+
+[profile.release]
+lto = "thin"
+codegen-units = 4
+opt-level = "s"
+strip = "debuginfo"

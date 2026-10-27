@@ -1,0 +1,4 @@
+[toolchain]
+# Anki 26.09.3 builds with this release.
+channel = "1.97.1"
+targets = ["aarch64-apple-ios"]

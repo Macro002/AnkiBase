@@ -290,7 +290,8 @@
     "addFailed": "Konto konnte nicht hinzugefügt werden",
     "renameFailed": "Umbenennen fehlgeschlagen",
     "deleteFailed": "Löschen fehlgeschlagen",
-    "restartFailed": "Neustart fehlgeschlagen"
+    "restartFailed": "Sammlung konnte nicht neu geladen werden",
+    "reloaded": "Sammlung neu geladen"
   },
   "notFound": {
     "title": "Seite nicht gefunden",

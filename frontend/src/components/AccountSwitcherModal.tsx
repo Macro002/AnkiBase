@@ -15,6 +15,7 @@ export function AccountSwitcherModal({ isOpen, onClose, onSwitch }: AccountSwitc
   const [activeAccountId, setActiveAccountId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   // Add/rename state
@@ -25,6 +26,12 @@ export function AccountSwitcherModal({ isOpen, onClose, onSwitch }: AccountSwitc
 
   // Accounts whose collection is being reloaded
   const [reloading, setReloading] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(''), 2500);
+    return () => clearTimeout(timer);
+  }, [notice]);
 
   useEffect(() => {
     if (isOpen) {
@@ -132,9 +139,12 @@ export function AccountSwitcherModal({ isOpen, onClose, onSwitch }: AccountSwitc
   // Reloading re-reads the collection from disk (picks up changes made outside AnkiBase)
   const handleReload = async (accountId: number) => {
     setError('');
+    setNotice('');
     setReloading(prev => new Set(prev).add(accountId));
     try {
       await accounts.restart(accountId);
+      await loadAccounts();
+      setNotice(t('accounts.reloaded'));
     } catch (err) {
       setError(err instanceof Error ? err.message : t('accounts.restartFailed'));
     } finally {
@@ -171,6 +181,12 @@ export function AccountSwitcherModal({ isOpen, onClose, onSwitch }: AccountSwitc
           {error && (
             <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded text-red-400 text-sm">
               {error}
+            </div>
+          )}
+
+          {notice && (
+            <div className="mb-4 p-3 rounded text-sm" style={{ backgroundColor: 'color-mix(in srgb, var(--accent) 12%, transparent)', color: 'var(--accent)' }}>
+              {notice}
             </div>
           )}
 
@@ -332,7 +348,7 @@ export function AccountSwitcherModal({ isOpen, onClose, onSwitch }: AccountSwitc
               value={renameModal.newName}
               onChange={(e) => setRenameModal({ ...renameModal, newName: e.target.value })}
               className="input w-full mb-4"
-              placeholder={t('accounts.containerName', 'Account name')}
+              placeholder={t('accounts.containerPlaceholder')}
               autoFocus
               onKeyDown={(e) => e.key === 'Enter' && handleRenameAccount()}
             />

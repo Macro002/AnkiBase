@@ -399,39 +399,12 @@ export function UserManagement() {
                 </label>
               </div>
 
-              {/* Container Access */}
-              <div>
-                <label className="block text-sm font-medium mb-2">Anki Account Access</label>
-                {formData.is_admin ? (
-                  <p className="text-(--text-secondary) text-sm">
-                    Admin users have access to all accounts automatically.
-                  </p>
-                ) : (
-                  <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {allContainers.map((container) => (
-                      <label
-                        key={container.id}
-                        className="flex items-center gap-3 p-3 rounded bg-(--bg-primary) cursor-pointer"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedContainerIds.includes(container.id)}
-                          onChange={() => toggleContainer(container.id)}
-                        />
-                        <div className="flex-1">
-                          <div className="font-medium text-sm">{container.container_name}</div>
-                          <div className="text-xs text-(--text-secondary)">{container.ankiweb_email || 'Not logged into AnkiWeb'}</div>
-                        </div>
-                      </label>
-                    ))}
-                    {allContainers.length === 0 && (
-                      <p className="text-(--text-secondary) text-sm text-center py-4">
-                        No accounts yet
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
+              <AccountAccess
+                isAdmin={formData.is_admin}
+                accounts={allContainers}
+                selected={selectedContainerIds}
+                onToggle={toggleContainer}
+              />
 
               <div className="flex gap-3 pt-4">
                 <button
@@ -538,39 +511,12 @@ export function UserManagement() {
                 </label>
               </div>
 
-              {/* Container Access */}
-              <div>
-                <label className="block text-sm font-medium mb-2">Anki Account Access</label>
-                {formData.is_admin ? (
-                  <p className="text-(--text-secondary) text-sm">
-                    Admin users have access to all accounts automatically.
-                  </p>
-                ) : (
-                  <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {allContainers.map((container) => (
-                      <label
-                        key={container.id}
-                        className="flex items-center gap-3 p-3 rounded bg-(--bg-primary) cursor-pointer"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedContainerIds.includes(container.id)}
-                          onChange={() => toggleContainer(container.id)}
-                        />
-                        <div className="flex-1">
-                          <div className="font-medium text-sm">{container.container_name}</div>
-                          <div className="text-xs text-(--text-secondary)">{container.ankiweb_email || 'Not logged into AnkiWeb'}</div>
-                        </div>
-                      </label>
-                    ))}
-                    {allContainers.length === 0 && (
-                      <p className="text-(--text-secondary) text-sm text-center py-4">
-                        No accounts yet
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
+              <AccountAccess
+                isAdmin={formData.is_admin}
+                accounts={allContainers}
+                selected={selectedContainerIds}
+                onToggle={toggleContainer}
+              />
 
               <div className="flex gap-3 pt-4">
                 <button
@@ -632,6 +578,48 @@ export function UserManagement() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AccountAccess({ isAdmin, accounts, selected, onToggle }: {
+  isAdmin: boolean;
+  accounts: { id: number; container_name: string; ankiweb_email?: string | null }[];
+  selected: number[];
+  onToggle: (id: number) => void;
+}) {
+  return (
+    <div>
+      <label className="block text-sm font-medium mb-2">Anki Account Access</label>
+      {isAdmin ? (
+        <p className="text-(--text-secondary) text-sm">
+          Admin users have access to all accounts automatically.
+        </p>
+      ) : (
+        <div className="space-y-2 max-h-48 overflow-y-auto">
+          {accounts.map((account) => (
+            <label
+              key={account.id}
+              className="flex items-center gap-3 p-3 rounded bg-(--bg-primary) cursor-pointer"
+            >
+              <input
+                type="checkbox"
+                checked={selected.includes(account.id)}
+                onChange={() => onToggle(account.id)}
+              />
+              <div className="flex-1">
+                <div className="font-medium text-sm">{account.container_name}</div>
+                <div className="text-xs text-(--text-secondary)">{account.ankiweb_email || 'Not logged into AnkiWeb'}</div>
+              </div>
+            </label>
+          ))}
+          {accounts.length === 0 && (
+            <p className="text-(--text-secondary) text-sm text-center py-4">
+              No accounts yet
+            </p>
+          )}
         </div>
       )}
     </div>

@@ -290,7 +290,8 @@
     "addFailed": "Failed to add account",
     "renameFailed": "Failed to rename account",
     "deleteFailed": "Failed to delete account",
-    "restartFailed": "Failed to reload the collection"
+    "restartFailed": "Failed to reload the collection",
+    "reloaded": "Collection reloaded"
   },
   "notFound": {
     "title": "Page Not Found",

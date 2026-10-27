@@ -2115,6 +2115,8 @@ async def switch_account(request: SwitchAccountRequest, _: str = Depends(require
         if not success:
             raise HTTPException(status_code=404, detail="Account not found")
         return {"success": True, "message": "Account switched successfully"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -2128,6 +2130,8 @@ async def delete_account_endpoint(account_id: int, remove_data: bool = False, _:
         if not success:
             raise HTTPException(status_code=404, detail="Account not found")
         return {"success": True, "message": "Account deleted successfully"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -2157,10 +2161,14 @@ async def restart_account_endpoint(account_id: int, _: str = Depends(require_aut
     """Reload an account's collection"""
     try:
         import asyncio
-        success = await asyncio.to_thread(container_manager.restart_container, account_id)
-        if not success:
+        if not get_account(account_id):
             raise HTTPException(status_code=404, detail="Account not found")
+        if not await asyncio.to_thread(container_manager.restart_container, account_id):
+            raise HTTPException(status_code=503, detail="The Anki engine didn't come back after a restart. "
+                                                        "Check: journalctl -u ankibase-anki -n 50")
         return {"success": True, "message": "Collection reloaded"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -2170,13 +2178,13 @@ async def restart_account_endpoint(account_id: int, _: str = Depends(require_aut
 async def ankiweb_login(request: AnkiWebLoginRequest, client: AnkiConnectClient = Depends(get_anki_client),
                         _: str = Depends(require_auth)):
     try:
-        await client.rpc("sync.login", timeout=60.0, username=request.email, password=request.password)
+        await client.rpc("sync.login", timeout=60.0, username=request.email.strip(), password=request.password)
     except AnkiError as e:
         raise HTTPException(status_code=401 if e.code == "authenticationRequired" else 500,
                             detail=str(e) or "Failed to log in to AnkiWeb. Check your email and password.")
     active_account = get_active_account()
     if active_account:
-        set_ankiweb_email(active_account["id"], request.email)
+        set_ankiweb_email(active_account["id"], request.email.strip())
     return {"success": True, "message": "Logged in to AnkiWeb"}
 
 

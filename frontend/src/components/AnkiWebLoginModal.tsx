@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X, Eye, EyeOff, LogIn, LogOut } from 'lucide-react';
 import { ankiweb } from '../api';
@@ -19,6 +19,8 @@ export function AnkiWebLoginModal({ isOpen, onClose, onSuccess }: AnkiWebLoginMo
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentEmail, setCurrentEmail] = useState('');
   const [checkingStatus, setCheckingStatus] = useState(false);
+  // Only the latest status check may update the modal (an abandoned one can answer late)
+  const statusRequest = useRef(0);
 
   // Check status when modal opens - reset state first to show spinner
   useEffect(() => {
@@ -26,21 +28,22 @@ export function AnkiWebLoginModal({ isOpen, onClose, onSuccess }: AnkiWebLoginMo
       // Reset to show spinner during check
       setIsLoggedIn(false);
       setCurrentEmail('');
-      setCheckingStatus(true);
       checkLoginStatus();
     }
   }, [isOpen]);
 
   const checkLoginStatus = async () => {
+    const request = ++statusRequest.current;
     setCheckingStatus(true);
     try {
       const status = await ankiweb.status();
+      if (request !== statusRequest.current) return;
       setIsLoggedIn(status.configured);
       setCurrentEmail(status.email || '');
     } catch (err) {
       console.error('Failed to check login status:', err);
     } finally {
-      setCheckingStatus(false);
+      if (request === statusRequest.current) setCheckingStatus(false);
     }
   };
 
@@ -54,11 +57,10 @@ export function AnkiWebLoginModal({ isOpen, onClose, onSuccess }: AnkiWebLoginMo
     try {
       // Log in (Anki keeps the sync key; the password isn't stored)
       await ankiweb.login(email, password);
-      setIsLoggedIn(true);
-      setCurrentEmail(email);
       setEmail('');
       setPassword('');
       setLoading(false);
+      await checkLoginStatus(); // shows the account as Anki stored it
       onSuccess();
     } catch (err) {
       setError(err instanceof Error ? err.message : t('ankiweb.loginFailed'));

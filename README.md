@@ -9,7 +9,7 @@
 [![Last commit](https://img.shields.io/github/last-commit/Macro002/AnkiBase?style=for-the-badge&color=e94560&labelColor=161730)](https://github.com/Macro002/AnkiBase/commits/main)
 [![Docs](https://img.shields.io/badge/docs-online-e94560?style=for-the-badge&labelColor=161730)](https://macro002.github.io/AnkiBase/)
 
-**[Watch the demo](#-see-it-in-action)** · **[Install](#-install)** · **[Features](#-features)** · **[Docs](https://macro002.github.io/AnkiBase/)** · **[API](https://macro002.github.io/AnkiBase/api-reference.html)**
+**[Watch the demo](https://macro002.github.io/AnkiBase/)** · **[Install](#-install)** · **[Features](#-features)** · **[Docs](https://macro002.github.io/AnkiBase/)** · **[API](https://macro002.github.io/AnkiBase/api-reference.html)**
 
 </div>
 
@@ -18,10 +18,10 @@ AnkiBase is a self-hosted web app for language learners. It runs your **real Ank
 ## 🎬 See it in action
 
 <div align="center">
-  <a href="https://github.com/Macro002/AnkiBase/blob/main/docs/public/media/ankibase-demo.mp4">
+  <a href="https://macro002.github.io/AnkiBase/">
     <img src="docs/public/media/demo-preview.webp" alt="Play the AnkiBase demo: study, Quizlet modes, AI stories, stats, themes and mobile" width="100%">
   </a>
-  <sub>▶ Click to watch the 1080p demo (46 s).</sub>
+  <sub>▶ Watch the 46-second demo on the AnkiBase site.</sub>
 </div>
 
 ## ✨ Features
@@ -84,6 +84,7 @@ It's built to feel like an app rather than a web page: no zooming or bouncing, t
 
 - **Multi-user:** an admin panel and per-user permissions. Each Anki account gets its **own collection, media and AnkiWeb login**.
 - **One-line install** with optional nginx and Let's Encrypt, and **in-app updates** with one click.
+- **Your own sync server** in one click (Settings → Sync): Anki's own sync server runs next to AnkiBase at `https://<your AnkiBase>/syncserver/`, so Anki Desktop, AnkiMobile, AnkiDroid and the iPhone app sync there instead of AnkiWeb.
 - API keys are stored encrypted, and the AI is optional: everything else works without it.
 
 ## 🧭 How it fits together

@@ -708,7 +708,7 @@ export function Settings() {
             </section>
           </>)}
 
-          {active === 'sync' && <SyncSection />}
+          {active === 'sync' && <SyncSection admin={serverFeatures && !!currentUser?.is_admin} />}
           {active === 'server' && <ServerSection user={app?.server ? currentUser : null} />}
           {active === 'ai' && <AiSection />}
           {active === 'users' && currentUser?.is_admin && <UserManagement />}

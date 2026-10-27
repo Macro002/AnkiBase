@@ -254,7 +254,7 @@ impl Engine {
             .block_on(sync_login(username, password, endpoint.clone(), self.web.clone()))
             .map_err(|err| match Failure::from(err) {
                 Failure { status: 401, .. } => {
-                    Failure::new(401, "Failed to log in to AnkiWeb. Check your email and password.")
+                    Failure::new(401, "Couldn't log in. Check the username and password.")
                 }
                 other => other,
             })?;

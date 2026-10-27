@@ -14,7 +14,7 @@ struct AnkiBaseApp: App {
         WindowGroup {
             WebAppView()
                 .ignoresSafeArea()
-                .background(Color(theme.page).ignoresSafeArea())
+                .background(Color(theme.bar).ignoresSafeArea())
                 // The status bar's text: light on dark themes, dark on light ones.
                 .preferredColorScheme(theme.dark ? .dark : .light)
         }

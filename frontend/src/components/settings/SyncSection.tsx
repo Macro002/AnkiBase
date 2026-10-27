@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Cloud, Download, Eye, EyeOff, LogOut, RefreshCw, Server, Upload } from 'lucide-react';
-import { ankiweb, sync, type AnkiWebStatus, type MediaSyncStatus } from '../../api';
+import { ankiweb, sync, syncServer, type AnkiWebStatus, type MediaSyncStatus } from '../../api';
+import { SyncServerCard } from './SyncServerCard';
 import { Segmented, Toggle } from '../quizlet/ui';
 import { isNative } from '../../native';
 import { autoSyncEnabled, forgetSyncLogin, runSync, setAutoSync, useSyncState, type SyncResult } from '../../sync';
@@ -27,7 +28,7 @@ function hostOf(url: string) {
 
 /** Settings → Sync: where the collection syncs to (AnkiWeb or your own sync server), the
  *  login, and syncing by hand. */
-export function SyncSection() {
+export function SyncSection({ admin = false }: { admin?: boolean }) {
   const { t } = useTranslation();
   const [status, setStatus] = useState<AnkiWebStatus | null>(null);
   const [loadError, setLoadError] = useState('');
@@ -43,6 +44,15 @@ export function SyncSection() {
   const [auto, setAuto] = useState(autoSyncEnabled());
   const [media, setMedia] = useState<MediaSyncStatus | null>(null);
   const syncing = useSyncState() === 'syncing';
+  // This AnkiBase's own sync server, if it runs one: offered in the login form.
+  const [ownServer, setOwnServer] = useState<string | null>(null);
+  useEffect(() => { syncServer.status().then(s => setOwnServer(s.running ? s.url : null)).catch(() => {}); }, []);
+
+  const useServer = (url: string, name: string) => {
+    if (status?.configured) { setMessage(`Log out first, then log in to ${hostOf(url)} as ${name}.`); return; }
+    setTarget('own'); setEndpoint(url); setEmail(name); setPassword(''); setError('');
+    setMessage(`Enter ${name}’s password to sync this collection with your sync server.`);
+  };
   const request = useRef(0);
 
   const load = async () => {
@@ -184,6 +194,12 @@ export function SyncSection() {
             <Segmented size="md" value={target} onChange={v => { setTarget(v); setError(''); }}
               options={[{ value: 'ankiweb', label: 'AnkiWeb', icon: <Cloud className="w-4 h-4" /> },
                         { value: 'own', label: 'Own sync server', icon: <Server className="w-4 h-4" /> }]} />
+            {target === 'own' && ownServer && endpoint !== ownServer && (
+              <button type="button" onClick={() => setEndpoint(ownServer)}
+                className="w-full text-left rounded-xl border border-(--accent)/40 bg-(--accent)/10 px-3 py-2.5 text-sm">
+                Use this AnkiBase’s sync server <span className="text-(--text-secondary)">· {hostOf(ownServer)}</span>
+              </button>
+            )}
             {target === 'own' && (
               <div className="space-y-1.5">
                 <input value={endpoint} onChange={e => setEndpoint(e.target.value)} className="input w-full"
@@ -224,6 +240,8 @@ export function SyncSection() {
         {error && <p className="text-sm text-(--error) anim-rise">{error}</p>}
         {message && <p className="text-sm text-green-400 anim-rise">{message}</p>}
       </section>
+
+      {admin && <SyncServerCard onUse={useServer} />}
 
       {isNative && (
         <section className="card">

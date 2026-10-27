@@ -36,6 +36,7 @@ from database import (
 from ankiweb_credentials import AnkiWebCredentials
 from anki_accounts import AnkiAccountManager
 import anki_server
+import sync_server
 
 app = FastAPI(title="AnkiBase", version="1.0.0")
 
@@ -83,6 +84,7 @@ def _start_anki_engine() -> None:
         anki_server.status = "failed: the engine did not start (journalctl -u ankibase-anki)"
         return
     anki_server.status = "ready"
+    sync_server.ensure_running()
     try:
         anki_server.install_pages()
     except Exception as e:
@@ -130,6 +132,7 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     anki_server.stop_child()
+    sync_server.stop_child()
 
 
 # Auth models
@@ -2222,10 +2225,17 @@ async def anki_pages(path: str, request: Request, client: AnkiConnectClient = De
 
 
 # AnkiWeb login endpoints (the sync key is kept by anki-cli, per account)
+def _own_sync_endpoint(endpoint: Optional[str], req: Request) -> Optional[str]:
+    """This AnkiBase's own sync server is reached directly, not through its public address."""
+    if endpoint and endpoint.rstrip("/") == (_public_base(req) + sync_server.PREFIX):
+        return sync_server.URL + "/"
+    return endpoint
+
+
 @app.post("/api/ankiweb/login")
-async def ankiweb_login(request: AnkiWebLoginRequest, client: AnkiConnectClient = Depends(get_anki_client),
+async def ankiweb_login(request: AnkiWebLoginRequest, req: Request, client: AnkiConnectClient = Depends(get_anki_client),
                         _: str = Depends(require_auth)):
-    endpoint = _sync_endpoint(request.endpoint)
+    endpoint = _own_sync_endpoint(_sync_endpoint(request.endpoint), req)
     try:
         params = {"endpoint": endpoint} if endpoint else {}
         await client.rpc("sync.login", timeout=60.0, username=request.email.strip(), password=request.password,
@@ -2240,13 +2250,15 @@ async def ankiweb_login(request: AnkiWebLoginRequest, client: AnkiConnectClient 
 
 
 @app.get("/api/ankiweb/status")
-async def ankiweb_status(client: AnkiConnectClient = Depends(get_anki_client), _: str = Depends(require_auth)):
+async def ankiweb_status(req: Request, client: AnkiConnectClient = Depends(get_anki_client), _: str = Depends(require_auth)):
     """Whether this account is logged in to AnkiWeb"""
     try:
         account = await client.rpc("sync.account")
     except Exception as e:
         return {"has_credentials": False, "configured": False, "error": str(e)}
     endpoint = account.get("endpoint") if account["loggedIn"] else None
+    if endpoint and endpoint.rstrip("/") == sync_server.URL:
+        endpoint = _public_base(req) + sync_server.PREFIX + "/"  # this AnkiBase's own
     return {"has_credentials": account["loggedIn"], "configured": account["loggedIn"],
             "email": account.get("username") if account["loggedIn"] else None,
             "last_sync": account.get("lastSync"),
@@ -2276,6 +2288,104 @@ async def delete_ankiweb_credentials(client: AnkiConnectClient = Depends(get_ank
     if active_account:
         set_ankiweb_email(active_account["id"], None)
     return {"success": True, "message": "AnkiWeb credentials deleted"}
+
+
+# --- Your own sync server (Anki's, run next to the engine; see sync_server.py) --------------
+
+def _public_base(request: Request) -> str:
+    """This AnkiBase's address as the browser sees it (behind a reverse proxy too)."""
+    proto = request.headers.get("x-forwarded-proto") or request.url.scheme
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc
+    return f"{proto.split(',')[0].strip()}://{host.split(',')[0].strip()}"
+
+
+class SyncAccountRequest(BaseModel):
+    name: str
+    password: str
+
+
+@app.get("/api/syncserver")
+async def syncserver_status(request: Request, user: dict = Depends(require_auth)):
+    """Whether this AnkiBase runs a sync server, and the address to enter in Anki."""
+    import asyncio
+    info = await asyncio.to_thread(sync_server.status)
+    info["url"] = _public_base(request) + sync_server.PREFIX + "/"
+    if not user.get("is_admin"):
+        info.pop("accounts", None)
+    return info
+
+
+@app.post("/api/syncserver/start")
+async def syncserver_start(_: dict = Depends(require_admin)):
+    import asyncio
+    try:
+        ok = await asyncio.to_thread(sync_server.start)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"The sync server didn't start: {e}")
+    if not ok:
+        raise HTTPException(status_code=500, detail="The sync server didn't start (journalctl -u ankibase-sync)")
+    return await asyncio.to_thread(sync_server.status)
+
+
+@app.post("/api/syncserver/stop")
+async def syncserver_stop(_: dict = Depends(require_admin)):
+    import asyncio
+    await asyncio.to_thread(sync_server.stop)
+    return await asyncio.to_thread(sync_server.status)
+
+
+@app.post("/api/syncserver/accounts")
+async def syncserver_add_account(request: SyncAccountRequest, _: dict = Depends(require_admin)):
+    """Add (or change the password of) a sync account; the server restarts to pick it up."""
+    import asyncio
+    try:
+        sync_server.add_account(request.name, request.password)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if sync_server.enabled():
+        await asyncio.to_thread(sync_server.start)
+    return await asyncio.to_thread(sync_server.status)
+
+
+@app.delete("/api/syncserver/accounts/{name}")
+async def syncserver_remove_account(name: str, delete_data: bool = False, _: dict = Depends(require_admin)):
+    import asyncio
+    sync_server.remove_account(name, delete_data)
+    if sync_server.enabled():
+        if sync_server.accounts():
+            await asyncio.to_thread(sync_server.start)
+        else:
+            await asyncio.to_thread(sync_server.stop)
+    return await asyncio.to_thread(sync_server.status)
+
+
+@app.api_route(sync_server.PREFIX + "/{path:path}", methods=["GET", "POST"])
+async def syncserver_proxy(path: str, request: Request):
+    """Anki clients sync here; Anki's server does the authentication (no AnkiBase login)."""
+    import httpx
+    from starlette.background import BackgroundTask
+    headers = {k: v for k, v in request.headers.items()
+               if k.lower() not in ("host", "content-length", "connection", "transfer-encoding")}
+    client = httpx.AsyncClient(timeout=httpx.Timeout(300, connect=5))
+    try:
+        upstream = await client.send(
+            client.build_request(request.method, f"{sync_server.URL}/{path}", params=request.query_params,
+                                 headers=headers, content=request.stream()),
+            stream=True)
+    except httpx.HTTPError:
+        await client.aclose()
+        raise HTTPException(status_code=502, detail="The sync server isn't running")
+    passed = {k: v for k, v in upstream.headers.items()
+              if k.lower() not in ("content-length", "transfer-encoding", "connection")}
+    return StreamingResponse(upstream.aiter_raw(), status_code=upstream.status_code, headers=passed,
+                             background=BackgroundTask(_close_both, upstream, client))
+
+
+async def _close_both(upstream, client) -> None:
+    await upstream.aclose()
+    await client.aclose()
 
 
 # Quizlet endpoints

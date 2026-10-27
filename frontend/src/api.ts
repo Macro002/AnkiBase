@@ -462,6 +462,27 @@ export const ankiweb = {
     fetchAPI<{ success: boolean }>('/ankiweb/credentials', { method: 'DELETE' }),
 };
 
+// This AnkiBase's own sync server (Anki's), for Anki on every device
+export interface SyncServerStatus {
+  installed: boolean;
+  enabled: boolean;
+  running: boolean;
+  /** The address to enter in Anki (Preferences → Syncing → self-hosted server). */
+  url: string;
+  /** Admins only. */
+  accounts?: { name: string; created?: number; size: number }[];
+}
+
+export const syncServer = {
+  status: () => fetchAPI<SyncServerStatus>('/syncserver'),
+  start: () => fetchAPI<SyncServerStatus>('/syncserver/start', { method: 'POST' }),
+  stop: () => fetchAPI<SyncServerStatus>('/syncserver/stop', { method: 'POST' }),
+  addAccount: (name: string, password: string) =>
+    fetchAPI<SyncServerStatus>('/syncserver/accounts', { method: 'POST', body: JSON.stringify({ name, password }) }),
+  removeAccount: (name: string, deleteData: boolean) =>
+    fetchAPI<SyncServerStatus>(`/syncserver/accounts/${encodeURIComponent(name)}?delete_data=${deleteData}`, { method: 'DELETE' }),
+};
+
 // Account Management
 export interface AnkiAccount {
   id: number;

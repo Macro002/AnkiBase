@@ -2,7 +2,7 @@ import SwiftUI
 import WebKit
 
 /// AnkiBase's web UI, full screen, behaving like an app rather than a web page: no zooming,
-/// no rubber-banding past the content, and the status bar following the theme.
+/// and what shows when you pull past the content, the status bar and the icon follow the theme.
 struct WebAppView: UIViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -17,12 +17,11 @@ struct WebAppView: UIViewRepresentable {
         let web = WKWebView(frame: .zero, configuration: config)
         let theme = Theme.shared
         web.isOpaque = false
-        web.backgroundColor = theme.page
-        web.scrollView.backgroundColor = theme.page
+        Self.paint(web, color: theme.bar)
         // The page handles the notch, Dynamic Island and home indicator (viewport-fit=cover).
         web.scrollView.contentInsetAdjustmentBehavior = .never
-        web.scrollView.bounces = false
-        web.scrollView.alwaysBounceVertical = false
+        web.scrollView.bounces = true
+        web.scrollView.alwaysBounceVertical = true
         web.scrollView.pinchGestureRecognizer?.isEnabled = false
         web.allowsBackForwardNavigationGestures = true
         web.allowsLinkPreview = false
@@ -35,6 +34,14 @@ struct WebAppView: UIViewRepresentable {
     }
 
     func updateUIView(_ web: WKWebView, context: Context) {}
+
+    /// Pulling past the top or bottom shows this: the theme's header / tab bar colour, so the
+    /// page looks like it continues under them.
+    static func paint(_ web: WKWebView, color: UIColor) {
+        web.backgroundColor = color
+        web.scrollView.backgroundColor = color
+        web.underPageBackgroundColor = color
+    }
 
     /// Runs before the page: tells it it's in the app, and turns off zooming.
     private static var bootScript: String {
@@ -69,12 +76,10 @@ struct WebAppView: UIViewRepresentable {
             guard let body = message.body as? [String: Any], let type = body["type"] as? String else { return }
             switch type {
             case "theme":
-                let page = body["page"] as? String ?? ""
-                Theme.shared.update(page: page, bar: body["bar"] as? String ?? "",
+                Theme.shared.update(page: body["page"] as? String ?? "", bar: body["bar"] as? String ?? "",
                                     dark: body["dark"] as? Bool ?? true, icon: body["icon"] as? String)
-                if let web, let color = UIColor(hex: page) {
-                    web.backgroundColor = color
-                    web.scrollView.backgroundColor = color
+                if let web, let color = UIColor(hex: body["bar"] as? String ?? "") {
+                    WebAppView.paint(web, color: color)
                 }
             case "haptic":
                 switch body["style"] as? String {

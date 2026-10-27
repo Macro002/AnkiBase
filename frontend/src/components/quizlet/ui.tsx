@@ -160,15 +160,17 @@ export function SidePanel({ title, onClose, children }: { title: string; onClose
     setTimeout(onClose, 200);
   };
   return createPortal(
-    <div className="fixed inset-0 z-[100] flex justify-end bg-black/50 transition-opacity duration-200" style={{ opacity: closing ? 0 : 1 }} onClick={close}>
+    // Animates its own slide-out (data-no-exit: no second exit animation from MotionLayer).
+    <div data-no-exit className="fixed inset-0 z-[100] flex justify-end bg-black/50 transition-opacity duration-200"
+      style={{ opacity: closing ? 0 : 1 }} onClick={close}>
       <div className={`${closing ? 'options-panel-closing' : 'options-panel'} bg-(--bg-secondary) border-l border-(--bg-tertiary) w-full max-w-sm h-screen overflow-y-auto shadow-2xl flex flex-col divide-y divide-white/8`}
         onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between p-6 shrink-0" style={{ paddingTop: 'calc(1.5rem + env(safe-area-inset-top, 0px))' }}>
+        <div className="flex items-center justify-between p-6 shrink-0" style={{ paddingTop: 'calc(1.5rem + var(--safe-top, env(safe-area-inset-top, 0px)))' }}>
           <h2 className="text-xl font-bold">{title}</h2>
           <button className="icon-btn" onClick={close} title="Close"><X className="w-5 h-5" /></button>
         </div>
         {children}
-        <div style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }} />
+        <div style={{ paddingBottom: 'var(--safe-bottom, env(safe-area-inset-bottom, 0px))' }} />
       </div>
     </div>,
     document.body,

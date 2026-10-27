@@ -257,7 +257,7 @@
     "doneText": "A few things you might want next:",
     "tipUsers": "Invite family or friends in Settings → Users and give each their own profile.",
     "tipSync": "Run Anki's sync server here (Settings → Sync) so all your devices sync with your own server.",
-    "tipPhone": "On iPhone, the AnkiBase app studies offline and syncs when you're back online.",
+    "tipPhone": "The AnkiBase apps for Android and iPhone study offline and sync when you're back online.",
     "open": "Open AnkiBase"
   }
 }

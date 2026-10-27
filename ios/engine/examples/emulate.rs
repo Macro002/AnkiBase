@@ -1,40 +1,22 @@
-//! The iPhone app on a computer, for developing and testing the web UI: the same core
-//! (app.rs) answers everything, exactly as on the phone; only the transport differs.
+//! The phone app on a computer, for developing and testing the web UI: the same core
+//! (app.rs) over the same HTTP transport the Android app uses (httpd.rs).
 //!
 //!   cargo run --example emulate -- --web ../../frontend/dist --dir /tmp/phone \
 //!       [--server http://127.0.0.1:8000] [--pages ../.build/anki-pages] [--port 8800] \
 //!       [--sync-server /tmp/syncsrv]
 //!
 //! With --sync-server, Anki's own sync server runs locally (user `user@example.com`,
-//! password `secret`) holding a few small decks, and AnkiWeb logins that don't name a
-//! server go to it.
+//! password `secret`) holding a few small decks; log in to it in Settings → Sync → Own sync
+//! server with the address it prints.
 
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Read, Write};
-use std::net::{TcpListener, TcpStream};
+use std::net::TcpListener;
 use std::path::Path;
 use std::sync::Arc;
 
 use anki::sync::http_server::{SimpleServer, SyncServerConfig};
-use ankibase_engine::{App, Collect, Config, Request, Sink};
+use ankibase_engine::{App, Collect, Config, Request};
 use serde_json::{json, Value};
-
-struct Socket(TcpStream);
-
-impl Sink for Socket {
-    fn head(&mut self, status: u16, headers: &[(String, String)]) {
-        let mut head = format!("HTTP/1.1 {status} X\r\nConnection: close\r\n");
-        for (name, value) in headers {
-            head.push_str(&format!("{name}: {value}\r\n"));
-        }
-        head.push_str("\r\n");
-        let _ = self.0.write_all(head.as_bytes());
-    }
-
-    fn data(&mut self, bytes: &[u8]) -> bool {
-        self.0.write_all(bytes).and_then(|_| self.0.flush()).is_ok()
-    }
-}
 
 fn main() {
     let mut args: HashMap<String, String> = HashMap::new();
@@ -43,7 +25,9 @@ fn main() {
         args.insert(pair[0].trim_start_matches("--").to_string(), pair.get(1).cloned().unwrap_or_default());
     }
     let need = |key: &str| args.get(key).cloned().unwrap_or_else(|| panic!("--{key} is required"));
-    let sync_endpoint = args.get("sync-server").map(|base| start_sync_server(Path::new(base)));
+    if let Some(base) = args.get("sync-server") {
+        start_sync_server(Path::new(base));
+    }
     let port: u16 = args.get("port").map(|p| p.parse().unwrap()).unwrap_or(8800);
 
     let app = Arc::new(App::start(Config {
@@ -53,53 +37,16 @@ fn main() {
         default_server: args.get("server").cloned(),
         version: "dev".into(),
         build: "0".into(),
-        update_feed: None, bundle_id: None,
+        update_feed: None, bundle_id: None, media_token: None,
     }));
     let listener = TcpListener::bind(("127.0.0.1", port)).unwrap();
-    println!("The app: http://127.0.0.1:{port}/");
-    for stream in listener.incoming().flatten() {
-        let (app, endpoint) = (app.clone(), sync_endpoint.clone());
-        std::thread::spawn(move || {
-            let _ = serve(stream, &app, endpoint.as_deref());
-        });
+    // --token: like the Android app, only a browser that opened /__start?token=… gets in.
+    let token = args.get("token").cloned();
+    match &token {
+        Some(token) => println!("The app: http://127.0.0.1:{port}/__start?token={token}"),
+        None => println!("The app: http://127.0.0.1:{port}/"),
     }
-}
-
-fn serve(stream: TcpStream, app: &App, sync_endpoint: Option<&str>) -> std::io::Result<()> {
-    let mut reader = BufReader::new(stream.try_clone()?);
-    let mut line = String::new();
-    reader.read_line(&mut line)?;
-    let mut parts = line.split_whitespace();
-    let (method, target) = (parts.next().unwrap_or("GET").to_string(), parts.next().unwrap_or("/").to_string());
-    let mut headers = Vec::new();
-    loop {
-        let mut header = String::new();
-        reader.read_line(&mut header)?;
-        let header = header.trim_end();
-        if header.is_empty() {
-            break;
-        }
-        if let Some((name, value)) = header.split_once(':') {
-            headers.push((name.trim().to_string(), value.trim().to_string()));
-        }
-    }
-    let length = headers
-        .iter()
-        .find(|(n, _)| n.eq_ignore_ascii_case("content-length"))
-        .and_then(|(_, v)| v.parse().ok())
-        .unwrap_or(0);
-    let mut body = vec![0; length];
-    reader.read_exact(&mut body)?;
-    if let (Some(endpoint), "/api/ankiweb/login") = (sync_endpoint, target.as_str()) {
-        let mut login: Value = serde_json::from_slice(&body).unwrap_or(json!({}));
-        if login["endpoint"].as_str().unwrap_or_default().is_empty() {
-            login["endpoint"] = json!(endpoint);
-            body = serde_json::to_vec(&login).unwrap();
-        }
-    }
-    let request = Request { method, target, headers, body };
-    app.handle(&request, &mut Socket(stream));
-    Ok(())
+    ankibase_engine::httpd::serve(app, listener, token);
 }
 
 fn start_sync_server(base: &Path) -> String {
@@ -131,7 +78,7 @@ fn seed(base: &Path, endpoint: &str) {
         default_server: None,
         version: "dev".into(),
         build: "0".into(),
-        update_feed: None, bundle_id: None,
+        update_feed: None, bundle_id: None, media_token: None,
     });
     let call = |method: &str, target: &str, body: Value| {
         let mut collect = Collect::default();

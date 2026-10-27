@@ -1,20 +1,30 @@
-/** The iPhone app (ios/): it injects `window.ankibaseNative` before the page loads and
- *  answers messages posted to `webkit.messageHandlers.ankibase`. */
+/** The phone apps. The iPhone app (ios/) injects `window.ankibaseNative` before the page
+ *  loads and answers messages posted to `webkit.messageHandlers.ankibase`; the Android app
+ *  (android/) offers the same through its `AnkiBaseAndroid` object. */
 import { useEffect, useState } from 'react';
 
 interface NativeInfo { version: string; build: string; platform: string }
 interface NativeWindow {
   ankibaseNative?: NativeInfo;
   webkit?: { messageHandlers?: { ankibase?: { postMessage: (message: unknown) => void } } };
+  AnkiBaseAndroid?: { info: () => string; postMessage: (json: string) => void };
 }
 
 const w = (typeof window !== 'undefined' ? window : {}) as NativeWindow;
 
-export const native: NativeInfo | null = w.ankibaseNative ?? null;
+function androidInfo(): NativeInfo | null {
+  try { return w.AnkiBaseAndroid ? JSON.parse(w.AnkiBaseAndroid.info()) : null; } catch { return null; }
+}
+
+export const native: NativeInfo | null = w.ankibaseNative ?? androidInfo();
 export const isNative = native !== null;
+export const isAndroid = native?.platform === 'android';
 
 function post(message: Record<string, unknown>) {
-  try { w.webkit?.messageHandlers?.ankibase?.postMessage(message); } catch { /* not in the app */ }
+  try {
+    if (w.AnkiBaseAndroid) w.AnkiBaseAndroid.postMessage(JSON.stringify(message));
+    else w.webkit?.messageHandlers?.ankibase?.postMessage(message);
+  } catch { /* not in the app */ }
 }
 
 /** App icons built into the app (scripts/build.sh), one per built-in theme. */

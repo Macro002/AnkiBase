@@ -38,6 +38,9 @@ pub struct Config {
     /// This build's bundle identifier (to find it in the update feed).
     #[serde(default)]
     pub bundle_id: Option<String>,
+    /// The Android app's access token (httpd.rs), which card media URLs carry.
+    #[serde(default)]
+    pub media_token: Option<String>,
 }
 
 /// The phone's own profile, used when no server is connected.
@@ -72,7 +75,12 @@ impl App {
     pub fn start(config: Config) -> App {
         let collection = config.dir.join("Collection");
         let (engine, engine_error) = match Engine::open(&collection) {
-            Ok(engine) => (Some(engine), None),
+            Ok(mut engine) => {
+                if let Some(token) = &config.media_token {
+                    engine.media_token = token.clone();
+                }
+                (Some(engine), None)
+            }
             Err(failure) => (None, Some(failure.detail)),
         };
         let settings: Settings = std::fs::read(config.dir.join("settings.json"))
@@ -242,18 +250,33 @@ impl App {
         })
     }
 
-    /// The newest build in the app's SideStore source.
+    /// The newest version: from a SideStore/AltStore source (iPhone), or GitHub's latest
+    /// release with an .apk (Android).
     fn app_update(&self) -> Value {
         let current = json!({"version": self.config.version, "build": self.config.build});
         let Some(feed) = self.config.update_feed.as_deref().filter(|f| !f.is_empty()) else {
             return json!({"current": current, "latest": null, "has_update": false});
         };
-        let app = self.server.fetch_json(feed).and_then(|source| {
-            let id = self.config.bundle_id.as_deref().unwrap_or("io.github.ankibase");
-            source["apps"].as_array()?.iter().find(|a| a["bundleIdentifier"] == id).cloned()
-        });
-        let Some(app) = app else {
+        let Some(source) = self.server.fetch_json(feed) else {
             return json!({"current": current, "latest": null, "has_update": false, "error": "Couldn't check for updates"});
+        };
+        if source.get("tag_name").is_some() {
+            // GitHub: {"tag_name": "v1.2.0", "body": …, "assets": [{"name", "browser_download_url"}]}
+            let version = source["tag_name"].as_str().unwrap_or_default().trim_start_matches('v').to_string();
+            let apk = source["assets"].as_array().and_then(|assets| {
+                assets.iter().find(|a| a["name"].as_str().is_some_and(|n| n.ends_with(".apk")))
+            });
+            let latest = json!({
+                "version": version, "build": null, "notes": source["body"], "date": source["published_at"],
+                "url": apk.map(|a| a["browser_download_url"].clone()).unwrap_or(source["html_url"].clone()),
+            });
+            let has_update = apk.is_some() && newer(&version, &self.config.version);
+            return json!({"current": current, "latest": latest, "has_update": has_update, "source": feed});
+        }
+        let id = self.config.bundle_id.as_deref().unwrap_or("io.github.ankibase");
+        let Some(app) = source["apps"].as_array().and_then(|apps| apps.iter().find(|a| a["bundleIdentifier"] == id).cloned())
+        else {
+            return json!({"current": current, "latest": null, "has_update": false, "error": "This app isn't in the update source"});
         };
         let release = app["versions"].get(0).cloned().unwrap_or(Value::Null);
         let latest = json!({
@@ -400,7 +423,7 @@ impl App {
         let settings = self.settings.lock().unwrap();
         let profile = &settings.profile;
         json!({
-            "username": "This iPhone",
+            "username": "This phone",
             "is_admin": false,
             "can_add_containers": false,
             "can_edit_server_accent": false,
@@ -519,4 +542,10 @@ impl From<Failure> for Reply {
     fn from(failure: Failure) -> Reply {
         api::failure(failure)
     }
+}
+
+/// Whether version `a` (1.2.3) is newer than `b`.
+fn newer(a: &str, b: &str) -> bool {
+    let parse = |v: &str| v.split('.').map(|p| p.trim().parse::<u64>().unwrap_or(0)).collect::<Vec<_>>();
+    parse(a) > parse(b)
 }

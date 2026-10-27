@@ -1,0 +1,5 @@
+/.build
+/dist
+/local.env
+*.keystore
+*.jks

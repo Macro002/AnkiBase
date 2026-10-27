@@ -371,7 +371,7 @@ input[type="checkbox"]:checked::after {
 
 /* Safe-area aware bottom padding for main content (accounts for mobile nav + home indicator) */
 .safe-pb-main {
-  padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(5rem + var(--safe-bottom, env(safe-area-inset-bottom, 0px)));
 }
 @media (min-width: 768px) {
   .safe-pb-main {
@@ -512,27 +512,27 @@ input[type="checkbox"]:checked::after {
 html {
   background: var(--bg-primary);
   /* scrollIntoView keeps targets below the sticky header */
-  scroll-padding-top: calc(4rem + env(safe-area-inset-top, 0px));
+  scroll-padding-top: calc(4rem + var(--safe-top, env(safe-area-inset-top, 0px)));
 }
 .app-header {
-  padding-top: env(safe-area-inset-top, 0px);
-  padding-left: env(safe-area-inset-left, 0px);
-  padding-right: env(safe-area-inset-right, 0px);
+  padding-top: var(--safe-top, env(safe-area-inset-top, 0px));
+  padding-left: var(--safe-left, env(safe-area-inset-left, 0px));
+  padding-right: var(--safe-right, env(safe-area-inset-right, 0px));
 }
 .app-tabbar {
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-bottom: var(--safe-bottom, env(safe-area-inset-bottom, 0px));
 }
 .toast-stack {
-  top: calc(env(safe-area-inset-top, 0px) + 4rem);
+  top: calc(var(--safe-top, env(safe-area-inset-top, 0px)) + 4rem);
 }
 .safe-pad-y {
-  padding-top: max(1rem, env(safe-area-inset-top, 0px));
-  padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+  padding-top: max(1rem, var(--safe-top, env(safe-area-inset-top, 0px)));
+  padding-bottom: max(1rem, var(--safe-bottom, env(safe-area-inset-bottom, 0px)));
 }
 /* Full-screen sheets on phones: content clears the status bar and home indicator. */
 .sheet-safe {
-  padding-top: env(safe-area-inset-top, 0px);
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-top: var(--safe-top, env(safe-area-inset-top, 0px));
+  padding-bottom: var(--safe-bottom, env(safe-area-inset-bottom, 0px));
 }
 .header-btn {
   height: 2.25rem;
@@ -566,15 +566,15 @@ html.native label {
 
 /* Floating notices sit above the phone tab bar. */
 .above-tabbar {
-  bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px) + 0.75rem);
+  bottom: calc(3.5rem + var(--safe-bottom, env(safe-area-inset-bottom, 0px)) + 0.75rem);
 }
 @media (min-width: 768px) {
   .above-tabbar { bottom: 1.5rem; }
 }
 @media (max-width: 639px) {
-  .answer-bar { padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px)); }
+  .answer-bar { padding-bottom: calc(0.75rem + var(--safe-bottom, env(safe-area-inset-bottom, 0px))); }
 }
 
 .sheet-safe-bottom {
-  padding-bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(1.25rem + var(--safe-bottom, env(safe-area-inset-bottom, 0px)));
 }

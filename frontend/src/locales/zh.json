@@ -257,7 +257,7 @@
     "doneText": "接下来你可能想要：",
     "tipUsers": "在“设置 → 用户”中邀请家人或朋友，并给每人一个配置文件。",
     "tipSync": "在这里运行 Anki 同步服务器（设置 → 同步），让所有设备都与你自己的服务器同步。",
-    "tipPhone": "在 iPhone 上，AnkiBase 应用可离线学习，联网后自动同步。",
+    "tipPhone": "Android 和 iPhone 版 AnkiBase 应用可离线学习，联网后自动同步。",
     "open": "打开 AnkiBase"
   }
 }

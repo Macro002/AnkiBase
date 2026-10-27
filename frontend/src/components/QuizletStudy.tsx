@@ -1110,13 +1110,15 @@ export function QuizletStudy() {
 
       {/* Options panel */}
       {showOptions && createPortal(
-        <div className="fixed inset-0 z-[100] flex justify-end bg-black/50" onClick={closeOptions}>
+        // Animates its own slide-out (data-no-exit: no second exit animation from MotionLayer).
+        <div data-no-exit className="fixed inset-0 z-[100] flex justify-end bg-black/50 transition-opacity duration-200"
+          style={{ opacity: closingOptions ? 0 : 1 }} onClick={closeOptions}>
           <div
             className={`${closingOptions ? 'options-panel-closing' : 'options-panel'} bg-(--bg-secondary) border-l border-(--bg-tertiary) w-full max-w-sm h-screen overflow-y-auto shadow-2xl flex flex-col divide-y divide-white/8`}
             onClick={e => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="flex items-center justify-between p-6 shrink-0" style={{ paddingTop: 'calc(1.5rem + env(safe-area-inset-top, 0px))' }}>
+            <div className="flex items-center justify-between p-6 shrink-0" style={{ paddingTop: 'calc(1.5rem + var(--safe-top, env(safe-area-inset-top, 0px)))' }}>
               <h2 className="text-xl font-bold">Options</h2>
               <button className="icon-btn" onClick={closeOptions} title="Close">
                 <X className="w-5 h-5" />
@@ -1185,7 +1187,7 @@ export function QuizletStudy() {
             </div>
 
             {/* Restart */}
-            <div className="p-6" style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))' }}>
+            <div className="p-6" style={{ paddingBottom: 'calc(1.5rem + var(--safe-bottom, env(safe-area-inset-bottom, 0px)))' }}>
               <button
                 className="text-sm text-(--accent) font-medium hover-underline"
                 onClick={() => { restart(); closeOptions(); }}

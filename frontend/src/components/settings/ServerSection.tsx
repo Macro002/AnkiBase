@@ -2,12 +2,12 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowUpCircle, CheckCircle2, CloudOff, LogIn, LogOut, Server, Smartphone } from 'lucide-react';
 import { auth, update as updateApi, type User } from '../../api';
-import { appStatus, useAppStatus } from '../../native';
+import { appStatus, isAndroid, useAppStatus } from '../../native';
 import { UpdateModal } from '../UpdateModal';
 
 interface AppUpdate {
   current: { version: string; build: string };
-  latest: { version: string; build: string; notes?: string | null; date?: string | null } | null;
+  latest: { version: string; build: string | null; notes?: string | null; date?: string | null; url?: string } | null;
   has_update: boolean;
   source?: string;
 }
@@ -60,7 +60,7 @@ export function ServerSection({ user }: { user: User | null }) {
         <div>
           <h3 className="font-semibold">AnkiBase server</h3>
           <p className="text-xs text-(--text-secondary) mt-0.5">
-            Stories, AI, Quizlet sets and the dictionary come from your server. Everything else runs on this iPhone.
+            Stories, AI, Quizlet sets and the dictionary come from your server. Everything else runs on this phone.
           </p>
         </div>
 
@@ -69,7 +69,7 @@ export function ServerSection({ user }: { user: User | null }) {
             {app.server ? (app.online ? <Server className="w-5 h-5" /> : <CloudOff className="w-5 h-5" />) : <Smartphone className="w-5 h-5" />}
           </span>
           <div className="min-w-0 flex-1">
-            <p className="font-medium truncate">{host ?? 'No server: this iPhone only'}</p>
+            <p className="font-medium truncate">{host ?? 'No server: this phone only'}</p>
             <p className="text-xs text-(--text-secondary)">
               {!app.server ? 'Your decks, studying, stats and sync work without one.'
                 : !app.online ? 'Offline. What you opened before still works; changes are sent when it’s back.'
@@ -135,9 +135,11 @@ export function ServerSection({ user }: { user: User | null }) {
         {appUpdate?.has_update && appUpdate.latest ? (
           <div className="rounded-xl border border-(--accent)/40 bg-(--accent)/10 p-4 space-y-2">
             <p className="text-sm font-medium flex items-center gap-2"><ArrowUpCircle className="w-4 h-4 text-(--accent)" />
-              Build {appUpdate.latest.build} is out</p>
-            {appUpdate.latest.notes && <p className="text-xs text-(--text-secondary) whitespace-pre-line">{appUpdate.latest.notes}</p>}
-            <a href="sidestore://" className="btn btn-primary inline-block">Open SideStore</a>
+              {appUpdate.latest.build ? `Build ${appUpdate.latest.build} is out` : `Version ${appUpdate.latest.version} is out`}</p>
+            {appUpdate.latest.notes && <p className="text-xs text-(--text-secondary) whitespace-pre-line line-clamp-6">{appUpdate.latest.notes}</p>}
+            {isAndroid && appUpdate.latest.url
+              ? <a href={appUpdate.latest.url} className="btn btn-primary inline-block">Download the update</a>
+              : <a href="sidestore://" className="btn btn-primary inline-block">Open SideStore</a>}
           </div>
         ) : appUpdate?.latest ? (
           <p className="text-sm text-(--text-secondary) flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-green-400" /> Up to date</p>

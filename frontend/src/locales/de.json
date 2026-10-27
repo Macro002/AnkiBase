@@ -257,7 +257,7 @@
     "doneText": "Ein paar Dinge für danach:",
     "tipUsers": "Lade Familie oder Freunde unter Einstellungen → Benutzer ein und gib jedem ein eigenes Profil.",
     "tipSync": "Starte Ankis Sync-Server hier (Einstellungen → Sync), damit alle Geräte mit deinem Server synchronisieren.",
-    "tipPhone": "Auf dem iPhone lernt die AnkiBase-App offline und synchronisiert, sobald du wieder online bist.",
+    "tipPhone": "Die AnkiBase-Apps für Android und iPhone lernen offline und synchronisieren, sobald du wieder online bist.",
     "open": "AnkiBase öffnen"
   }
 }

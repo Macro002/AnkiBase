@@ -1,0 +1,46 @@
+---
+title: anki-cli
+---
+
+# anki-cli: the engine under the hood
+
+AnkiBase doesn't reimplement Anki. Every deck, card, review and sync goes through
+[**anki-cli**](https://github.com/Macro002/anki-cli), a project I built alongside AnkiBase
+as its engine and released on its own.
+
+anki-cli runs **Anki's official engine** (the [`anki`](https://pypi.org/project/anki/)
+package, the same Rust core Anki Desktop uses) as a small headless server. There's no
+Anki Desktop, no display and no Docker container running a GUI.
+
+## Why it exists
+
+Early versions of AnkiBase ran one headless Anki Desktop in Docker per account and talked
+to it through the AnkiConnect add-on. That worked, but it was slow to start, heavy on memory
+and fragile. anki-cli replaced all of that with one process that:
+
+* serves every profile from a single engine, opening a collection only when it's used
+* speaks AnkiConnect's protocol (all 122 actions; AnkiConnect's own test suite passes),
+  plus a faster JSON-RPC API with extras like sync, backups, FSRS and a headless reviewer
+* serves Anki's own Statistics, Deck Options and Card Info screens, which AnkiBase shows as they are
+* keeps an hourly backup of each collection
+
+## How AnkiBase uses it
+
+The installer sets up anki-cli in its own virtual environment and runs it as the
+`ankibase-anki` service on `127.0.0.1`, protected by a generated API key. Each AnkiBase
+profile is an anki-cli profile: a folder in `/opt/ankibase/anki-data/<profile>/` with Anki's
+usual layout. AnkiBase pins anki-cli to a tested commit and updates it together with itself.
+
+The iPhone app goes one step further and embeds Anki's Rust engine directly, so studying
+works with no server at all.
+
+## Using it on its own
+
+anki-cli works without AnkiBase too, for scripts, bots, or anything that used AnkiConnect:
+
+```bash
+pip install git+https://github.com/Macro002/anki-cli
+anki-cli serve      # AnkiConnect-compatible API on http://127.0.0.1:8765
+```
+
+See the [anki-cli repository](https://github.com/Macro002/anki-cli) for the full API and CLI.

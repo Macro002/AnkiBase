@@ -257,7 +257,7 @@
     "doneText": "Quelques idées pour la suite :",
     "tipUsers": "Invitez famille ou amis dans Réglages → Utilisateurs et donnez à chacun son profil.",
     "tipSync": "Lancez le serveur de synchro d'Anki ici (Réglages → Synchro) pour que tous vos appareils se synchronisent avec votre serveur.",
-    "tipPhone": "Sur iPhone, l'app AnkiBase fonctionne hors ligne et se synchronise au retour du réseau.",
+    "tipPhone": "Les apps AnkiBase pour Android et iPhone fonctionnent hors ligne et se synchronisent au retour du réseau.",
     "open": "Ouvrir AnkiBase"
   }
 }

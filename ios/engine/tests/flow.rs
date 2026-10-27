@@ -189,7 +189,7 @@ fn anki_pages_talk_to_the_collection() {
     std::fs::write(pages.join("index.html"), "<html>anki</html>").unwrap();
     std::fs::write(pages.join("_app/immutable/start.mjs"), "export {}").unwrap();
     let phone = ankibase_engine::App::start(ankibase_engine::Config {
-        dir: tmp.clone(), web: None, pages: Some(pages), default_server: None, version: "0".into(), build: "0".into(), update_feed: None, bundle_id: None,
+        dir: tmp.clone(), web: None, pages: Some(pages), default_server: None, version: "0".into(), build: "0".into(), update_feed: None, bundle_id: None, media_token: None,
     });
     add_cards(&phone, "Spanish", &["hola"]);
     let deck = ok(&phone, "GET", "/api/decks/names", Value::Null)["decks"]["Spanish"].as_i64().unwrap();

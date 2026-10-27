@@ -3,6 +3,7 @@
   "features": "Features",
   "getting-started": "Getting Started",
   "configuration": "Configuration",
+  "anki-cli": "anki-cli (the engine)",
   "api-reference": {
     "title": "API Reference ↗",
     "href": "https://macro002.github.io/AnkiBase/api-reference.html",

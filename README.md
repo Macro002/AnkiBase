@@ -72,13 +72,13 @@ A calendar heatmap, reviews over time, future due, card counts, intervals, ease,
 
 Nine built-in themes, custom accent and base colours with a live preview, and theme import/export. Admins can set the server-wide default. Sliders, toggles and panels move with springy, velocity-aware motion.
 
-### 📱 An iPhone app that works offline
+### 📱 Android and iPhone apps that work offline
 
-<img src="docs/public/media/phones.webp" alt="The AnkiBase iPhone app: decks, studying and stats" width="100%">
+<img src="docs/public/media/phones.webp" alt="The AnkiBase app: decks, studying and stats" width="100%">
 
-The [iPhone app](ios/) runs **Anki's own engine on the phone**: decks, studying, search, editing, `.apkg` import, stats and Anki's Deck Options all work with no connection at all. It only needs the internet to sync, with AnkiWeb or your own sync server, and to reach your AnkiBase server for stories, AI and Quizlet, which it can also do without. What you opened from the server stays readable offline, and progress saved offline is sent when you're back.
+The [Android](android/) and [iPhone](ios/) apps run **Anki's own engine on the phone**: decks, studying, search, editing, `.apkg` import, stats and Anki's Deck Options all work with no connection at all. They only need the internet to sync, with AnkiWeb or your own sync server, and to reach your AnkiBase server for stories, AI and Quizlet, which they can also do without. What you opened from the server stays readable offline, and progress saved offline is sent when you're back.
 
-It's built to feel like an app rather than a web page: no zooming or bouncing, the layout clears the Dynamic Island and home indicator, the answer buttons sit under your thumb, and the status bar and home screen icon follow your theme. Build it on Linux or a Mac (see [`ios/`](ios/)) and install it with SideStore or AltStore.
+They're built to feel like apps rather than a web page: no zooming, the layout clears notches, the Dynamic Island and the gesture bar, the answer buttons sit under your thumb, and the system bars follow your theme (on iPhone, the home screen icon too). Android: download the `.apk` from the [latest release](https://github.com/Macro002/AnkiBase/releases/latest). iPhone: build it on Linux or a Mac (see [`ios/`](ios/)) and install it with SideStore or AltStore.
 
 ### 🏠 Built to self-host
 
@@ -96,6 +96,13 @@ It's built to feel like an app rather than a web page: no zooming or bouncing, t
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS v4 |
 | Backend | FastAPI + Uvicorn, SQLite |
 | Anki engine | [anki-cli](https://github.com/Macro002/anki-cli): Anki's own engine as one small service, a collection per profile. No Docker, no Anki Desktop |
+
+AnkiBase doesn't reimplement Anki. All the Anki work goes through
+[**anki-cli**](https://github.com/Macro002/anki-cli), which I built alongside AnkiBase as its
+engine and released as its own project: Anki's official engine as a fast headless server, a
+drop-in for AnkiConnect (its test suite passes), that also serves Anki's own Statistics and
+Deck Options screens. It's useful on its own too, for scripts or anything that used
+AnkiConnect. More in the [docs](https://macro002.github.io/AnkiBase/anki-cli).
 | AI (optional) | Anthropic Claude, OpenAI, Google Gemini (bring your own key) |
 
 ## 🚀 Install

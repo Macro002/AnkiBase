@@ -257,7 +257,7 @@
     "doneText": "Qualche idea per continuare:",
     "tipUsers": "Invita famiglia o amici in Impostazioni → Utenti e dai a ognuno il suo profilo.",
     "tipSync": "Avvia qui il server di sincronizzazione di Anki (Impostazioni → Sincronizza) così tutti i dispositivi usano il tuo server.",
-    "tipPhone": "Su iPhone, l'app AnkiBase funziona offline e sincronizza quando torni online.",
+    "tipPhone": "Le app AnkiBase per Android e iPhone funzionano offline e sincronizzano quando torni online.",
     "open": "Apri AnkiBase"
   }
 }

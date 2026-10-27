@@ -36,7 +36,7 @@ pub fn app(dir: &Path, server: Option<&str>) -> App {
         default_server: server.map(String::from),
         version: "0.2.0".into(),
         build: "2".into(),
-        update_feed: None, bundle_id: None,
+        update_feed: None, bundle_id: None, media_token: None,
     })
 }
 

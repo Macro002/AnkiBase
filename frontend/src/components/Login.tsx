@@ -201,7 +201,7 @@ export function Login() {
         {isNative && (
           <div className="mt-6 pt-5 border-t border-(--bg-tertiary) space-y-3">
             <button onClick={() => saveServer(null)} className="btn btn-secondary w-full flex items-center justify-center gap-2">
-              <Smartphone className="w-4 h-4" /> Use on this iPhone only
+              <Smartphone className="w-4 h-4" /> Use on this phone only
             </button>
             <p className="text-xs text-(--text-secondary) text-center leading-relaxed">
               Decks, studying, stats and sync with AnkiWeb (or your own sync server) all work without a server.

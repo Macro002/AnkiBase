@@ -1,0 +1,105 @@
+name: Release
+
+# Push a version tag (git tag v1.2.3 && git push --tags) to publish a release: the Android
+# app is built and attached, and servers on the release channel see the update.
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Tools
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q librsvg2-bin zip
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0" "ndk;27.3.13750724" > /dev/null
+          curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ios/engine/target
+          key: android-${{ hashFiles('ios/engine/Cargo.lock') }}
+
+      - name: Install the web UI's packages
+        run: npm ci
+        working-directory: frontend
+
+      - name: Version from the tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          IFS=. read -r MAJOR MINOR PATCH <<< "$VERSION"
+          printf 'versionName=%s\nversionCode=%d\n' "$VERSION" $((MAJOR * 10000 + MINOR * 100 + PATCH)) > android/version.properties
+
+      - name: Signing key
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          if [ -n "$KEYSTORE" ]; then
+            echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            printf 'ANDROID_KEYSTORE=%s\nANDROID_KEYSTORE_PASSWORD=%s\nANDROID_KEY_ALIAS=%s\n' \
+              "$RUNNER_TEMP/release.keystore" "$PASSWORD" "${ALIAS:-ankibase}" > android/local.env
+          else
+            echo "::warning::No ANDROID_KEYSTORE_BASE64 secret: the APK is signed with a throwaway key and can't update earlier installs."
+          fi
+
+      - name: Build the APK
+        run: android/scripts/build.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: android/dist/*.apk
+
+  release:
+    needs: android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: apk
+          path: dist
+
+      - name: Name the APK
+        run: mv dist/*.apk "dist/AnkiBase-${GITHUB_REF_NAME}.apk"
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.apk
+          generate_release_notes: true
+          body: |
+            ## Install or update
+
+            **Server** (Debian or Ubuntu):
+            ```bash
+            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | sudo bash
+            ```
+            Already running AnkiBase? Click **Update** in the app, or run the same command with `-s -- --update`.
+
+            **Android:** download the `.apk` below and open it (allow installs from your browser when asked). Updates install over it.
+
+            **iPhone:** build it with `ios/scripts/build.sh` and install it with SideStore or AltStore (see `ios/README.md`).

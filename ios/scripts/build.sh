@@ -29,7 +29,7 @@ echo "== Anki engine for iPhone"
 export SDKROOT="$sdk" IPHONEOS_DEPLOYMENT_TARGET=17.0
 export CC_aarch64_apple_ios="$toolchain/clang" AR_aarch64_apple_ios="$toolchain/llvm-ar"
 export CFLAGS_aarch64_apple_ios="--target=arm64-apple-ios17.0 -isysroot $sdk"
-(cd engine && cargo build --release --target aarch64-apple-ios)
+(cd engine && cargo rustc --release --target aarch64-apple-ios --lib --crate-type staticlib)
 
 echo "== App icons (the logo on each theme's colours)"
 python3 scripts/icons.py svg .build/icons

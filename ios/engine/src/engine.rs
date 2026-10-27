@@ -67,6 +67,8 @@ pub struct Engine {
     media_error: Option<String>,
     /// Desktop-only settings Anki's pages remember (`getProfileConfigJson`…), per launch.
     pub(crate) page_settings: std::collections::HashMap<String, Vec<u8>>,
+    /// What card media URLs carry (`?t=`): the Android app's access token, else unused.
+    pub media_token: String,
 }
 
 impl Engine {
@@ -93,6 +95,7 @@ impl Engine {
             media_sync: None,
             media_error: None,
             page_settings: Default::default(),
+            media_token: "local".into(),
         })
     }
 
@@ -153,7 +156,7 @@ impl Engine {
         let counts = json!({"new": queued.new_count, "learn": queued.learning_count, "review": queued.review_count});
         let Some(next) = queued.cards.into_iter().next() else {
             self.shown = None;
-            return Ok(json!({"card": null, "counts": counts, "mode": "reviewer", "media_token": "local"}));
+            return Ok(json!({"card": null, "counts": counts, "mode": "reviewer", "media_token": self.media_token}));
         };
         let cid = next.card.id();
         let rendered = col.render_existing_card(cid, false, false)?;
@@ -185,7 +188,7 @@ impl Engine {
         if self.shown.map(|(id, _)| id) != Some(cid) {
             self.shown = Some((cid, Instant::now()));
         }
-        Ok(json!({"card": card, "counts": counts, "mode": "reviewer", "media_token": "local"}))
+        Ok(json!({"card": card, "counts": counts, "mode": "reviewer", "media_token": self.media_token}))
     }
 
     /// Answer `card_id` (if it's still the reviewer's next card) and return the next one.

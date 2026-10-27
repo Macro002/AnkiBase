@@ -53,7 +53,7 @@ export function StudyHub() {
     let cancelled = false;
     Promise.all([
       studySessions.list(),
-      decks.list().catch(() => null), // Anki container may be offline
+      decks.list().catch(() => null), // the Anki engine may still be starting
       quizlet.listDecks().catch(() => null),
       stories.list(100).catch(() => null),
     ]).then(([s, anki, qz, st]) => {

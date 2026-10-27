@@ -19,7 +19,6 @@ export function AnkiWebLoginModal({ isOpen, onClose, onSuccess }: AnkiWebLoginMo
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentEmail, setCurrentEmail] = useState('');
   const [checkingStatus, setCheckingStatus] = useState(false);
-  const [statusMessage, setStatusMessage] = useState(t('ankiweb.checkingStatus'));
 
   // Check status when modal opens - reset state first to show spinner
   useEffect(() => {
@@ -28,49 +27,14 @@ export function AnkiWebLoginModal({ isOpen, onClose, onSuccess }: AnkiWebLoginMo
       setIsLoggedIn(false);
       setCurrentEmail('');
       setCheckingStatus(true);
-      setStatusMessage(t('ankiweb.checkingStatus'));
       checkLoginStatus();
     }
   }, [isOpen]);
 
-  // Persist loading state to localStorage
-  useEffect(() => {
-    if (loading) {
-      localStorage.setItem('ankiweb-operation-in-progress', 'true');
-    } else {
-      localStorage.removeItem('ankiweb-operation-in-progress');
-    }
-  }, [loading]);
-
-  // Restore loading state on mount
-  useEffect(() => {
-    const operationInProgress = localStorage.getItem('ankiweb-operation-in-progress');
-    if (operationInProgress) {
-      setCheckingStatus(true);
-      // Recheck status to see if operation completed
-      checkLoginStatus().finally(() => {
-        localStorage.removeItem('ankiweb-operation-in-progress');
-      });
-    }
-  }, []);
-
-  const checkLoginStatus = async (pollUntilConfigured = false) => {
+  const checkLoginStatus = async () => {
     setCheckingStatus(true);
     try {
-      let status = await ankiweb.status();
-
-      // If polling, wait until Anki is fully configured (container restarted)
-      if (pollUntilConfigured && status.has_credentials && !status.configured) {
-        // Poll every 1 second until configured
-        const maxAttempts = 30; // 30 seconds max
-        for (let i = 0; i < maxAttempts; i++) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          status = await ankiweb.status();
-          if (status.configured) break;
-        }
-      }
-
-      // Only show as logged in if Anki is fully configured
+      const status = await ankiweb.status();
       setIsLoggedIn(status.configured);
       setCurrentEmail(status.email || '');
     } catch (err) {
@@ -90,13 +54,11 @@ export function AnkiWebLoginModal({ isOpen, onClose, onSuccess }: AnkiWebLoginMo
     try {
       // Log in (Anki keeps the sync key; the password isn't stored)
       await ankiweb.login(email, password);
-      setLoading(false);
+      setIsLoggedIn(true);
+      setCurrentEmail(email);
       setEmail('');
       setPassword('');
-      setStatusMessage(t('ankiweb.verifyingConfig'));
-      await checkLoginStatus();
-
-      // Only show success message after everything is complete
+      setLoading(false);
       onSuccess();
     } catch (err) {
       setError(err instanceof Error ? err.message : t('ankiweb.loginFailed'));
@@ -120,8 +82,8 @@ export function AnkiWebLoginModal({ isOpen, onClose, onSuccess }: AnkiWebLoginMo
     }
   };
 
-  // Disable closing modal while loading or checking status
-  const canClose = !loading && !checkingStatus;
+  // Don't close mid login/logout (a status check is fine to abandon)
+  const canClose = !loading;
 
   const handleClose = () => {
     if (canClose) {
@@ -162,7 +124,7 @@ export function AnkiWebLoginModal({ isOpen, onClose, onSuccess }: AnkiWebLoginMo
                 {/* Spinning arc */}
                 <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-(--accent) animate-spin"></div>
               </div>
-              <p className="text-sm text-(--text-secondary)">{statusMessage}</p>
+              <p className="text-sm text-(--text-secondary)">{t('ankiweb.checkingStatus')}</p>
             </div>
           ) : (
             <>

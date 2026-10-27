@@ -196,7 +196,7 @@ export function UserManagement() {
   const getPermissionText = (user: UserInfo) => {
     const perms = [];
     if (user.is_admin) perms.push('Admin');
-    if (user.can_add_containers) perms.push('Can add containers');
+    if (user.can_add_containers) perms.push('Can add Anki accounts');
     if (user.can_edit_server_accent) perms.push('Can edit server accent');
     return perms.join(', ');
   };
@@ -377,7 +377,7 @@ export function UserManagement() {
                     checked={formData.is_admin}
                     onChange={(e) => setFormData({ ...formData, is_admin: e.target.checked })}
                   />
-                  <span className="text-sm">Admin privileges (access to all containers and user management)</span>
+                  <span className="text-sm">Admin privileges (access to all accounts and user management)</span>
                 </label>
 
                 <label className="flex items-center gap-2 cursor-pointer">
@@ -386,7 +386,7 @@ export function UserManagement() {
                     checked={formData.can_add_containers}
                     onChange={(e) => setFormData({ ...formData, can_add_containers: e.target.checked })}
                   />
-                  <span className="text-sm">Can add containers</span>
+                  <span className="text-sm">Can add Anki accounts</span>
                 </label>
 
                 <label className="flex items-center gap-2 cursor-pointer">
@@ -401,10 +401,10 @@ export function UserManagement() {
 
               {/* Container Access */}
               <div>
-                <label className="block text-sm font-medium mb-2">Container Access</label>
+                <label className="block text-sm font-medium mb-2">Anki Account Access</label>
                 {formData.is_admin ? (
                   <p className="text-(--text-secondary) text-sm">
-                    Admin users have access to all containers automatically.
+                    Admin users have access to all accounts automatically.
                   </p>
                 ) : (
                   <div className="space-y-2 max-h-48 overflow-y-auto">
@@ -420,13 +420,13 @@ export function UserManagement() {
                         />
                         <div className="flex-1">
                           <div className="font-medium text-sm">{container.container_name}</div>
-                          <div className="text-xs text-(--text-secondary)">{container.email}</div>
+                          <div className="text-xs text-(--text-secondary)">{container.ankiweb_email || 'Not logged into AnkiWeb'}</div>
                         </div>
                       </label>
                     ))}
                     {allContainers.length === 0 && (
                       <p className="text-(--text-secondary) text-sm text-center py-4">
-                        No containers available
+                        No accounts yet
                       </p>
                     )}
                   </div>
@@ -525,7 +525,7 @@ export function UserManagement() {
                     checked={formData.can_add_containers}
                     onChange={(e) => setFormData({ ...formData, can_add_containers: e.target.checked })}
                   />
-                  <span className="text-sm">Can add containers</span>
+                  <span className="text-sm">Can add Anki accounts</span>
                 </label>
 
                 <label className="flex items-center gap-2 cursor-pointer">
@@ -540,10 +540,10 @@ export function UserManagement() {
 
               {/* Container Access */}
               <div>
-                <label className="block text-sm font-medium mb-2">Container Access</label>
+                <label className="block text-sm font-medium mb-2">Anki Account Access</label>
                 {formData.is_admin ? (
                   <p className="text-(--text-secondary) text-sm">
-                    Admin users have access to all containers automatically.
+                    Admin users have access to all accounts automatically.
                   </p>
                 ) : (
                   <div className="space-y-2 max-h-48 overflow-y-auto">
@@ -559,13 +559,13 @@ export function UserManagement() {
                         />
                         <div className="flex-1">
                           <div className="font-medium text-sm">{container.container_name}</div>
-                          <div className="text-xs text-(--text-secondary)">{container.email}</div>
+                          <div className="text-xs text-(--text-secondary)">{container.ankiweb_email || 'Not logged into AnkiWeb'}</div>
                         </div>
                       </label>
                     ))}
                     {allContainers.length === 0 && (
                       <p className="text-(--text-secondary) text-sm text-center py-4">
-                        No containers available
+                        No accounts yet
                       </p>
                     )}
                   </div>

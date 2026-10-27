@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X, Plus, Trash2, Circle, Pencil, UserCircle2, RotateCw } from 'lucide-react';
+import { X, Plus, Trash2, Pencil, UserCircle2, RotateCw } from 'lucide-react';
 import { accounts, auth, type AnkiAccount, type User } from '../api';
 
 interface AccountSwitcherModalProps {
@@ -23,8 +23,8 @@ export function AccountSwitcherModal({ isOpen, onClose, onSwitch }: AccountSwitc
   const [renameModal, setRenameModal] = useState<{ account: AnkiAccount; newName: string } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ account: AnkiAccount; removeData: boolean } | null>(null);
 
-  // Track restarting containers
-  const [restartingContainers, setRestartingContainers] = useState<Set<number>>(new Set());
+  // Accounts whose collection is being reloaded
+  const [reloading, setReloading] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     if (isOpen) {
@@ -129,54 +129,19 @@ export function AccountSwitcherModal({ isOpen, onClose, onSwitch }: AccountSwitc
     }
   };
 
-  const handleRestartContainer = async (accountId: number) => {
+  // Reloading re-reads the collection from disk (picks up changes made outside AnkiBase)
+  const handleReload = async (accountId: number) => {
     setError('');
-
-    // Mark container as restarting
-    setRestartingContainers(prev => new Set(prev).add(accountId));
-
+    setReloading(prev => new Set(prev).add(accountId));
     try {
-      // Trigger the restart
       await accounts.restart(accountId);
-
-      // Poll until container is back up (check every 2 seconds, max 30 seconds)
-      const maxAttempts = 15;
-      let attempts = 0;
-
-      const checkContainerStatus = async (): Promise<boolean> => {
-        try {
-          // Try to load accounts - if this succeeds, container is back
-          await accounts.list();
-          return true;
-        } catch {
-          return false;
-        }
-      };
-
-      while (attempts < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        const isUp = await checkContainerStatus();
-
-        if (isUp) {
-          // Container is back up
-          await loadAccounts();
-          break;
-        }
-
-        attempts++;
-      }
-
-      if (attempts >= maxAttempts) {
-        setError(t('accounts.restartTimeout'));
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : t('accounts.restartFailed'));
     } finally {
-      // Remove from restarting set
-      setRestartingContainers(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(accountId);
-        return newSet;
+      setReloading(prev => {
+        const next = new Set(prev);
+        next.delete(accountId);
+        return next;
       });
     }
   };
@@ -226,7 +191,7 @@ export function AccountSwitcherModal({ isOpen, onClose, onSwitch }: AccountSwitc
                 // Only use ankiweb_email from database, not the placeholder email field
                 const ankiwebEmail = account.ankiweb_email;
                 const hasAnkiweb = !!ankiwebEmail;
-                const isRestarting = restartingContainers.has(account.id);
+                const isReloading = reloading.has(account.id);
 
                 return (
                   <div
@@ -239,14 +204,14 @@ export function AccountSwitcherModal({ isOpen, onClose, onSwitch }: AccountSwitc
                   >
                     {/* Action buttons - top right */}
                     <div className="absolute top-3 right-3 flex items-center gap-1">
-                      {/* Restart button */}
+                      {/* Reload button */}
                       <button
-                        onClick={() => handleRestartContainer(account.id)}
+                        onClick={() => handleReload(account.id)}
                         className="icon-btn"
                         title={t('accounts.restartContainer')}
-                        disabled={loading || isRestarting}
+                        disabled={loading || isReloading}
                       >
-                        <RotateCw className={`w-4 h-4 ${isRestarting ? 'animate-spin' : ''}`} />
+                        <RotateCw className={`w-4 h-4 ${isReloading ? 'animate-spin' : ''}`} />
                       </button>
 
                       {/* Rename button */}
@@ -270,20 +235,9 @@ export function AccountSwitcherModal({ isOpen, onClose, onSwitch }: AccountSwitc
                       </button>
                     </div>
 
-                    {/* Container name with status */}
+                    {/* Account name */}
                     <div className="flex items-center gap-2 mb-2 pr-32">
                       <h3 className="font-semibold text-lg truncate">{account.container_name}</h3>
-                      {isRestarting ? (
-                        <span className="text-xs px-2 py-0.5 bg-yellow-500/20 text-yellow-400 rounded whitespace-nowrap flex items-center gap-1">
-                          <RotateCw className="w-2 h-2 animate-spin" />
-                          {t('accounts.restarting', 'Restarting')}
-                        </span>
-                      ) : (
-                        <span className="text-xs px-2 py-0.5 rounded whitespace-nowrap flex items-center gap-1" style={{ backgroundColor: 'color-mix(in srgb, var(--accent) 20%, transparent)', color: 'var(--accent)' }}>
-                          <Circle className="w-2 h-2" style={{ fill: 'var(--accent)' }} />
-                          {t('accounts.running', 'Running')}
-                        </span>
-                      )}
                     </div>
 
                     {/* AnkiWeb status - show for all accounts */}
@@ -322,7 +276,7 @@ export function AccountSwitcherModal({ isOpen, onClose, onSwitch }: AccountSwitc
           {(currentUser?.can_add_containers || currentUser?.is_admin) && (
             showAddForm ? (
               <form onSubmit={handleAddAccount} className="p-4 border border-(--bg-tertiary) rounded-lg">
-                <label className="block text-sm font-medium mb-2">{t('accounts.containerName', 'Container Name')}</label>
+                <label className="block text-sm font-medium mb-2">{t('accounts.containerName', 'Account Name')}</label>
                 <input
                   type="text"
                   value={newName}
@@ -356,7 +310,7 @@ export function AccountSwitcherModal({ isOpen, onClose, onSwitch }: AccountSwitc
                 disabled={loading}
               >
                 <Plus className="w-4 h-4" />
-                {t('accounts.addContainer', 'Add Container')}
+                {t('accounts.addContainer', 'Add Account')}
               </button>
             )
           )}
@@ -368,7 +322,7 @@ export function AccountSwitcherModal({ isOpen, onClose, onSwitch }: AccountSwitc
         <div className="fixed inset-0 bg-black/50 z-60 flex items-center justify-center p-4">
           <div className="card max-w-md w-full" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">{t('accounts.renameContainer', 'Rename Container')}</h3>
+              <h3 className="text-lg font-semibold">{t('accounts.renameContainer', 'Rename Account')}</h3>
               <button onClick={() => setRenameModal(null)} className="icon-btn">
                 <X className="w-5 h-5" />
               </button>
@@ -378,7 +332,7 @@ export function AccountSwitcherModal({ isOpen, onClose, onSwitch }: AccountSwitc
               value={renameModal.newName}
               onChange={(e) => setRenameModal({ ...renameModal, newName: e.target.value })}
               className="input w-full mb-4"
-              placeholder={t('accounts.containerName', 'Container name')}
+              placeholder={t('accounts.containerName', 'Account name')}
               autoFocus
               onKeyDown={(e) => e.key === 'Enter' && handleRenameAccount()}
             />

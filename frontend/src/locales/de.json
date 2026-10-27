@@ -45,8 +45,6 @@
     "password": "Passwort",
     "saveCredentials": "Anmeldedaten speichern",
     "loggingIn": "Anmeldung läuft...",
-    "restartingContainer": "Verbinde mit Anki...",
-    "verifyingConfig": "Konfiguration wird überprüft...",
     "checkingStatus": "Status wird überprüft...",
     "loggingOut": "Abmeldung läuft...",
     "loggedInAs": "Angemeldet als",
@@ -273,8 +271,6 @@
     "switching": "Wird gewechselt...",
     "active": "Aktiv",
     "select": "Auswählen",
-    "restarting": "Neustart läuft",
-    "running": "Läuft",
     "notLoggedIntoAnkiWeb": "Nicht bei AnkiWeb angemeldet",
     "addContainer": "Konto hinzufügen",
     "containerName": "Kontoname",
@@ -294,8 +290,7 @@
     "addFailed": "Konto konnte nicht hinzugefügt werden",
     "renameFailed": "Umbenennen fehlgeschlagen",
     "deleteFailed": "Löschen fehlgeschlagen",
-    "restartFailed": "Neustart fehlgeschlagen",
-    "restartTimeout": "Zeitüberschreitung beim Neuladen. Bitte Seite aktualisieren."
+    "restartFailed": "Neustart fehlgeschlagen"
   },
   "notFound": {
     "title": "Seite nicht gefunden",

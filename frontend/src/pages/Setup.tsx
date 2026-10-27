@@ -15,7 +15,7 @@ interface ProgressEvent {
 function StepIndicator({ current }: { current: Step }) {
   const steps = [
     { n: 1 as Step, label: 'Admin Account' },
-    { n: 2 as Step, label: 'Anki Container' },
+    { n: 2 as Step, label: 'Anki Account' },
     { n: 3 as Step, label: 'AnkiWeb' },
   ];
   return (
@@ -124,7 +124,7 @@ function StepAdmin({ onDone }: { onDone: () => void }) {
   );
 }
 
-// ─── Step 2: Container Setup ─────────────────────────────────────────────────
+// ─── Step 2: Anki account ────────────────────────────────────────────────────
 
 function StepContainer({ onDone }: { onDone: () => void }) {
   const [containerName, setContainerName] = useState('default');
@@ -183,20 +183,20 @@ function StepContainer({ onDone }: { onDone: () => void }) {
             <ServerCog className="w-5 h-5 text-(--accent)" />
           </div>
           <div>
-            <h2 className="text-lg font-semibold">Set Up Anki Container</h2>
-            <p className="text-sm text-(--text-secondary)">Pulls and starts the headless Anki Docker container</p>
+            <h2 className="text-lg font-semibold">Create Your Anki Account</h2>
+            <p className="text-sm text-(--text-secondary)">Your collection lives on this server; you can log in to AnkiWeb next</p>
           </div>
         </div>
 
         <div>
-          <label className="block text-sm text-(--text-secondary) mb-1">Container Name</label>
+          <label className="block text-sm text-(--text-secondary) mb-1">Account Name</label>
           <input
             className="input w-full"
             value={containerName}
             onChange={e => setContainerName(e.target.value)}
             placeholder="default"
           />
-          <p className="text-xs text-(--text-secondary) mt-1">Used to identify this Anki instance. You can add more later.</p>
+          <p className="text-xs text-(--text-secondary) mt-1">Used to tell your collections apart. You can add more later.</p>
         </div>
 
         <button
@@ -205,7 +205,7 @@ function StepContainer({ onDone }: { onDone: () => void }) {
           disabled={!containerName.trim()}
         >
           <ChevronRight className="w-4 h-4" />
-          Set Up Container
+          Create Account
         </button>
       </div>
     );
@@ -218,8 +218,8 @@ function StepContainer({ onDone }: { onDone: () => void }) {
           <ServerCog className="w-5 h-5 text-(--accent)" />
         </div>
         <div>
-          <h2 className="text-lg font-semibold">Setting Up Container</h2>
-          <p className="text-sm text-(--text-secondary)">This may take a few minutes on first run</p>
+          <h2 className="text-lg font-semibold">Setting Up Anki</h2>
+          <p className="text-sm text-(--text-secondary)">The very first start installs Anki, which takes about a minute</p>
         </div>
       </div>
 

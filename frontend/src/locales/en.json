@@ -45,8 +45,6 @@
     "password": "Password",
     "saveCredentials": "Save Credentials",
     "loggingIn": "Logging in...",
-    "restartingContainer": "Connecting to Anki...",
-    "verifyingConfig": "Verifying configuration...",
     "checkingStatus": "Checking status...",
     "loggingOut": "Logging out...",
     "loggedInAs": "Logged in as",
@@ -273,8 +271,6 @@
     "switching": "Switching...",
     "active": "Active",
     "select": "Select",
-    "restarting": "Restarting",
-    "running": "Running",
     "notLoggedIntoAnkiWeb": "Not logged into AnkiWeb",
     "addContainer": "Add Account",
     "containerName": "Account Name",
@@ -294,8 +290,7 @@
     "addFailed": "Failed to add account",
     "renameFailed": "Failed to rename account",
     "deleteFailed": "Failed to delete account",
-    "restartFailed": "Failed to reload the collection",
-    "restartTimeout": "Reloading timed out. Please refresh the page."
+    "restartFailed": "Failed to reload the collection"
   },
   "notFound": {
     "title": "Page Not Found",

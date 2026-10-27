@@ -4,8 +4,11 @@ default icon; the others are the alternate icons the app switches to with the th
 
     scripts/icons.py svg OUT_DIR       writes <Name>.svg for every theme
     scripts/icons.py ipa IPA ICON_DIR  adds the PNGs (from rsvg-convert) to the .ipa's app
-                                       and lists them in its Info.plist
+                                       and lists them in its Info.plist, with this build's
+                                       settings from the environment (local.env):
+                                       ANKIBASE_BUNDLE_ID, ANKIBASE_SERVER, ANKIBASE_UPDATE_FEED
 """
+import os
 import plistlib
 import re
 import sys
@@ -54,6 +57,11 @@ def ipa(path: Path, icons: Path):
             added[f"{app}Icon-{name}{suffix}.png"] = (icons / f"{name}{suffix}.png").read_bytes()
         alternates[name] = {"CFBundleIconFiles": [f"Icon-{name}"], "UIPrerenderedIcon": False}
     info = plistlib.loads(next(data for i, data in entries if i.filename == plist_name))
+    # This build's own settings (scripts/build.sh reads them from local.env).
+    for env, key in (("ANKIBASE_BUNDLE_ID", "CFBundleIdentifier"), ("ANKIBASE_SERVER", "AnkiBaseServer"),
+                     ("ANKIBASE_UPDATE_FEED", "AnkiBaseUpdateFeed")):
+        if os.environ.get(env):
+            info[key] = os.environ[env]
     info["CFBundleIcons"] = {
         "CFBundlePrimaryIcon": {"CFBundleIconFiles": [info.get("CFBundleIconFile", "AppIcon")], "UIPrerenderedIcon": False},
         "CFBundleAlternateIcons": alternates,
@@ -67,7 +75,7 @@ def ipa(path: Path, icons: Path):
         for name, data in added.items():
             archive.writestr(name, data)
     temporary.replace(path)
-    print(f"{len(alternates)} alternate icons added to {path.name}")
+    print(f"{len(alternates)} alternate icons added to {path.name} ({info['CFBundleIdentifier']})")
 
 
 if __name__ == "__main__":

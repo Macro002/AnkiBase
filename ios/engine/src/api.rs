@@ -75,7 +75,10 @@ pub fn handle(engine: &mut Engine, request: &Request) -> Option<Reply> {
         ("POST", ["review", "undo"]) => body::<ReviewRequest>(data).and_then(|r| engine.undo(&r.deck)),
         ("GET", ["media-file", name]) => {
             return Some(match engine.media_file(name) {
-                Ok(bytes) => Reply::new(200, mime_type(name), bytes).with_header("Cache-Control", "max-age=3600"),
+                Ok(bytes) => Reply::new(200, mime_type(name), bytes)
+                    .with_header("Cache-Control", "max-age=3600")
+                    // Card media is from anywhere: a file opened on its own can't run scripts.
+                    .with_header("Content-Security-Policy", "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'"),
                 Err(err) => failure(err),
             });
         }

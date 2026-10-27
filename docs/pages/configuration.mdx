@@ -12,12 +12,15 @@ The installer generates a `.env` file at `/opt/ankibase/backend/.env`. You can e
 
 | Variable | Description | Default |
 |---|---|---|
-| `APP_SECRET_KEY` | Signs sessions and media links. Keep it secret | Auto-generated |
-| `ANKIWEB_ENCRYPTION_KEY` | Fernet key that encrypts stored credentials | Auto-generated |
+| `APP_SECRET_KEY` | Signs media links. Keep it secret | Auto-generated |
+| `ANKIWEB_ENCRYPTION_KEY` | Fernet key that encrypts stored API keys | Auto-generated |
 | `APP_PORT` | Backend listen port | First free port from `8000` |
-| `CORS_ORIGINS` | Allowed browser origins | `http://localhost:<port>` |
+| `CORS_ORIGINS` | Other origins allowed to call the API (only for a separately served frontend) | `http://localhost:<port>` |
+| `UPDATE_CHANNEL` | `release` (tagged releases) or `main` (every commit) for in-app updates | `release` |
+| `GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` | Server-wide AI keys for profiles without their own | – |
 
-Per-account data (stories, API keys) lives in `backend/data/<account>/`.
+Without the two secrets in `.env`, AnkiBase generates them on first start into `backend/data/.secrets` (mode 0600).
+Per-profile data (stories, API keys) lives in `backend/data/<profile>/`.
 
 After editing, restart the service:
 
@@ -37,7 +40,7 @@ API keys are managed in the app under **Settings → AI** (or **AI settings** on
 
 AI is optional. Studying, Quizlet, search and stats all work without a key.
 
-Keys are encrypted at rest using the `ENCRYPTION_KEY` from `.env`.
+Keys are saved per profile and encrypted at rest. Who may see or change them is a permission (see below).
 
 ## Nginx
 
@@ -70,23 +73,46 @@ server {
 }
 ```
 
-## Multi-user Setup
+## Users, profiles and permissions
 
-AnkiBase supports multiple users and multiple Anki accounts, each with its own collection.
+A **profile** is an Anki collection: its own decks, media, review history, sync login, stories
+and Quizlet sets. A **user** is someone who logs in. Admins decide which profiles each user can
+use; switching profiles (the **Profiles** button) only affects that user's own login.
 
-- The first account created (id=1) is always the root admin and cannot be deleted or demoted.
-- Admins can create users and assign account access via the **User Management** panel.
-- Per-user permissions: `is_admin`, `can_add_containers` (create Anki accounts), and per-account access grants.
+- The first admin, created by the setup wizard, is the **owner**: only they can change their own
+  account, and nobody can delete it. There's always at least one admin.
+- Admins can do everything. Members get permissions per user in **Settings → Users**:
+  importing decks, using AI, managing AI keys, managing profiles, and changing the default theme.
+- Permission changes, removed profiles and deleted users take effect on the next request.
+  Changing a password signs that user out everywhere else.
 
 <Callout type="info">
-  Accounts are cheap: they all share one Anki engine process, and a collection is only opened when it's used.
+  Profiles are cheap: they all share one Anki engine process, and a collection is only opened when it's used.
 </Callout>
 
-## AnkiWeb Sync
+## Sync
 
-Each account can have its own AnkiWeb login, set with the **AnkiWeb** button in the header. Like Anki Desktop, only AnkiWeb's sync key is kept (in `/opt/ankibase/anki-data/anki-cli.json`, readable by root only), never your password.
+Each profile has its own sync login, set in **Settings → Sync**: AnkiWeb, or any self-hosted
+Anki sync server. Like Anki Desktop, only the sync key is kept (in
+`/opt/ankibase/anki-data/anki-cli.json`, readable by root only), never your password.
+
+### Your own sync server
+
+Admins can run **Anki's own sync server** next to AnkiBase (Settings → Sync → Sync server on
+this AnkiBase): add an account and it starts, as the `ankibase-sync` service. AnkiBase serves it
+at `https://<your AnkiBase>/syncserver/`, so it uses your HTTPS setup and needs no extra port.
+Enter that address in Anki Desktop (Preferences → Syncing → self-hosted sync server), AnkiDroid
+(Settings → Advanced → custom sync server), AnkiMobile or the AnkiBase iPhone app.
+Collections are stored in `/opt/ankibase/anki-data/.sync/data/<account>/`.
 
 Sync modes available:
 - **Normal sync** — incremental, merges changes
-- **Full upload** — overwrites AnkiWeb with local data
-- **Full download** — overwrites local data with AnkiWeb
+- **Full upload** — overwrites the server's copy with this one
+- **Full download** — overwrites this copy with the server's
+
+## Updates
+
+**Update** in the header (admins) installs the newest tagged release: AnkiBase downloads and
+builds it, checks that it starts, backs up your code and data to `/opt/ankibase/backups/`
+(the last three are kept), installs it and restarts — and restores the backup if the new
+version doesn't come up. `install.sh --update` does the same from the command line.

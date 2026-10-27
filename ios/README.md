@@ -46,15 +46,22 @@ builds `../frontend`, takes Anki's pages from the matching `aqt` wheel
 (`scripts/anki-pages.py`), draws the theme icons (`scripts/icons.py`) and packages it all. Bump `CFBundleVersion` in
 `Info.plist` for every build you hand out.
 
+## Your build's settings
+
+Copy `local.env.example` to `local.env` (ignored by git) to give your build its own bundle
+identifier, the AnkiBase server new installs connect to, and a SideStore/AltStore source to
+check for updates. Without it the app starts on its own and you connect a server in
+Settings → Server.
+
 ## Publish
 
 ```sh
 scripts/publish.py "What changed"   # after build.sh; bump CFBundleVersion first
 ```
 
-Uploads the .ipa to `ssh watch` and lists it in the SideStore sources
-https://watch.macr0.dev/static/ios/source.json (shared with the other apps) and
-https://watch.macr0.dev/static/ios/ankibase-source.json (AnkiBase only).
+Uploads the .ipa over SSH to `PUBLISH_SSH_HOST:PUBLISH_DIR` (from `local.env`) and lists it
+in the SideStore/AltStore sources there: `ankibase-source.json` (AnkiBase only), and merged
+into `source.json` if you share one with other apps.
 
 ## Develop without a phone
 

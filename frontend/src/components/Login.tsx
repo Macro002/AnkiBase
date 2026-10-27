@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Eye, EyeOff, Server, Smartphone } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { auth, setup, theme as themeApi } from '../api';
+import { ApiError, auth, setup, theme as themeApi } from '../api';
 
 import { Logo } from './Logo';
 import { applyAccentColor, saveAccentColor, applyBaseColors, saveBaseColors } from '../hooks/useAccentColor';
@@ -91,9 +91,9 @@ export function Login() {
       navigate('/', { replace: true });
 
     } catch (err: unknown) {
-      const e = err as any;
-      const waitSeconds: number | undefined = e?.waitSeconds;
-      const remaining: number | undefined = e?.remaining;
+      const e = err instanceof ApiError ? err : undefined;
+      const waitSeconds = e?.waitSeconds;
+      const remaining = e?.remaining;
       if (waitSeconds !== undefined) {
         lock(Date.now() + waitSeconds * 1000);
       } else if (remaining !== undefined) {

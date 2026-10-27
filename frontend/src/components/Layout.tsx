@@ -1,10 +1,10 @@
 import { NavLink, Outlet, useNavigate, Link, useLocation } from 'react-router-dom';
-import { BookOpen, Search, Sparkles, RefreshCw, LogOut, Layers, X, Upload, BarChart3, Library, Menu, LogIn, Server, Settings, CheckCircle, AlertCircle, CloudOff } from 'lucide-react';
-import { auth, update } from '../api';
+import { BookOpen, Search, Sparkles, RefreshCw, LogOut, Layers, X, Upload, BarChart3, Library, Menu, Settings, CheckCircle, AlertCircle, CloudOff, ChevronDown } from 'lucide-react';
+import { auth, update, type User } from '../api';
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Logo } from './Logo';
-import { AccountSwitcherModal } from './AccountSwitcherModal';
+import { ProfilesModal } from './ProfilesModal';
 import { SyncConflictModal } from './SyncConflictModal';
 import { UpdateModal } from './UpdateModal';
 import { createPortal } from 'react-dom';
@@ -75,7 +75,10 @@ export function Layout() {
   const [toasts, setToasts] = useState<ToastData[]>([]);
   const toastIdRef = useRef(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [showAccountSwitcher, setShowAccountSwitcher] = useState(false);
+  const [showProfiles, setShowProfiles] = useState(false);
+  const [me, setMe] = useState<User | null>(null);
+  useEffect(() => { auth.me().then(setMe).catch(() => {}); }, []);
+  const can = (p: keyof NonNullable<User['permissions']>) => me?.permissions ? me.permissions[p] : true;
   const [showSyncConflict, setShowSyncConflict] = useState(false);
   const [syncConflictRecommendation, setSyncConflictRecommendation] = useState<'choose' | 'download' | 'upload'>('choose');
   const [hasUpdate, setHasUpdate] = useState(false);
@@ -86,12 +89,10 @@ export function Layout() {
     { to: '/study', icon: BookOpen, label: t('nav.study') },
     { to: '/search', icon: Search, label: t('nav.search') },
     { to: '/stats', icon: BarChart3, label: t('nav.stats') },
-    { to: '/import', icon: Upload, label: t('nav.import') },
+    ...(can('import') ? [{ to: '/import', icon: Upload, label: t('nav.import') }] : []),
     // Stories need the AnkiBase server (the AI and the saved stories live there).
-    ...(serverFeatures ? [
-      { to: '/story', icon: Sparkles, label: t('nav.story') },
-      { to: '/reading', icon: Library, label: t('nav.reading') },
-    ] : []),
+    ...(serverFeatures && can('use_ai') ? [{ to: '/story', icon: Sparkles, label: t('nav.story') }] : []),
+    ...(serverFeatures ? [{ to: '/reading', icon: Library, label: t('nav.reading') }] : []),
   ];
 
   const mobileNavItems = navItems.slice(0, 5);
@@ -155,7 +156,7 @@ export function Layout() {
         <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8 h-14 flex items-center justify-between w-full gap-2">
           <Link to="/" className="flex items-center gap-2 hover-opacity-80 transition-opacity shrink-0">
             <Logo className="w-7 h-7" />
-            <h1 className={`text-lg sm:text-xl font-bold text-(--accent) ${isNative ? '' : 'hidden sm:block'}`}>AnkiBase</h1>
+            <h1 className="text-lg sm:text-xl font-bold text-(--accent)">AnkiBase</h1>
           </Link>
 
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
@@ -188,21 +189,16 @@ export function Layout() {
               <span className="hidden sm:inline">{t('sync.sync')}</span>
             </button>
 
-            {!isNative && (
-              <Link to="/settings?tab=sync" className="btn btn-secondary header-btn flex items-center gap-2" title={t('ankiweb.title')}>
-                <LogIn className="w-4 h-4" />
-                <span className="hidden sm:inline">AnkiWeb</span>
-              </Link>
-            )}
-
-            {!isNative && (
+            {!isNative && me && (
               <button
-                onClick={() => setShowAccountSwitcher(true)}
-                className="btn btn-secondary header-btn flex items-center gap-2"
-                title={t('accounts.switchAccount')}
+                onClick={() => setShowProfiles(true)}
+                className="btn btn-secondary header-btn flex items-center gap-2 max-w-[11rem]"
+                title={t('profiles.title')}
+                aria-label={t('profiles.title')}
               >
-                <Server className="w-4 h-4" />
-                <span className="hidden sm:inline">{t('accounts.switch')}</span>
+                <Layers className="w-4 h-4 shrink-0" />
+                <span className="hidden sm:inline truncate">{me.profile?.name ?? t('profiles.title')}</span>
+                <ChevronDown className="w-3.5 h-3.5 shrink-0 opacity-60 hidden sm:inline" />
               </button>
             )}
 
@@ -219,7 +215,7 @@ export function Layout() {
             {!isNative && (
               <button
                 onClick={handleLogout}
-                className="btn btn-secondary header-btn flex items-center gap-2"
+                className="btn btn-secondary header-btn hidden sm:flex items-center gap-2"
                 title={t('common.logout')}
               >
                 <LogOut className="w-4 h-4" />
@@ -332,14 +328,11 @@ export function Layout() {
         </div>
       </nav>
 
-      {/* Account Switcher Modal */}
-      <AccountSwitcherModal
-        isOpen={showAccountSwitcher}
-        onClose={() => setShowAccountSwitcher(false)}
-        onSwitch={() => {
-          // Reload the entire page to refresh all data (API keys, stories, etc.)
-          window.location.reload();
-        }}
+      <ProfilesModal
+        isOpen={showProfiles}
+        onClose={() => setShowProfiles(false)}
+        // Everything (decks, stories, Quizlet sets, AI keys) belongs to the profile: start fresh.
+        onSwitch={() => window.location.reload()}
       />
 
       {/* Sync Conflict Modal */}

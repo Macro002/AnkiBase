@@ -34,7 +34,9 @@ The installer will:
 
 On first visit, a setup wizard walks you through:
 1. Creating your admin account
-2. Creating your first Anki account
+2. Creating your first profile (an Anki collection)
+3. Bringing your cards over: AnkiWeb, your own sync server, or a sync server AnkiBase runs for you
+4. An optional AI key for stories
 
 ### Log in
 
@@ -67,7 +69,7 @@ systemctl status ankibase
 
 ## The Anki engine
 
-Anki runs as one small service, `ankibase-anki`, using [anki-cli](https://github.com/Macro002/anki-cli): Anki's own engine (the same Rust core as Anki Desktop) without a desktop app or Docker. Every account is a folder with its own collection, media and AnkiWeb login:
+Anki runs as one small service, `ankibase-anki`, using [anki-cli](https://github.com/Macro002/anki-cli): Anki's own engine (the same Rust core as Anki Desktop) without a desktop app or Docker. Every profile is a folder with its own collection, media and sync login:
 
 ```bash
 # Engine logs
@@ -78,9 +80,9 @@ ls /opt/ankibase/anki-data/
 ```
 
 <Callout type="info">
-  The engine listens on 127.0.0.1 only and requires an API key, which is generated on first start and kept in `/opt/ankibase/anki-data/.env`. It keeps an automatic backup of each collection every hour in `<account>/backups/`.
+  The engine listens on 127.0.0.1 only and requires an API key, which is generated on first start and kept in `/opt/ankibase/anki-data/.env`. It keeps an automatic backup of each collection every hour in `<profile>/backups/`.
 </Callout>
 
 ### Coming from the Docker version
 
-Older versions ran one `headless-anki` container per account. The first start after updating moves every account over automatically: each container is stopped, its collection and media are copied into `/opt/ankibase/anki-data/`, the AnkiWeb login is carried over and the container is removed. Docker volumes are left untouched as a safety net, so remove them yourself once everything looks right (`docker volume ls`).
+Older versions ran one `headless-anki` container per account (now called profiles). The first start after updating moves every one over automatically: each container is stopped, its collection and media are copied into `/opt/ankibase/anki-data/`, the AnkiWeb login is carried over and the container is removed. Docker volumes are left untouched as a safety net, so remove them yourself once everything looks right (`docker volume ls`).

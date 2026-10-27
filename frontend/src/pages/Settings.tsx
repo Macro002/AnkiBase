@@ -4,11 +4,12 @@ import { Segmented } from '../components/quizlet/ui';
 import { AiPanel, type AiChoice } from '../components/story/AiPanel';
 import { useSpring } from '../hooks/useSpring';
 import { auth, theme as themeApi, settings as settingsApi, type User, type ProviderInfo } from '../api';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { UserManagement } from '../components/UserManagement';
 import { SyncSection } from '../components/settings/SyncSection';
 import { ServerSection } from '../components/settings/ServerSection';
 import { hasServer, isNative, useAppStatus } from '../native';
+import { LANGUAGES } from '../i18n';
 import { Logo } from '../components/Logo';
 import { useTranslation } from 'react-i18next';
 import {
@@ -243,7 +244,6 @@ export function Settings() {
   const [searchParams, setSearchParams] = useSearchParams();
   const tab = (searchParams.get('tab') as SettingsTab) || 'appearance';
   const setTab = (t: SettingsTab) => setSearchParams(t === 'appearance' ? {} : { tab: t }, { replace: true });
-  const navigate = useNavigate();
   const { t, i18n } = useTranslation();
   const app = useAppStatus();
   // In the app without a server there's no account, AI or users to manage.
@@ -478,13 +478,12 @@ export function Settings() {
     e.preventDefault();
     setError(''); setSuccess('');
     if (newPassword !== confirmPassword) { setError(t('settings.passwordMismatch')); return; }
-    if (newPassword.length < 6) { setError(t('settings.passwordTooShort')); return; }
+    if (newPassword.length < 8) { setError(t('settings.passwordTooShort')); return; }
     setLoading(true);
     try {
       await auth.changePassword(currentPassword, newPassword);
       setSuccess(t('settings.passwordChanged'));
       setCurrentPassword(''); setNewPassword(''); setConfirmPassword('');
-      setTimeout(async () => { await auth.logout(); navigate('/login'); }, 2000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to change password');
     } finally { setLoading(false); }
@@ -526,16 +525,15 @@ export function Settings() {
     );
   };
 
+  const perms = currentUser?.permissions;
   const sections: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
-    { id: 'appearance', label: 'Appearance', icon: <Palette className="w-4 h-4" /> },
-    { id: 'sync', label: 'Sync', icon: <RefreshCw className="w-4 h-4" /> },
-    ...(isNative ? [{ id: 'server' as const, label: 'Server', icon: <Server className="w-4 h-4" /> }] : []),
+    { id: 'appearance', label: t('settings.sections.appearance'), icon: <Palette className="w-4 h-4" /> },
+    { id: 'sync', label: t('settings.sections.sync'), icon: <RefreshCw className="w-4 h-4" /> },
+    ...(isNative ? [{ id: 'server' as const, label: t('settings.sections.server'), icon: <Server className="w-4 h-4" /> }] : []),
     { id: 'language', label: t('settings.language'), icon: <Globe className="w-4 h-4" /> },
-    ...(serverFeatures ? [
-      { id: 'account' as const, label: 'Account', icon: <UserIcon className="w-4 h-4" /> },
-      { id: 'ai' as const, label: 'AI', icon: <Sparkles className="w-4 h-4" /> },
-    ] : []),
-    ...(serverFeatures && currentUser?.is_admin ? [{ id: 'users' as const, label: 'Users', icon: <Users className="w-4 h-4" /> }] : []),
+    ...(serverFeatures ? [{ id: 'account' as const, label: t('settings.sections.account'), icon: <UserIcon className="w-4 h-4" /> }] : []),
+    ...(serverFeatures && (perms?.use_ai ?? true) ? [{ id: 'ai' as const, label: t('settings.sections.ai'), icon: <Sparkles className="w-4 h-4" /> }] : []),
+    ...(serverFeatures && currentUser?.is_admin ? [{ id: 'users' as const, label: t('settings.sections.users'), icon: <Users className="w-4 h-4" /> }] : []),
   ];
   const active = sections.some(x => x.id === tab) ? tab : 'appearance';
 
@@ -553,17 +551,23 @@ export function Settings() {
   return (
     <div className="max-w-5xl mx-auto pb-10 space-y-5">
       <div>
-        <h2 className="text-xl font-bold">Settings</h2>
+        <h2 className="text-xl font-bold">{t('settings.title')}</h2>
         <p className="text-sm text-(--text-secondary) mt-0.5">
           {isNative && app && !app.server ? 'AnkiBase on this iPhone'
             : currentUser ? <>Signed in as <span className="text-(--text-primary)">{currentUser.username}</span>{currentUser.is_admin ? ' · admin' : ''}</> : ' '}
         </p>
       </div>
 
-      {/* Phones: a slider of sections */}
-      <div className="lg:hidden overflow-x-auto -mx-4 px-4">
-        <Segmented size="md" value={active} onChange={v => setTab(v)} options={sections.map(x => ({ value: x.id, label: x.label, icon: x.icon }))} />
-      </div>
+      {/* Phones and tablets: every section at a glance, no sideways scrolling */}
+      <nav className="lg:hidden grid grid-cols-3 sm:grid-cols-4 gap-2">
+        {sections.map(x => (
+          <button key={x.id} onClick={() => setTab(x.id)}
+            className={`flex flex-col items-center justify-center gap-1.5 h-[4.25rem] rounded-xl text-xs font-medium transition-colors ${
+              active === x.id ? 'bg-(--accent) text-white' : 'bg-(--bg-secondary) text-(--text-secondary) hover:text-(--text-primary)'}`}>
+            {x.icon}<span className="truncate max-w-full px-1">{x.label}</span>
+          </button>
+        ))}
+      </nav>
 
       <div className="grid grid-cols-1 lg:grid-cols-[13rem_minmax(0,1fr)] gap-6 items-start">
         <SectionNav sections={sections} active={active} onChange={setTab} />
@@ -669,24 +673,35 @@ export function Settings() {
                 <h3 className="font-semibold">{t('settings.language')}</h3>
                 <p className="text-xs text-(--text-secondary) mt-0.5">{t('settings.languageDescription')}</p>
               </div>
-              <Segmented size="md" value={currentUser?.language === 'de' ? 'de' : 'en'} onChange={v => handleLanguageChange(v)}
-                options={[{ value: 'en', label: 'English' }, { value: 'de', label: 'Deutsch' }]} />
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {LANGUAGES.map(l => (
+                  <button key={l.code} onClick={() => handleLanguageChange(l.code)}
+                    className={`h-10 rounded-lg text-sm transition-colors ${(currentUser?.language ?? i18n.resolvedLanguage) === l.code
+                      ? 'bg-(--accent) text-white' : 'bg-(--bg-tertiary) text-(--text-secondary) hover:text-(--text-primary)'}`}>
+                    {l.name}
+                  </button>
+                ))}
+              </div>
               {languageSuccess && <p className="text-sm text-green-400 flex items-center gap-2 anim-rise"><Check className="w-4 h-4" />{languageSuccess}</p>}
             </section>
           )}
 
           {active === 'account' && (<>
             <section className="card">
-              <div className="flex items-center gap-4">
+              <div className="flex flex-wrap items-center gap-4">
                 <div className="w-12 h-12 rounded-full bg-(--accent)/15 text-(--accent) flex items-center justify-center text-lg font-bold uppercase shrink-0">
                   {currentUser?.username?.[0] ?? '?'}
                 </div>
                 <div className="min-w-0">
                   <p className="font-semibold truncate">{currentUser?.username}</p>
                   <p className="text-xs text-(--text-secondary)">
-                    {currentUser?.is_admin ? 'Administrator' : 'Member'}{currentUser?.can_add_containers ? ' · can add Anki accounts' : ''}
+                    {currentUser?.is_admin ? t('users.admin') : t('users.member')}{currentUser?.profile ? ` · ${currentUser.profile.name}` : ''}
                   </p>
                 </div>
+                {!isNative && (
+                  <button onClick={async () => { await auth.logout().catch(() => {}); window.location.replace('/login'); }}
+                    className="btn btn-secondary ml-auto">{t('common.logout')}</button>
+                )}
               </div>
             </section>
             <section className="card space-y-4">

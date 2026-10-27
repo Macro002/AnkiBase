@@ -1,5 +1,16 @@
 const API_BASE = '/api';
 
+/** An error answer from the server, with the login lockout details when there are any. */
+export class ApiError extends Error {
+  waitSeconds?: number;
+  remaining?: number;
+  constructor(message: string, detail?: { wait_seconds?: number; remaining?: number }) {
+    super(message);
+    this.waitSeconds = detail?.wait_seconds;
+    this.remaining = detail?.remaining;
+  }
+}
+
 async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${endpoint}`, {
     ...options,
@@ -17,19 +28,15 @@ async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> 
     }
     const body = await response.json().catch(() => ({}));
     const detail = body.detail || {};
-    const err = new Error(typeof detail === 'object' ? (detail.message || 'Invalid credentials') : String(detail)) as any;
-    if (typeof detail === 'object' && detail.remaining !== undefined) err.remaining = detail.remaining;
-    throw err;
+    throw new ApiError(typeof detail === 'object' ? (detail.message || 'Invalid credentials') : String(detail),
+                       typeof detail === 'object' ? detail : undefined);
   }
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
     const detail = error.detail;
     if (typeof detail === 'object' && detail !== null) {
-      const err = new Error(detail.message || 'Request failed') as any;
-      if (detail.wait_seconds !== undefined) err.waitSeconds = detail.wait_seconds;
-      if (detail.remaining !== undefined) err.remaining = detail.remaining;
-      throw err;
+      throw new ApiError(detail.message || 'Request failed', detail);
     }
     throw new Error(detail || 'Request failed');
   }
@@ -40,20 +47,29 @@ async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> 
 // Setup
 export const setup = {
   status: () => fetchAPI<{ needs_setup: boolean; has_admin: boolean; has_container: boolean }>('/setup/status'),
-  createAdmin: (username: string, password: string) =>
+  createAdmin: (username: string, password: string, language?: string) =>
     fetchAPI<{ success: boolean; username: string }>('/setup/admin', {
       method: 'POST',
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, password, language }),
     }),
-  containerStreamUrl: (name: string) => `${API_BASE}/setup/container/stream?name=${encodeURIComponent(name)}`,
+  /** Waits for Anki (installed on the very first start) and creates the profile, reporting
+   *  progress events. */
+  createProfile: (name: string, onEvent: (event: unknown) => void) =>
+    streamEvents(`${API_BASE}/setup/profile`, onEvent, undefined, { method: 'POST', body: JSON.stringify({ name }) }),
 };
 
 // Auth
+export type Permission = 'manage_profiles' | 'server_theme' | 'use_ai' | 'manage_ai_keys' | 'import';
+
 export interface User {
   username: string;
   is_admin: boolean;
   can_add_containers: boolean;
   can_edit_server_accent: boolean;
+  /** What this user may do (admins: everything). */
+  permissions?: Record<Permission, boolean>;
+  /** The profile (Anki collection) this login is using. */
+  profile?: { id: number; name: string } | null;
   language: string;
   accent_color?: string | null;
   accent_hover?: string | null;
@@ -141,8 +157,6 @@ export interface DeckWordsResponse {
 export const decks = {
   list: () => fetchAPI<{ decks: Record<string, number>; stats: Record<string, DeckStats> }>('/decks'),
   names: () => fetchAPI<{ decks: Record<string, number> }>('/decks/names'),
-  getDueCards: (deckName: string) => fetchAPI<{ cards: Card[] }>(`/decks/${encodeURIComponent(deckName)}/due`),
-  getNextCard: (deckName: string) => fetchAPI<{ card: Card | null; remaining: number }>(`/decks/${encodeURIComponent(deckName)}/next`),
   getWords: (deckName: string, limit = 200, field = '') =>
     fetchAPI<DeckWordsResponse>(
       `/decks/${encodeURIComponent(deckName)}/words?limit=${limit}${field ? `&field=${encodeURIComponent(field)}` : ''}`
@@ -181,16 +195,6 @@ export interface Card {
   left: number;
 }
 
-export const cards = {
-  answer: (cardId: number, ease: 1 | 2 | 3 | 4) =>
-    fetchAPI<{ success: boolean }>('/cards/answer', {
-      method: 'POST',
-      body: JSON.stringify({ card_id: cardId, ease }),
-    }),
-  get: (cardId: number) => fetchAPI<Card>(`/cards/${cardId}`),
-  undo: () => fetchAPI<{ success: boolean }>('/cards/undo', { method: 'POST' }),
-};
-
 // Media
 export const media = {
   get: (filename: string) =>
@@ -220,14 +224,6 @@ export interface Note {
   tags: string[];
   fields: Record<string, { value: string; order: number }>;
 }
-
-export const search = {
-  notes: (query: string, limit = 50) =>
-    fetchAPI<{ notes: Note[]; total: number }>('/search', {
-      method: 'POST',
-      body: JSON.stringify({ query, limit }),
-    }),
-};
 
 // Dictionary + "in your cards" search (Search tab)
 export interface DictSegment { t: string; w?: string }
@@ -346,8 +342,6 @@ export const lookup = {
         force_ai: forceAI,
       }),
     }),
-  jisho: (word: string) =>
-    fetchAPI<{ data: any[] }>(`/jisho/${encodeURIComponent(word)}`),
 };
 
 // Saved stories
@@ -399,8 +393,12 @@ export const stories = {
 /** Read a server-sent event stream with fetch (EventSource doesn't work in the iPhone
  *  app's web view). Calls `onEvent` with each event's parsed data; resolves when the
  *  stream ends, rejects if it can't be opened or breaks. */
-export async function streamEvents(url: string, onEvent: (data: unknown) => void, signal?: AbortSignal): Promise<void> {
-  const response = await fetch(url, { credentials: 'include', headers: { Accept: 'text/event-stream' }, signal });
+export async function streamEvents(url: string, onEvent: (data: unknown) => void, signal?: AbortSignal,
+                                   init: { method?: string; body?: string } = {}): Promise<void> {
+  const response = await fetch(url, {
+    method: init.method ?? 'GET', body: init.body, credentials: 'include', signal,
+    headers: { Accept: 'text/event-stream', ...(init.body ? { 'Content-Type': 'application/json' } : {}) },
+  });
   if (!response.ok || !response.body) {
     const body = await response.json().catch(() => ({}));
     throw new Error(typeof body.detail === 'string' ? body.detail : `Request failed (${response.status})`);
@@ -424,8 +422,10 @@ export async function streamEvents(url: string, onEvent: (data: unknown) => void
 
 // Update
 export const update = {
-  check: () => fetchAPI<{ current: string; latest: string; has_update: boolean }>('/update/check'),
-  applyUrl: () => `${API_BASE}/update/apply`,
+  check: () => fetchAPI<{ current: string; latest: string; has_update: boolean; channel?: string }>('/update/check'),
+  /** Streams progress events; POST so another site can't start an update. */
+  apply: (onEvent: (event: unknown) => void, signal?: AbortSignal) =>
+    streamEvents(`${API_BASE}/update/apply`, onEvent, signal, { method: 'POST' }),
 };
 
 // Sync
@@ -529,11 +529,6 @@ export const accounts = {
     }),
 };
 
-// Models
-export const models = {
-  list: () => fetchAPI<{ models: string[] }>('/models'),
-};
-
 // Import
 export const importDeck = {
   upload: async (
@@ -567,14 +562,14 @@ export const importDeck = {
           try {
             const response = JSON.parse(xhr.responseText);
             resolve(response);
-          } catch (err) {
+          } catch {
             reject(new Error('Invalid response'));
           }
         } else {
           try {
             const error = JSON.parse(xhr.responseText);
             reject(new Error(error.detail || 'Import failed'));
-          } catch (err) {
+          } catch {
             reject(new Error('Import failed'));
           }
         }
@@ -670,7 +665,6 @@ export const stats = {
     const qs = params.toString();
     return fetchAPI<ReviewHistory>(`/stats/reviews${qs ? `?${qs}` : ''}`);
   },
-  getHtml: () => fetchAPI<{ html: string }>('/stats/html'),
 };
 
 // Settings - API Keys
@@ -720,33 +714,34 @@ export const settings = {
 };
 
 // Users (admin only)
-export interface UserInfo {
+export interface UserFlags {
+  is_admin: boolean;
+  can_add_containers: boolean;      // manage profiles
+  can_edit_server_accent: boolean;  // server theme
+  can_use_ai: boolean;
+  can_manage_ai_keys: boolean;
+  can_import: boolean;
+}
+
+export interface UserInfo extends UserFlags {
   id: number;
   username: string;
-  is_admin: boolean;
-  can_add_containers: boolean;
-  can_edit_server_accent: boolean;
   created_at: string;
+  /** The first admin: only they can change their own account. */
+  is_owner: boolean;
+  /** Profiles this user may use (admins: all). */
+  container_ids: number[];
 }
 
 export const users = {
-  list: () =>
-    fetchAPI<{ users: UserInfo[] }>('/users'),
-  create: (username: string, password: string, is_admin: boolean, can_add_containers: boolean, can_edit_server_accent: boolean = false) =>
-    fetchAPI<{ success: boolean; user_id: number; message: string }>('/users', {
-      method: 'POST',
-      body: JSON.stringify({ username, password, is_admin, can_add_containers, can_edit_server_accent }),
-    }),
-  update: (userId: number, username?: string, password?: string, is_admin?: boolean, can_add_containers?: boolean, can_edit_server_accent?: boolean) =>
-    fetchAPI<{ success: boolean; message: string }>(`/users/${userId}`, {
-      method: 'PUT',
-      body: JSON.stringify({ username, password, is_admin, can_add_containers, can_edit_server_accent }),
-    }),
+  list: () => fetchAPI<{ users: UserInfo[]; profiles: AnkiAccount[] }>('/users'),
+  create: (user: Partial<UserFlags> & { username: string; password: string; container_ids: number[] }) =>
+    fetchAPI<{ success: boolean; user_id: number; message: string }>('/users', { method: 'POST', body: JSON.stringify(user) }),
+  update: (userId: number, changes: Partial<UserFlags> & { username?: string; password?: string }) =>
+    fetchAPI<{ success: boolean; message: string }>(`/users/${userId}`, { method: 'PUT', body: JSON.stringify(changes) }),
   delete: (userId: number) =>
     fetchAPI<{ success: boolean; message: string }>(`/users/${userId}`, { method: 'DELETE' }),
-  getContainers: (userId: number) =>
-    fetchAPI<{ container_ids: number[] }>(`/users/${userId}/containers`),
-  setContainers: (userId: number, containerIds: number[]) =>
+  setProfiles: (userId: number, containerIds: number[]) =>
     fetchAPI<{ success: boolean; message: string }>(`/users/${userId}/containers`, {
       method: 'PUT',
       body: JSON.stringify({ container_ids: containerIds }),

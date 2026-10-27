@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Eye, EyeOff, Pencil, Trash2, Check, Copy, Loader2, ChevronDown } from 'lucide-react';
-import { settings, type ProviderInfo } from '../../api';
+import { auth, settings, type ProviderInfo } from '../../api';
 import { SidePanel } from '../quizlet/ui';
 
 export interface AiChoice { provider: string; model: string }
@@ -18,6 +18,9 @@ export function AiPanel({ providers, configured, choice, onChoice, onKeysChanged
   onClose: () => void;
 }) {
   const [models, setModels] = useState<Record<string, { id: string; name: string }[]>>({});
+  // Only users allowed to manage the keys see and change them; others just pick a model.
+  const [canManageKeys, setCanManageKeys] = useState(false);
+  useEffect(() => { auth.me().then(u => setCanManageKeys(!!u.permissions?.manage_ai_keys)).catch(() => {}); }, []);
   const [keys, setKeys] = useState<Record<string, string>>({});
   const [envKeys, setEnvKeys] = useState<Record<string, boolean>>({});
   const [editing, setEditing] = useState<string | null>(null);
@@ -100,7 +103,7 @@ export function AiPanel({ providers, configured, choice, onChoice, onKeysChanged
               <span className={`text-[11px] px-2 py-0.5 rounded-full ${configured[id] ? 'bg-green-500/15 text-green-400' : 'bg-white/5 text-(--text-secondary)'}`}>
                 {configured[id] ? (envKeys[id] ? 'from .env' : 'Connected') : 'Not set'}
               </span>
-              {editing !== id && (
+              {canManageKeys && editing !== id && (
                 <button className="icon-btn" title={configured[id] ? 'Change key' : 'Add key'}
                   onClick={async () => {
                     setEditing(id); setReveal(false); setDraft('');
@@ -109,11 +112,11 @@ export function AiPanel({ providers, configured, choice, onChoice, onKeysChanged
                   <Pencil className="w-3.5 h-3.5" />
                 </button>
               )}
-              {configured[id] && !envKeys[id] && editing !== id && (
+              {canManageKeys && configured[id] && !envKeys[id] && editing !== id && (
                 <button className="icon-btn icon-btn-danger" title="Remove key" onClick={() => setConfirmDelete(id)}><Trash2 className="w-3.5 h-3.5" /></button>
               )}
             </div>
-            {keys[id] && editing !== id && (
+            {canManageKeys && keys[id] && editing !== id && (
               <button className="text-xs text-(--text-secondary) hover:text-white font-mono inline-flex items-center gap-1.5"
                 title="Copy the full key"
                 onClick={async () => {

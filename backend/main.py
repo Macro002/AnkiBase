@@ -10,15 +10,15 @@ import json
 import tempfile
 import shutil
 from pathlib import Path
-import time
-from collections import defaultdict
 
-from config import get_settings, Settings, get_api_keys, get_api_key_info, save_api_key, delete_api_key, change_password, get_account_api_keys_file
+from config import get_settings, get_api_keys, get_api_key_info, save_api_key, delete_api_key, encrypt_stored_keys
+import security
+from security import require_auth, require_admin, require
 from anki_client import AnkiConnectClient, AnkiError
 from story_generator import StoryGenerator, PROVIDERS, NoValidKeysError
 from database import (
-    save_story, get_story, get_all_stories, delete_story, update_story_name,
-    get_active_account, get_all_accounts, get_account, set_ankiweb_email,
+    save_story, get_story, get_all_stories, delete_story,
+    get_active_account, get_all_accounts, set_ankiweb_email,
     migrate_to_user_system,
     create_quizlet_deck, get_quizlet_decks, get_quizlet_deck, delete_quizlet_deck,
     rename_quizlet_deck, record_quizlet_review, get_quizlet_daily_counts,
@@ -37,22 +37,51 @@ from ankiweb_credentials import AnkiWebCredentials
 from anki_accounts import AnkiAccountManager
 import anki_server
 import sync_server
+import updater
 
 app = FastAPI(title="AnkiBase", version="1.0.0")
 
-# CORS for development
+# CORS: only for a separately served frontend (development); the app itself is same-origin.
 _settings = get_settings()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o.strip() for o in _settings.cors_origins.split(",")],
+    allow_origins=[o.strip() for o in _settings.cors_origins.split(",") if o.strip()],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Who's asking and which of their profiles (security.py).
+app.add_middleware(security.RequestContext)
 
-# session_id -> user info, kept in the database across restarts
-from database import LoginSessions
-sessions = LoginSessions()
+
+class SecurityHeaders:
+    """Headers every answer gets: no MIME sniffing, no framing by other sites, no referrers
+    leaking to other sites."""
+
+    HEADERS = [(b"x-content-type-options", b"nosniff"), (b"x-frame-options", b"SAMEORIGIN"),
+               (b"referrer-policy", b"same-origin"),
+               (b"permissions-policy", b"camera=(), microphone=(), geolocation=()")]
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+
+        async def send_with_headers(message):
+            if message["type"] == "http.response.start":
+                names = {k.lower() for k, _ in message.get("headers", [])}
+                message["headers"] = list(message.get("headers", [])) + [h for h in self.HEADERS if h[0] not in names]
+            await send(message)
+        await self.app(scope, receive, send_with_headers)
+
+
+app.add_middleware(SecurityHeaders)
+
+# session_id -> {user_id, profile_id}, kept in the database across restarts; who the user is
+# and what they may do is read fresh on every request (security.py).
+from database import login_sessions as sessions
 
 # Login rate limiting constants (DB-backed, persistent)
 _LOGIN_WINDOW      = 900   # 15-minute sliding window
@@ -122,11 +151,15 @@ async def startup_event():
     import asyncio
     app.state.anki_engine = asyncio.create_task(asyncio.to_thread(_start_anki_engine_safely))
     try:
-        # Create the root user when upgrading from a version without users.
+        # Upgrading from the single-password versions: that password becomes root's.
         if get_all_accounts():
             migrate_to_user_system(get_settings().app_password)
     except Exception as e:
         print(f"Error during user migration: {e}")
+    try:
+        encrypt_stored_keys()  # API keys saved before they were encrypted
+    except Exception as e:
+        print(f"✗ Couldn't encrypt stored API keys: {e}")
 
 
 @app.on_event("shutdown")
@@ -150,20 +183,26 @@ class ChangeLanguageRequest(BaseModel):
     language: str
 
 
-class CreateUserRequest(BaseModel):
+class UserPermissions(BaseModel):
+    is_admin: Optional[bool] = None
+    can_add_containers: Optional[bool] = None      # manage profiles
+    can_edit_server_accent: Optional[bool] = None  # server theme
+    can_use_ai: Optional[bool] = None
+    can_manage_ai_keys: Optional[bool] = None
+    can_import: Optional[bool] = None
+
+
+class CreateUserRequest(UserPermissions):
     username: str
     password: str
-    is_admin: bool = False
-    can_add_containers: bool = False
-    can_edit_server_accent: bool = False
+    container_ids: list[int] = []
 
 
-class UpdateUserRequest(BaseModel):
+class UpdateUserRequest(UserPermissions):
     username: Optional[str] = None
     password: Optional[str] = None
-    is_admin: Optional[bool] = None
-    can_add_containers: Optional[bool] = None
-    can_edit_server_accent: Optional[bool] = None
+
+MIN_PASSWORD = 8
 
 
 class SetAccentRequest(BaseModel):
@@ -218,38 +257,10 @@ class SwitchAccountRequest(BaseModel):
     account_id: int
 
 
-class DeleteAccountRequest(BaseModel):
-    account_id: int
-    remove_data: bool = False
-
-
 class LoginResponse(BaseModel):
     success: bool
     message: str
     user: Optional[dict] = None
-
-
-# Dependency to check authentication
-async def require_auth(request: Request) -> dict:
-    """Require authentication. Returns user session info."""
-    session_id = request.cookies.get("session_id")
-    if not session_id or session_id not in sessions:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    return sessions[session_id]
-
-
-async def require_admin(user: dict = Depends(require_auth)) -> dict:
-    """Require admin privileges."""
-    if not user.get('is_admin'):
-        raise HTTPException(status_code=403, detail="Admin privileges required")
-    return user
-
-
-async def require_can_add_containers(user: dict = Depends(require_auth)) -> dict:
-    """Require can_add_containers permission."""
-    if not user.get('can_add_containers') and not user.get('is_admin'):
-        raise HTTPException(status_code=403, detail="Permission to add containers required")
-    return user
 
 
 _SERVER_ACCENT_DEFAULT = '#e94560'
@@ -287,6 +298,11 @@ def _resolve_user_base_colors(user_id: int) -> dict:
 class SetupAdminRequest(BaseModel):
     username: str
     password: str
+    language: Optional[str] = None
+
+
+# The web UI's languages (frontend/src/locales).
+SUPPORTED_LANGUAGES = ["en", "de", "fr", "es", "it", "pt", "ja", "zh"]
 
 
 @app.get("/api/setup/status")
@@ -300,156 +316,105 @@ async def setup_status():
 
 
 @app.post("/api/setup/admin")
-async def setup_create_admin(request: SetupAdminRequest, response: Response):
+async def setup_create_admin(request: SetupAdminRequest, response: Response, req: Request):
+    """The setup wizard's first step: the first user, an admin (only while there are none)."""
     from database import get_user_count, create_user, get_user_by_username
     if get_user_count() > 0:
-        raise HTTPException(status_code=400, detail="Admin already exists")
-    if len(request.username.strip()) < 2:
+        raise HTTPException(status_code=400, detail="Setup is already done")
+    username = request.username.strip()
+    if len(username) < 2:
         raise HTTPException(status_code=400, detail="Username must be at least 2 characters")
-    if len(request.password) < 6:
-        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
-    user_id = create_user(request.username.strip(), request.password, is_admin=True, can_add_containers=True)
-    user = get_user_by_username(request.username.strip())
+    if len(request.password) < MIN_PASSWORD:
+        raise HTTPException(status_code=400, detail=f"Password must be at least {MIN_PASSWORD} characters")
+    user_id = create_user(username, request.password, is_admin=True, can_add_containers=True,
+                          can_edit_server_accent=True, can_manage_ai_keys=True)
+    set_setting(OWNER_ID_SETTING, str(user_id))
+    if request.language in SUPPORTED_LANGUAGES:
+        from database import update_user_language
+        update_user_language(user_id, request.language)
     session_id = secrets.token_urlsafe(32)
-    sessions[session_id] = {
-        "user_id": user_id,
-        "username": user["username"],
-        "is_admin": True,
-        "can_add_containers": True,
-    }
-    response.set_cookie("session_id", session_id, httponly=True, samesite="lax", max_age=7 * 24 * 3600)
-    return {"success": True, "username": user["username"]}
+    sessions[session_id] = {"user_id": user_id}
+    security.set_session_cookie(response, req, session_id)
+    return {"success": True, "username": get_user_by_username(username)["username"]}
 
 
-@app.get("/api/setup/container/stream")
-async def setup_container_stream(name: str, request: Request):
-    import asyncio, json, httpx
+class SetupProfileRequest(BaseModel):
+    name: str = "Default"
 
-    # Require auth
-    session_id = request.cookies.get("session_id")
-    if not session_id or session_id not in sessions:
-        raise HTTPException(status_code=401, detail="Not authenticated")
 
-    container_name = name.strip().lower().replace(" ", "-") or "default"
+@app.post("/api/setup/profile")
+async def setup_profile_stream(request: SetupProfileRequest, _: dict = Depends(require("manage_profiles"))):
+    """The setup wizard's profile step: waits for the Anki engine (installed on first start)
+    and creates the profile, reporting progress as server-sent events."""
+    import asyncio, json
+
+    name = request.name.strip() or "Default"
 
     async def generate():
         def event(data: dict) -> str:
             return f"data: {json.dumps(data)}\n\n"
 
         try:
-            yield event({"type": "step", "message": "Starting the Anki engine...", "progress": 20})
+            yield event({"type": "step", "message": "Starting Anki…", "progress": 15})
             task = getattr(app.state, "anki_engine", None)
             if task is not None and not task.done():
-                yield event({"type": "log", "message": "Getting Anki ready (the very first start installs it, about a minute)...",
+                yield event({"type": "log", "message": "Installing Anki (only on the very first start, about a minute)…",
                              "progress": 30})
-                await task
+                while not task.done():
+                    await asyncio.sleep(1)
+                    yield ": waiting\n\n"  # keeps proxies from closing the stream
             if not await asyncio.to_thread(anki_server.ensure_running):
-                yield event({"type": "error", "message": "The Anki engine (anki-cli) did not start. "
-                                                         "Check: journalctl -u ankibase-anki -n 50"})
+                yield event({"type": "error", "message": "Anki didn't start. Check: journalctl -u ankibase-anki -n 50"})
                 return
-            yield event({"type": "step", "message": f"Creating account '{container_name}'...", "progress": 60})
+            if any(a["container_name"] == name for a in get_all_accounts()):
+                yield event({"type": "done", "message": f"Profile “{name}” is ready", "progress": 100})
+                return
+            yield event({"type": "step", "message": f"Creating the profile “{name}”…", "progress": 70})
             try:
-                await asyncio.to_thread(container_manager.create_account, container_name)
+                await asyncio.to_thread(container_manager.create_account, name)
             except Exception as e:
                 yield event({"type": "error", "message": str(e)})
                 return
-            yield event({"type": "done", "message": "Anki is ready!", "progress": 100})
+            yield event({"type": "done", "message": f"Profile “{name}” is ready", "progress": 100})
         except Exception as e:
             yield event({"type": "error", "message": str(e)})
 
-    return StreamingResponse(
-        generate(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
+    return StreamingResponse(generate(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 # Auth endpoints
 @app.post("/api/auth/login", response_model=LoginResponse)
 async def login(request: LoginRequest, response: Response, req: Request):
     from database import (
-        verify_user_credentials, get_user_accessible_containers, set_active_account,
-        record_login_attempt, count_recent_attempts, clear_login_attempts, get_lockout_wait,
+        verify_user_credentials, record_login_attempt, count_recent_attempts, clear_login_attempts, get_lockout_wait,
     )
 
-    ip_key   = f"ip:{req.client.host if req.client else 'unknown'}"
+    ip_key = f"ip:{security.client_ip(req)}"
     user_key = f"user:{request.username.lower()}"
 
-    ip_wait = get_lockout_wait(ip_key, _LOGIN_WINDOW, _IP_MAX_FAIL)
-    if ip_wait > 0:
-        raise HTTPException(
-            status_code=429,
-            detail={"message": "Too many failed login attempts.", "wait_seconds": ip_wait},
-        )
-    user_wait = get_lockout_wait(user_key, _LOGIN_WINDOW, _USERNAME_MAX_FAIL)
-    if user_wait > 0:
-        raise HTTPException(
-            status_code=429,
-            detail={"message": "Too many failed login attempts.", "wait_seconds": user_wait},
-        )
+    for key, limit in ((ip_key, _IP_MAX_FAIL), (user_key, _USERNAME_MAX_FAIL)):
+        wait = get_lockout_wait(key, _LOGIN_WINDOW, limit)
+        if wait > 0:
+            raise HTTPException(status_code=429, detail={"message": "Too many failed login attempts.", "wait_seconds": wait})
 
     user = verify_user_credentials(request.username, request.password)
     if user:
         clear_login_attempts(ip_key, user_key)
-        # Auto-switch to first accessible container for this user
-        accounts = get_user_accessible_containers(user['id'])
-        if accounts:
-            # Get current active account
-            active_account = container_manager.get_active_account()
-
-            # Check if user has access to current active account
-            if active_account:
-                has_access = any(acc['id'] == active_account['id'] for acc in accounts)
-                if not has_access:
-                    # Switch to first accessible container
-                    set_active_account(accounts[0]['id'])
-            else:
-                # No active account, set first accessible
-                set_active_account(accounts[0]['id'])
-
         session_id = secrets.token_urlsafe(32)
-        # Store user info in session
-        sessions[session_id] = {
-            'user_id': user['id'],
-            'username': user['username'],
-            'is_admin': bool(user['is_admin']),
-            'can_add_containers': bool(user['can_add_containers']),
-            'can_edit_server_accent': bool(user.get('can_edit_server_accent', 0)),
-            'language': user.get('language', 'en')
-        }
-        response.set_cookie(
-            key="session_id",
-            value=session_id,
-            httponly=True,
-            secure=True,
-            samesite="strict",
-            max_age=86400 * 7,  # 7 days
-        )
-        return LoginResponse(
-            success=True,
-            message="Login successful",
-            user={
-                'username': user['username'],
-                'is_admin': bool(user['is_admin']),
-                'can_add_containers': bool(user['can_add_containers']),
-                'language': user.get('language', 'en')
-            }
-        )
+        sessions[session_id] = {"user_id": user["id"]}
+        security.set_session_cookie(response, req, session_id)
+        return LoginResponse(success=True, message="Login successful", user={
+            "username": user["username"], "is_admin": bool(user["is_admin"]), "language": user.get("language", "en"),
+        })
     record_login_attempt(ip_key)
     record_login_attempt(user_key)
 
-    user_count = count_recent_attempts(user_key, _LOGIN_WINDOW)
-    remaining = max(_USERNAME_MAX_FAIL - user_count, 0)
+    remaining = max(_USERNAME_MAX_FAIL - count_recent_attempts(user_key, _LOGIN_WINDOW), 0)
     if remaining == 0:
         wait = get_lockout_wait(user_key, _LOGIN_WINDOW, _USERNAME_MAX_FAIL)
-        raise HTTPException(
-            status_code=429,
-            detail={"message": "Too many failed login attempts.", "wait_seconds": wait},
-        )
-    raise HTTPException(
-        status_code=401,
-        detail={"message": "Invalid username or password", "remaining": remaining},
-    )
+        raise HTTPException(status_code=429, detail={"message": "Too many failed login attempts.", "wait_seconds": wait})
+    raise HTTPException(status_code=401, detail={"message": "Invalid username or password", "remaining": remaining})
 
 
 @app.post("/api/auth/logout")
@@ -457,44 +422,35 @@ async def logout(request: Request, response: Response):
     session_id = request.cookies.get("session_id")
     if session_id and session_id in sessions:
         del sessions[session_id]
-    response.delete_cookie("session_id")
+    response.delete_cookie("session_id", path="/")
     return {"success": True}
 
 
-@app.get("/api/auth/check")
-async def check_auth(request: Request):
-    session_id = request.cookies.get("session_id")
-    authenticated = session_id is not None and session_id in sessions
-    user = sessions.get(session_id) if authenticated else None
-    if user:
-        db_user = get_user(user['user_id']) or {}
+def _user_info(user: dict) -> dict:
+    """What the web UI knows about the logged-in user."""
+    profile = get_active_account()
     return {
-        "authenticated": authenticated,
-        "user": {
-            'username': user['username'],
-            'is_admin': user['is_admin'],
-            'can_add_containers': user['can_add_containers'],
-            'can_edit_server_accent': bool(db_user.get('can_edit_server_accent', 0)),
-            'language': user.get('language', 'en'),
-            **_resolve_user_accent(user['user_id']),
-            **_resolve_user_base_colors(user['user_id']),
-        } if user else None
+        "username": user["username"],
+        "is_admin": user["is_admin"],
+        "can_add_containers": security.can(user, "manage_profiles"),
+        "can_edit_server_accent": security.can(user, "server_theme"),
+        "permissions": security.permissions_of(user),
+        "language": user["language"],
+        "profile": {"id": profile["id"], "name": profile["container_name"]} if profile else None,
+        **_resolve_user_accent(user["user_id"]),
+        **_resolve_user_base_colors(user["user_id"]),
     }
+
+
+@app.get("/api/auth/check")
+async def check_auth():
+    user = security.current_user.get()
+    return {"authenticated": user is not None, "user": _user_info(user) if user else None}
 
 
 @app.get("/api/auth/me")
 async def get_current_user(user: dict = Depends(require_auth)):
-    """Get current user info."""
-    db_user = get_user(user['user_id']) or {}
-    return {
-        'username': user['username'],
-        'is_admin': user['is_admin'],
-        'can_add_containers': user['can_add_containers'],
-        'can_edit_server_accent': bool(db_user.get('can_edit_server_accent', 0)),
-        'language': user.get('language', 'en'),
-        **_resolve_user_accent(user['user_id']),
-        **_resolve_user_base_colors(user['user_id']),
-    }
+    return _user_info(user)
 
 
 @app.get("/api/theme")
@@ -581,16 +537,17 @@ async def change_password_endpoint(
     if not full_user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Verify current password
+    # Verify current password (400, not 401: a wrong password here isn't a logout)
     if not verify_password(request.current_password, full_user['password_hash']):
-        raise HTTPException(status_code=401, detail="Current password is incorrect")
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
 
-    # Validate new password
-    if len(request.new_password) < 6:
-        raise HTTPException(status_code=400, detail="New password must be at least 6 characters")
+    if len(request.new_password) < MIN_PASSWORD:
+        raise HTTPException(status_code=400, detail=f"New password must be at least {MIN_PASSWORD} characters")
 
     try:
         update_user_password(user['user_id'], request.new_password)
+        # Other devices logged in with the old password are logged out.
+        sessions.drop_user(user['user_id'], keep=user['session_id'])
         return {"success": True, "message": "Password changed successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to change password: {str(e)}")
@@ -606,133 +563,130 @@ async def change_language_endpoint(
     from database import update_user_language
 
     # Validate language
-    if request.language not in ['en', 'de']:
-        raise HTTPException(status_code=400, detail="Invalid language. Supported: en, de")
+    if request.language not in SUPPORTED_LANGUAGES:
+        raise HTTPException(status_code=400, detail=f"Invalid language. Supported: {', '.join(SUPPORTED_LANGUAGES)}")
 
     try:
         update_user_language(user['user_id'], request.language)
-        # Update session
-        session_id = req.cookies.get("session_id")
-        if session_id and session_id in sessions:
-            sessions.update(session_id, language=request.language)
         return {"success": True, "message": "Language changed successfully", "language": request.language}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to change language: {str(e)}")
 
 
 # User management endpoints (admin only)
+OWNER_ID_SETTING = "owner_user_id"
+
+
+def _owner_id() -> int:
+    """The first admin (created by the setup wizard): only they can change their own account."""
+    from database import get_all_users
+    stored = get_setting(OWNER_ID_SETTING, "")
+    if stored.isdigit():
+        return int(stored)
+    admins = [u["id"] for u in get_all_users() if u["is_admin"]]
+    return min(admins) if admins else 0
+
+
+def _user_row(row: dict) -> dict:
+    from database import get_user_container_permissions
+    return {**{k: (bool(v) if k.startswith(("is_", "can_")) else v) for k, v in row.items()},
+            "is_owner": row["id"] == _owner_id(),
+            "container_ids": get_user_container_permissions(row["id"])}
+
+
 @app.get("/api/users")
 async def list_users(_: dict = Depends(require_admin)):
-    """List all users (admin only)"""
+    """All users with their permissions and profiles (admin only)."""
     from database import get_all_users
-    return {"users": get_all_users()}
+    return {"users": [_user_row(u) for u in get_all_users()], "profiles": get_all_accounts()}
+
+
+def _validate_username(name: str) -> str:
+    import re
+    name = name.strip()
+    if not re.fullmatch(r"[A-Za-z0-9._@-]{3,40}", name):
+        raise HTTPException(status_code=400, detail="Usernames are 3–40 letters, numbers or . _ @ -")
+    return name
 
 
 @app.post("/api/users")
 async def create_user_endpoint(request: CreateUserRequest, _: dict = Depends(require_admin)):
-    """Create a new user (admin only)"""
-    from database import create_user, get_user_by_username
-
-    # Check if username already exists
-    if get_user_by_username(request.username):
+    """Create a user (admin only)."""
+    from database import create_user, get_user_by_username, set_user_container_permissions
+    username = _validate_username(request.username)
+    if get_user_by_username(username):
         raise HTTPException(status_code=400, detail="Username already exists")
-
-    # Validate password
-    if len(request.password) < 6:
-        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
-
-    # Validate username
-    if len(request.username) < 3:
-        raise HTTPException(status_code=400, detail="Username must be at least 3 characters")
-
-    try:
-        user_id = create_user(
-            request.username,
-            request.password,
-            request.is_admin,
-            request.can_add_containers,
-            request.can_edit_server_accent,
-        )
-        return {"success": True, "user_id": user_id, "message": "User created successfully"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to create user: {str(e)}")
+    if len(request.password) < MIN_PASSWORD:
+        raise HTTPException(status_code=400, detail=f"Password must be at least {MIN_PASSWORD} characters")
+    flags = {k: v for k, v in request.model_dump().items() if k.startswith(("is_", "can_")) and v is not None}
+    user_id = create_user(username, request.password, **flags)
+    known = {a["id"] for a in get_all_accounts()}
+    set_user_container_permissions(user_id, [c for c in request.container_ids if c in known])
+    return {"success": True, "user_id": user_id, "message": "User created"}
 
 
 @app.put("/api/users/{user_id}")
-async def update_user_endpoint(user_id: int, request: UpdateUserRequest, _: dict = Depends(require_admin)):
-    """Update user settings (admin only)"""
-    from database import get_user, update_user, update_user_username, update_user_password
-
-    # Check if user exists
-    if not get_user(user_id):
+async def update_user_endpoint(user_id: int, request: UpdateUserRequest, admin: dict = Depends(require_admin)):
+    """Change a user's name, password or permissions (admin only)."""
+    from database import get_user, update_user, update_user_username, update_user_password, count_admins
+    target = get_user(user_id)
+    if not target:
         raise HTTPException(status_code=404, detail="User not found")
-
-    # Don't allow modifying root user
-    if user_id == 1:
-        raise HTTPException(status_code=403, detail="Cannot modify root user")
-
+    if user_id == _owner_id() and admin["user_id"] != user_id:
+        raise HTTPException(status_code=403, detail="Only the owner can change the owner's account")
+    if request.is_admin is False and target["is_admin"]:
+        if user_id == admin["user_id"]:
+            raise HTTPException(status_code=400, detail="You can't remove your own admin rights")
+        if count_admins() <= 1:
+            raise HTTPException(status_code=400, detail="There has to be at least one admin")
     try:
-        # Update username if provided
         if request.username:
-            update_user_username(user_id, request.username)
-
-        # Update password if provided
+            update_user_username(user_id, _validate_username(request.username))
         if request.password:
-            if len(request.password) < 6:
-                raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+            if len(request.password) < MIN_PASSWORD:
+                raise HTTPException(status_code=400, detail=f"Password must be at least {MIN_PASSWORD} characters")
             update_user_password(user_id, request.password)
-
-        # Update permissions
-        if any(v is not None for v in [request.is_admin, request.can_add_containers, request.can_edit_server_accent]):
-            update_user(user_id, request.is_admin, request.can_add_containers, request.can_edit_server_accent)
-
-        return {"success": True, "message": "User updated successfully"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update user: {str(e)}")
+            sessions.drop_user(user_id, keep=admin["session_id"] if user_id == admin["user_id"] else None)
+        flags = {k: v for k, v in request.model_dump().items() if k.startswith(("is_", "can_")) and v is not None}
+        if flags:
+            update_user(user_id, **flags)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"success": True, "message": "User updated"}
 
 
 @app.delete("/api/users/{user_id}")
-async def delete_user_endpoint(user_id: int, _: dict = Depends(require_admin)):
-    """Delete a user (admin only)"""
-    from database import delete_user
-
-    try:
-        success = delete_user(user_id)
-        if success:
-            sessions.drop_user(user_id)
-            return {"success": True, "message": "User deleted successfully"}
-        raise HTTPException(status_code=404, detail="User not found or cannot be deleted (root user)")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to delete user: {str(e)}")
+async def delete_user_endpoint(user_id: int, admin: dict = Depends(require_admin)):
+    """Delete a user (admin only; not yourself, not the owner)."""
+    from database import delete_user, get_user
+    if user_id == admin["user_id"]:
+        raise HTTPException(status_code=400, detail="You can't delete yourself")
+    if user_id == _owner_id():
+        raise HTTPException(status_code=403, detail="The owner can't be deleted")
+    if not get_user(user_id) or not delete_user(user_id):
+        raise HTTPException(status_code=404, detail="User not found")
+    sessions.drop_user(user_id)
+    return {"success": True, "message": "User deleted"}
 
 
 @app.get("/api/users/{user_id}/containers")
 async def get_user_containers(user_id: int, _: dict = Depends(require_admin)):
-    """Get user's container permissions (admin only)"""
+    """The profiles a user may use (admin only)."""
     from database import get_user_container_permissions, get_user
-
     if not get_user(user_id):
         raise HTTPException(status_code=404, detail="User not found")
-
-    container_ids = get_user_container_permissions(user_id)
-    return {"container_ids": container_ids}
+    return {"container_ids": get_user_container_permissions(user_id)}
 
 
 @app.put("/api/users/{user_id}/containers")
 async def set_user_containers(user_id: int, request: SetUserContainersRequest, _: dict = Depends(require_admin)):
-    """Set user's container permissions (admin only)"""
+    """Set the profiles a user may use (admin only)."""
     from database import set_user_container_permissions, get_user
-
     if not get_user(user_id):
         raise HTTPException(status_code=404, detail="User not found")
-
-    try:
-        set_user_container_permissions(user_id, request.container_ids)
-        return {"success": True, "message": "Container permissions updated successfully"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update permissions: {str(e)}")
+    known = {a["id"] for a in get_all_accounts()}
+    set_user_container_permissions(user_id, [c for c in request.container_ids if c in known])
+    return {"success": True, "message": "Profiles updated"}
 
 
 # Anki client factory
@@ -745,7 +699,7 @@ def get_anki_client() -> AnkiConnectClient:
         raise HTTPException(status_code=503, detail=detail)
     active_account = get_active_account()
     if not active_account:
-        raise HTTPException(status_code=503, detail="No Anki account yet. Create one in Settings.")
+        raise HTTPException(status_code=503, detail="You don't have a profile yet. Ask an admin to give you one.")
     return AnkiConnectClient(anki_server.profile_url(active_account["container_name"]), anki_server.api_key())
 
 
@@ -765,43 +719,6 @@ async def get_decks(client: AnkiConnectClient = Depends(get_anki_client), _: str
         decks = await client.get_deck_names_and_ids()
         stats = await client.get_deck_stats(list(decks.keys()))
         return {"decks": decks, "stats": stats}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/decks/{deck_name}/due")
-async def get_due_cards(
-    deck_name: str, client: AnkiConnectClient = Depends(get_anki_client), _: str = Depends(require_auth)
-):
-    try:
-        card_ids = await client.get_due_cards(deck_name)
-        if not card_ids:
-            return {"cards": []}
-        cards = await client.get_cards_info(card_ids[:50])  # Limit to 50
-        return {"cards": cards}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/decks/{deck_name}/next")
-async def get_next_card(
-    deck_name: str, client: AnkiConnectClient = Depends(get_anki_client), _: str = Depends(require_auth)
-):
-    """Get the next card due for review in this deck."""
-    try:
-        card_id = await client.get_next_due_card(deck_name)
-        if not card_id:
-            return {"card": None, "remaining": 0}
-
-        cards = await client.get_cards_info([card_id])
-        if not cards:
-            return {"card": None, "remaining": 0}
-
-        # Get total remaining cards
-        all_due = await client.get_due_cards(deck_name)
-        remaining = len(all_due)
-
-        return {"card": cards[0], "remaining": remaining}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -827,7 +744,7 @@ async def review_current(request: ReviewRequest, client: AnkiConnectClient = Dep
             out = await review.legacy_next(client, request.deck)
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
-    out["media_token"] = review.media_token(_settings.app_secret_key, user["user_id"])
+    out["media_token"] = review.media_token(security.signing_key(), user["user_id"])
     return out
 
 
@@ -847,7 +764,7 @@ async def review_answer(request: ReviewRequest, client: AnkiConnectClient = Depe
             out = await review.legacy_next(client, request.deck)
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
-    out["media_token"] = review.media_token(_settings.app_secret_key, user["user_id"])
+    out["media_token"] = review.media_token(security.signing_key(), user["user_id"])
     return out
 
 
@@ -859,7 +776,7 @@ async def review_undo(request: ReviewRequest, client: AnkiConnectClient = Depend
         out = await review.undo(client, request.deck)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    out["media_token"] = review.media_token(_settings.app_secret_key, user["user_id"])
+    out["media_token"] = review.media_token(security.signing_key(), user["user_id"])
     return out
 
 
@@ -872,7 +789,7 @@ async def media_file(filename: str, t: str = "", client: AnkiConnectClient = Dep
     import mimetypes
     import review
     from fastapi.responses import Response
-    if not review.check_media_token(_settings.app_secret_key, t):
+    if not review.check_media_token(security.signing_key(), t):
         raise HTTPException(status_code=401, detail="Invalid media token")
     if "/" in filename or "\\" in filename or filename.startswith("."):
         raise HTTPException(status_code=400, detail="Invalid file name")
@@ -881,83 +798,24 @@ async def media_file(filename: str, t: str = "", client: AnkiConnectClient = Dep
         raise HTTPException(status_code=404, detail="Media file not found")
     mime = mimetypes.guess_type(filename)[0] or "application/octet-stream"
     return Response(review.decode_media(data), media_type=mime,
-                    headers={"Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff"})
+                    # Card media is from anywhere: a file opened on its own can't run scripts here.
+                    headers={"Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff",
+                             "Content-Security-Policy": "sandbox; default-src 'none'; img-src data:; media-src 'self'; style-src 'unsafe-inline'"})
 
 
 # Card endpoints
-class AnswerCardRequest(BaseModel):
-    card_id: int
-    ease: int  # 1=Again, 2=Hard, 3=Good, 4=Easy
-
-
-@app.post("/api/cards/answer")
-async def answer_card(
-    request: AnswerCardRequest, client: AnkiConnectClient = Depends(get_anki_client), _: str = Depends(require_auth)
-):
-    try:
-        result = await client.answer_card(request.card_id, request.ease)
-        return {"success": result}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/cards/undo")
-async def undo_card(
-    client: AnkiConnectClient = Depends(get_anki_client), _: str = Depends(require_auth)
-):
-    try:
-        result = await client.gui_undo()
-        return {"success": result}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/cards/{card_id}")
-async def get_card(
-    card_id: int, client: AnkiConnectClient = Depends(get_anki_client), _: str = Depends(require_auth)
-):
-    try:
-        cards = await client.get_cards_info([card_id])
-        if not cards:
-            raise HTTPException(status_code=404, detail="Card not found")
-        return cards[0]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 @app.get("/api/media/{filename}")
 async def get_media_file(
     filename: str, client: AnkiConnectClient = Depends(get_anki_client), _: str = Depends(require_auth)
 ):
     """Get a media file (audio, image) from Anki as base64."""
     try:
-        import base64
         data = await client.retrieve_media_file(filename)
         if not data:
             raise HTTPException(status_code=404, detail="Media file not found")
         return {"filename": filename, "data": data}
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# Search endpoint
-class SearchRequest(BaseModel):
-    query: str
-    limit: int = 50
-
-
-@app.post("/api/search")
-async def search_cards(
-    request: SearchRequest, client: AnkiConnectClient = Depends(get_anki_client), _: str = Depends(require_auth)
-):
-    try:
-        note_ids = await client.find_notes(request.query)
-        if not note_ids:
-            return {"notes": []}
-        notes = await client.get_notes_info(note_ids[: request.limit])
-        return {"notes": notes, "total": len(note_ids)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1143,7 +1001,7 @@ class LookupRequest(BaseModel):
 
 @app.post("/api/story/generate")
 async def generate_story_endpoint(
-    request: StoryRequest, _: str = Depends(require_auth)
+    request: StoryRequest, _: str = Depends(require("use_ai"))
 ):
     api_keys = get_api_keys()
     if not any(api_keys.values()):
@@ -1233,7 +1091,7 @@ class AiChoiceRequest(BaseModel):
 
 
 @app.post("/api/stories/{story_id}/annotate")
-async def annotate_story_endpoint(story_id: int, request: AiChoiceRequest, _: dict = Depends(require_auth)):
+async def annotate_story_endpoint(story_id: int, request: AiChoiceRequest, _: dict = Depends(require("use_ai"))):
     """Prepare instant word lookups for a story written before annotations existed."""
     story_row = get_story(story_id)
     if not story_row:
@@ -1265,7 +1123,7 @@ class ExplainRequest(BaseModel):
 
 
 @app.post("/api/story/explain")
-async def explain_passage_endpoint(request: ExplainRequest, _: dict = Depends(require_auth)):
+async def explain_passage_endpoint(request: ExplainRequest, _: dict = Depends(require("use_ai"))):
     """Explain a passage the reader selected: translation, word breakdown, grammar."""
     passage = request.passage.strip()[:600]
     if not passage:
@@ -1284,7 +1142,7 @@ async def explain_passage_endpoint(request: ExplainRequest, _: dict = Depends(re
 
 @app.post("/api/lookup")
 async def lookup_word_endpoint(
-    request: LookupRequest, _: str = Depends(require_auth)
+    request: LookupRequest, _: str = Depends(require("use_ai"))
 ):
     """AI-powered word lookup for words not in vocabulary list."""
     api_keys = get_api_keys()
@@ -1304,24 +1162,6 @@ async def lookup_word_endpoint(
         return result
     except NoValidKeysError as e:
         raise HTTPException(status_code=500, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/jisho/{word}")
-async def jisho_lookup(word: str, _: str = Depends(require_auth)):
-    """Proxy to Jisho API for dictionary lookup."""
-    import httpx
-    from urllib.parse import quote
-
-    try:
-        encoded_word = quote(word)
-        url = f"https://jisho.org/api/v1/search/words?keyword={encoded_word}"
-
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(url)
-            response.raise_for_status()
-            return response.json()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1380,77 +1220,32 @@ class ApiKeyRequest(BaseModel):
     admin_key: str = ""
 
 
+def _mask(key: str) -> str:
+    if not key:
+        return ""
+    return key[:8] + "..." + key[-4:] if len(key) > 12 else "***configured***"
+
+
 @app.get("/api/settings/api-keys")
-async def get_api_keys_endpoint(_: str = Depends(require_auth)):
-    """Get all API keys (masked for security)."""
-    from database import get_active_account
-
+async def get_api_keys_endpoint(user: dict = Depends(require_auth)):
+    """Which AI providers have a key; the (masked) keys themselves for those who manage them."""
     keys = get_api_keys()
-    settings = get_settings()
-
-    # Check which keys are from env vs manual config
-    account = get_active_account()
-    is_env_key = {}
-
-    if account:
-        api_keys_file = get_account_api_keys_file(account["container_name"])
-        has_manual_config = os.path.exists(api_keys_file)
-
-        if has_manual_config:
-            try:
-                with open(api_keys_file, "r") as f:
-                    stored = json.load(f)
-                    # If provider has manual config with a non-empty api_key, it's not from env
-                    for provider in keys.keys():
-                        stored_value = stored.get(provider)
-                        has_manual_key = False
-                        if isinstance(stored_value, dict):
-                            has_manual_key = bool(stored_value.get("api_key") or stored_value.get("key"))
-                        elif stored_value:
-                            has_manual_key = True
-                        is_env_key[provider] = not has_manual_key
-            except (json.JSONDecodeError, IOError):
-                # If file can't be read, assume all configured keys are from env
-                is_env_key = {k: bool(v) for k, v in keys.items()}
-        else:
-            # No manual config file, all keys are from env
-            is_env_key = {k: bool(v) for k, v in keys.items()}
-    else:
-        # No active account, all keys are from env
-        is_env_key = {k: bool(v) for k, v in keys.items()}
-
-    # Mask keys for display (show only first 8 and last 4 chars)
-    masked = {}
-    masked_admin = {}
-    for provider, key in keys.items():
-        if key and len(key) > 12:
-            masked[provider] = key[:8] + "..." + key[-4:]
-        elif key:
-            masked[provider] = "***configured***"
-        else:
-            masked[provider] = ""
-
-        # Get admin key info for this provider
-        key_info = get_api_key_info(provider)
-        admin_key = key_info.get("admin_key", "")
-        if admin_key and len(admin_key) > 12:
-            masked_admin[provider] = admin_key[:8] + "..." + admin_key[-4:]
-        elif admin_key:
-            masked_admin[provider] = "***configured***"
-        else:
-            masked_admin[provider] = ""
-
+    configured = {k: bool(v) for k, v in keys.items()}
+    if not security.can(user, "manage_ai_keys"):
+        return {"keys": {}, "admin_keys": {}, "configured": configured, "has_admin_key": {}, "is_env_key": {}}
+    info = {provider: get_api_key_info(provider) for provider in keys}
     return {
-        "keys": masked,
-        "admin_keys": masked_admin,
-        "configured": {k: bool(v) for k, v in keys.items()},
-        "has_admin_key": {k: bool(v) for k, v in masked_admin.items()},
-        "is_env_key": is_env_key
+        "keys": {p: _mask(k) for p, k in keys.items()},
+        "admin_keys": {p: _mask(i["admin_key"]) for p, i in info.items()},
+        "configured": configured,
+        "has_admin_key": {p: bool(i["admin_key"]) for p, i in info.items()},
+        # Keys from the server's environment (.env) rather than saved here.
+        "is_env_key": {p: bool(k) and not info[p]["api_key"] for p, k in keys.items()},
     }
 
 
 @app.post("/api/settings/api-keys")
-async def set_api_key_endpoint(request: ApiKeyRequest, _: str = Depends(require_auth)):
+async def set_api_key_endpoint(request: ApiKeyRequest, _: str = Depends(require("manage_ai_keys"))):
     """Set API key(s) for a provider."""
     if request.provider not in PROVIDERS:
         raise HTTPException(status_code=400, detail=f"Unknown provider: {request.provider}")
@@ -1463,46 +1258,24 @@ async def set_api_key_endpoint(request: ApiKeyRequest, _: str = Depends(require_
 
 
 @app.delete("/api/settings/api-keys/{provider}")
-async def delete_api_key_endpoint(provider: str, _: str = Depends(require_auth)):
-    """Delete an API key for a provider."""
-    from database import get_active_account
-
+async def delete_api_key_endpoint(provider: str, _: str = Depends(require("manage_ai_keys"))):
+    """Delete a saved API key (keys from the server's environment stay; remove them from .env)."""
     if provider not in PROVIDERS:
         raise HTTPException(status_code=400, detail=f"Unknown provider: {provider}")
-
-    # Check if this is an env-configured key
-    account = get_active_account()
-    if account:
-        api_keys_file = get_account_api_keys_file(account["container_name"])
-        if os.path.exists(api_keys_file):
-            try:
-                with open(api_keys_file, "r") as f:
-                    stored = json.load(f)
-                    stored_value = stored.get(provider)
-                    has_manual_key = False
-                    if isinstance(stored_value, dict):
-                        has_manual_key = bool(stored_value.get("api_key") or stored_value.get("key"))
-                    elif stored_value:
-                        has_manual_key = True
-
-                    if not has_manual_key:
-                        # This is an env key, can't delete
-                        raise HTTPException(
-                            status_code=400,
-                            detail=f"Cannot delete environment-configured key. Remove it from .env file instead."
-                        )
-            except json.JSONDecodeError:
-                pass
-
+    if not get_api_key_info(provider)["api_key"] and get_api_keys().get(provider):
+        raise HTTPException(status_code=400, detail="That key comes from the server's .env file; remove it there.")
     delete_api_key(provider)
     return {"success": True, "message": f"API key deleted for {provider}"}
 
 
 @app.get("/api/settings/api-keys/{provider}/full")
-async def get_full_api_key_endpoint(provider: str, _: str = Depends(require_auth)):
-    """Get the full unmasked API keys for a provider."""
+async def get_full_api_key_endpoint(provider: str, user: dict = Depends(require("manage_ai_keys"))):
+    """Get the full unmasked API keys for a provider (keys from the server's environment:
+    admins only)."""
     if provider not in PROVIDERS:
         raise HTTPException(status_code=400, detail=f"Unknown provider: {provider}")
+    if not get_api_key_info(provider).get("api_key") and not user["is_admin"]:
+        raise HTTPException(status_code=403, detail="Only admins can see the server's own keys")
 
     # Try manual key first
     keys = get_api_keys()
@@ -1518,7 +1291,7 @@ async def get_full_api_key_endpoint(provider: str, _: str = Depends(require_auth
 
 
 @app.get("/api/settings/api-keys/{provider}/usage")
-async def get_provider_usage_endpoint(provider: str, _: str = Depends(require_auth)):
+async def get_provider_usage_endpoint(provider: str, _: str = Depends(require("manage_ai_keys"))):
     """Get usage information for a provider (requires admin key)."""
     import httpx
     from datetime import datetime, timedelta
@@ -1924,246 +1697,75 @@ async def full_download_anki(client: AnkiConnectClient = Depends(get_anki_client
     return {"success": True, "message": "Full download completed - local data overwritten with AnkiWeb"}
 
 
-# ── Update endpoints ──────────────────────────────────────────────────────────
-
-VERSION_FILE = os.path.join(os.path.dirname(__file__), ".version")
-GITHUB_REPO = "Macro002/AnkiBase"
-
-
-def _read_local_version() -> str:
-    try:
-        return open(VERSION_FILE).read().strip()
-    except Exception:
-        return "unknown"
-
+# ── Updates (updater.py) ─────────────────────────────────────────────────────
 
 @app.get("/api/update/check")
 async def update_check(_: dict = Depends(require_admin)):
     import asyncio
-    local = _read_local_version()
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "git", "ls-remote", f"https://github.com/{GITHUB_REPO}.git", "HEAD",
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
-        )
-        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=15)
-        line = stdout.decode().strip()
-        latest = line.split()[0] if line else "unknown"
-    except Exception:
-        latest = "unknown"
-
-    has_update = latest != "unknown" and latest != local
-    return {"current": local, "latest": latest, "has_update": has_update}
+    return await asyncio.to_thread(updater.check)
 
 
-@app.get("/api/update/apply")
-async def update_apply(request: Request, _: dict = Depends(require_admin)):
-    import asyncio, tempfile, shutil
-
+@app.post("/api/update/apply")
+async def update_apply(_: dict = Depends(require_admin)):
+    """Update to the newest version, streaming progress (server-sent events)."""
     async def generate():
-        def event(data: dict) -> str:
-            return f"data: {json.dumps(data)}\n\n"
-
-        tmp = tempfile.mkdtemp(prefix="ankibase_update_")
-        try:
-            yield event({"type": "step", "message": "Fetching latest code from GitHub...", "progress": 5})
-            proc = await asyncio.create_subprocess_exec(
-                "git", "clone", "--depth", "1",
-                f"https://github.com/{GITHUB_REPO}.git", tmp,
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
-            )
-            async for line in proc.stdout:
-                msg = line.decode().strip()
-                if msg:
-                    yield event({"type": "log", "message": msg, "progress": 15})
-            await proc.wait()
-            if proc.returncode != 0:
-                yield event({"type": "error", "message": "Failed to clone repository"})
-                return
-
-            yield event({"type": "step", "message": "Building frontend...", "progress": 25})
-            fe_dir = os.path.join(tmp, "frontend")
-            proc = await asyncio.create_subprocess_exec(
-                "npm", "install",
-                cwd=fe_dir,
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
-            )
-            await proc.wait()
-            proc = await asyncio.create_subprocess_exec(
-                "npm", "run", "build",
-                cwd=fe_dir,
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
-            )
-            async for line in proc.stdout:
-                msg = line.decode().strip()
-                if msg:
-                    yield event({"type": "log", "message": msg, "progress": 55})
-            await proc.wait()
-            if proc.returncode != 0:
-                yield event({"type": "error", "message": "Frontend build failed"})
-                return
-
-            yield event({"type": "step", "message": "Installing files...", "progress": 65})
-            install_dir = os.path.dirname(__file__)
-            static_dir = os.path.join(install_dir, "static")
-
-            proc = await asyncio.create_subprocess_exec(
-                "rsync", "-a",
-                "--exclude=__pycache__", "--exclude=*.pyc",
-                "--exclude=venv", "--exclude=.env", "--exclude=*.db",
-                "--exclude=.credentials", "--exclude=.api_keys.json",
-                os.path.join(tmp, "backend") + "/", install_dir + "/",
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
-            )
-            await proc.wait()
-
-            proc = await asyncio.create_subprocess_exec(
-                "rsync", "-a",
-                os.path.join(tmp, "frontend", "dist") + "/", static_dir + "/",
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
-            )
-            await proc.wait()
-
-            yield event({"type": "step", "message": "Installing Python dependencies...", "progress": 75})
-            venv_pip = os.path.join(install_dir, "venv", "bin", "pip")
-            proc = await asyncio.create_subprocess_exec(
-                venv_pip, "install", "-q", "-r", os.path.join(install_dir, "requirements.txt"),
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
-            )
-            await proc.wait()
-
-            yield event({"type": "step", "message": "Updating the Anki engine...", "progress": 82})
-            proc = await asyncio.create_subprocess_exec(
-                os.path.join(install_dir, "venv", "bin", "python"), "-c",
-                "import anki_server; anki_server.install_engine()",
-                cwd=install_dir, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
-            )
-            out, _ = await proc.communicate()
-            if proc.returncode != 0:
-                yield event({"type": "log", "message": out.decode()[-500:], "progress": 85})
-
-            # Write new version hash
-            new_sha_path = os.path.join(tmp, ".git", "refs", "heads", "main")
-            try:
-                import subprocess as _sp
-                sha = _sp.check_output(["git", "-C", tmp, "rev-parse", "HEAD"]).decode().strip()
-                with open(VERSION_FILE, "w") as f:
-                    f.write(sha)
-            except Exception:
-                pass
-
-            yield event({"type": "step", "message": "Restarting service...", "progress": 90})
-            # Detach restart so the response finishes first
-            await asyncio.create_subprocess_exec(
-                "bash", "-c", "sleep 3 && systemctl restart ankibase",
-                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
-                start_new_session=True,
-            )
-
-            yield event({"type": "done", "message": "Update applied! Reloading...", "progress": 100})
-
-        except Exception as e:
-            yield event({"type": "error", "message": str(e)})
-        finally:
-            shutil.rmtree(tmp, ignore_errors=True)
-
-    return StreamingResponse(
-        generate(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
+        async for event in updater.apply():
+            yield updater.json_event(event)
+    return StreamingResponse(generate(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 # Account management endpoints
 container_manager = AnkiAccountManager()
 
+# Profiles (each is its own Anki collection; the API still calls them "accounts"). Every
+# login session has its own active profile, among the ones the user may use.
+
+def _accessible(user: dict, account_id: int) -> dict:
+    account = next((a for a in security.accessible_profiles(user) if a["id"] == account_id), None)
+    if account is None:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    return account
+
+
 @app.get("/api/accounts")
 async def list_accounts(user: dict = Depends(require_auth)):
-    """List Anki accounts accessible to the current user"""
-    from database import get_user_accessible_containers, set_active_account
-    try:
-        # Get containers accessible to this user (admins see all, users see only their assigned ones)
-        accounts = get_user_accessible_containers(user['user_id'])
-
-        if not accounts:
-            # User has no accessible containers
-            return {
-                "accounts": [],
-                "active_account_id": None
-            }
-
-        active_account = container_manager.get_active_account()
-
-        # Check if user has access to the current active account
-        active_id = None
-        if active_account:
-            has_access = any(acc['id'] == active_account['id'] for acc in accounts)
-            if has_access:
-                active_id = active_account['id']
-            else:
-                # User doesn't have access to current active account
-                # Auto-switch to first accessible container
-                first_accessible = accounts[0]
-                set_active_account(first_accessible['id'])
-                active_id = first_accessible['id']
-        else:
-            # No active account set, switch to first accessible container
-            first_accessible = accounts[0]
-            set_active_account(first_accessible['id'])
-            active_id = first_accessible['id']
-
-        return {
-            "accounts": accounts,
-            "active_account_id": active_id
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    """The profiles this user may use, and the one they're on."""
+    active = get_active_account()
+    return {"accounts": security.accessible_profiles(user), "active_account_id": active["id"] if active else None}
 
 
 @app.post("/api/accounts")
-async def create_account(request: CreateAccountRequest, user: dict = Depends(require_can_add_containers)):
-    """Create a new Anki account: its own collection on the engine (requires can_add_containers)"""
+async def create_account(request: CreateAccountRequest, user: dict = Depends(require("manage_profiles"))):
+    """Create a profile: its own collection on the Anki engine. Its creator may use it."""
     import asyncio
+    from database import get_user_container_permissions, set_user_container_permissions
     try:
         account = await asyncio.to_thread(container_manager.create_account, request.container_name)
-        return {
-            "success": True,
-            "account": account,
-            "message": f"Account '{account['container_name']}' created"
-        }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    if not user["is_admin"]:
+        set_user_container_permissions(user["user_id"], get_user_container_permissions(user["user_id"]) + [account["id"]])
+    return {"success": True, "account": account, "message": f"Profile '{account['container_name']}' created"}
 
 
 @app.post("/api/accounts/switch")
-async def switch_account(request: SwitchAccountRequest, _: str = Depends(require_auth)):
-    """Switch to a different account"""
-    try:
-        success = container_manager.switch_account(request.account_id)
-        if not success:
-            raise HTTPException(status_code=404, detail="Account not found")
-        return {"success": True, "message": "Account switched successfully"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+async def switch_account(request: SwitchAccountRequest, user: dict = Depends(require_auth)):
+    """Switch this login to another of the user's profiles (other users aren't affected)."""
+    _accessible(user, request.account_id)
+    sessions.update(user["session_id"], profile_id=request.account_id)
+    return {"success": True, "message": "Profile switched"}
 
 
 @app.delete("/api/accounts/{account_id}")
-async def delete_account_endpoint(account_id: int, remove_data: bool = False, _: str = Depends(require_auth)):
-    """Delete an account and optionally its data"""
-    try:
-        import asyncio
-        success = await asyncio.to_thread(container_manager.delete_account, account_id, remove_data)
-        if not success:
-            raise HTTPException(status_code=404, detail="Account not found")
-        return {"success": True, "message": "Account deleted successfully"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+async def delete_account_endpoint(account_id: int, remove_data: bool = False,
+                                  user: dict = Depends(require("manage_profiles"))):
+    """Delete a profile, and with remove_data its collection too."""
+    import asyncio
+    _accessible(user, account_id)
+    if not await asyncio.to_thread(container_manager.delete_account, account_id, remove_data):
+        raise HTTPException(status_code=404, detail="Profile not found")
+    return {"success": True, "message": "Profile deleted"}
 
 
 class RenameAccountRequest(BaseModel):
@@ -2172,35 +1774,28 @@ class RenameAccountRequest(BaseModel):
 
 @app.post("/api/accounts/{account_id}/rename")
 async def rename_account_endpoint(account_id: int, request: RenameAccountRequest,
-                                  _: dict = Depends(require_can_add_containers)):
-    """Rename an account (its collection and its stories move with it)"""
+                                  user: dict = Depends(require("manage_profiles"))):
+    """Rename a profile (its collection and its stories move with it)."""
     import asyncio
+    _accessible(user, account_id)
     try:
         account = await asyncio.to_thread(container_manager.rename_account, account_id, request.name)
     except LookupError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
     return {"success": True, "account": account}
 
 
 @app.post("/api/accounts/{account_id}/restart")
-async def restart_account_endpoint(account_id: int, _: str = Depends(require_auth)):
-    """Reload an account's collection"""
-    try:
-        import asyncio
-        if not get_account(account_id):
-            raise HTTPException(status_code=404, detail="Account not found")
-        if not await asyncio.to_thread(container_manager.restart_container, account_id):
-            raise HTTPException(status_code=503, detail="The Anki engine didn't come back after a restart. "
-                                                        "Check: journalctl -u ankibase-anki -n 50")
-        return {"success": True, "message": "Collection reloaded"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+async def restart_account_endpoint(account_id: int, user: dict = Depends(require_auth)):
+    """Reload a profile's collection from disk."""
+    import asyncio
+    _accessible(user, account_id)
+    if not await asyncio.to_thread(container_manager.restart_container, account_id):
+        raise HTTPException(status_code=503, detail="Anki didn't come back after a restart. "
+                                                    "Check: journalctl -u ankibase-anki -n 50")
+    return {"success": True, "message": "Collection reloaded"}
 
 
 # Anki's own pages (Statistics, Deck Options, Card Info), served by anki-cli for the active
@@ -2264,16 +1859,6 @@ async def ankiweb_status(req: Request, client: AnkiConnectClient = Depends(get_a
             "last_sync": account.get("lastSync"),
             # Set when syncing with a self-hosted server (AnkiWeb hands out its own addresses).
             "endpoint": None if _is_ankiweb(endpoint) else endpoint}
-
-
-@app.get("/api/ankiweb/debug")
-async def ankiweb_debug(client: AnkiConnectClient = Depends(get_anki_client), _: str = Depends(require_auth)):
-    """The Anki engine and the active collection"""
-    try:
-        return {"engine": await client.rpc("server.info"), "collection": await client.rpc("collection.info"),
-                "sync": await client.rpc("sync.account")}
-    except Exception as e:
-        return {"error": str(e)}
 
 
 @app.delete("/api/ankiweb/credentials")
@@ -2484,7 +2069,7 @@ class ImageFetchRequest(BaseModel):
 
 
 @app.post("/api/quizlet/scrape")
-async def quizlet_scrape(request: QuizletScrapeRequest, _: str = Depends(require_auth)):
+async def quizlet_scrape(request: QuizletScrapeRequest, _: str = Depends(require("import"))):
     import asyncio, re
     url = request.url.strip()
     if not re.match(r"https?://(www\.)?quizlet\.com/\d+/", url):
@@ -2498,21 +2083,16 @@ async def quizlet_scrape(request: QuizletScrapeRequest, _: str = Depends(require
 
 
 @app.post("/api/quizlet/fetch-image")
-async def quizlet_fetch_image(request: ImageFetchRequest, _: str = Depends(require_auth)):
-    import httpx, base64
-    try:
-        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
-            resp = await client.get(request.url, headers={"User-Agent": "Mozilla/5.0"})
-            resp.raise_for_status()
-            content_type = resp.headers.get("content-type", "image/jpeg").split(";")[0].strip()
-            b64 = base64.b64encode(resp.content).decode()
-            return {"data": f"data:{content_type};base64,{b64}"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+async def quizlet_fetch_image(request: ImageFetchRequest, _: str = Depends(require("import"))):
+    """A card image from the web, as a data URL (public addresses only, up to 5 MB)."""
+    data, content_type = await security.fetch_public(request.url.strip(), max_bytes=5 * 1024 * 1024)
+    if not content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="That address isn't an image")
+    return {"data": f"data:{content_type};base64,{security.b64(data)}"}
 
 
 @app.post("/api/quizlet/decks")
-async def quizlet_save_deck(request: QuizletSaveRequest, _: str = Depends(require_auth)):
+async def quizlet_save_deck(request: QuizletSaveRequest, _: str = Depends(require("import"))):
     try:
         deck_id = create_quizlet_deck(request.title, request.url, request.cards)
         return {"success": True, "deck_id": deck_id}
@@ -2699,15 +2279,6 @@ async def sessions_delete(kind: str, ref_id: str, user: dict = Depends(require_a
 
 
 # Models endpoint
-@app.get("/api/models")
-async def get_models(client: AnkiConnectClient = Depends(get_anki_client), _: str = Depends(require_auth)):
-    try:
-        models = await client.get_model_names()
-        return {"models": models}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 def _scrape_ankiweb_download_url(deck_url: str) -> tuple:
     """Open the AnkiWeb shared deck page, click Download, return (signed_url, deck_title, cookies).
 
@@ -2795,7 +2366,7 @@ async def _download_shared_deck(url: str) -> tuple[str, str, bytes]:
 async def import_ankiweb_url(
     request: AnkiWebUrlImportRequest,
     client: AnkiConnectClient = Depends(get_anki_client),
-    _: str = Depends(require_auth),
+    _: str = Depends(require("import")),
 ):
     deck_title, filename, content = await _download_shared_deck(request.url)
     active_account = get_active_account()
@@ -2816,7 +2387,7 @@ async def import_ankiweb_url(
 
 
 @app.post("/api/import/ankiweb-url/package")
-async def download_ankiweb_package(request: AnkiWebUrlImportRequest, _: str = Depends(require_auth)):
+async def download_ankiweb_package(request: AnkiWebUrlImportRequest, _: str = Depends(require("import"))):
     """The shared deck's .apkg itself, for the phone app to import into its own collection
     (AnkiWeb only hands it out to a real browser, which runs here)."""
     from urllib.parse import quote
@@ -2832,7 +2403,7 @@ async def download_ankiweb_package(request: AnkiWebUrlImportRequest, _: str = De
 async def import_deck(
     file: UploadFile = File(...),
     client: AnkiConnectClient = Depends(get_anki_client),
-    _: str = Depends(require_auth),
+    _: str = Depends(require("import")),
 ):
     if not file.filename or not file.filename.endswith(".apkg"):
         raise HTTPException(status_code=400, detail="Only .apkg files are supported")
@@ -2903,18 +2474,6 @@ async def rename_deck(
 
 
 # Stats HTML endpoint
-@app.get("/api/stats/html")
-async def get_stats_html(
-    client: AnkiConnectClient = Depends(get_anki_client),
-    _: str = Depends(require_auth),
-):
-    try:
-        html = await client.get_collection_stats_html()
-        return {"html": html}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 # Full statistics (Anki's stats screen + Quizlet) for the Stats tab
 @app.get("/api/stats/overview")
 async def stats_overview(
@@ -3046,9 +2605,13 @@ if os.path.exists(static_path):
 
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
+        # Unknown API paths are errors, not the app.
+        if full_path.startswith("api/") or full_path == "api":
+            raise HTTPException(status_code=404, detail="Not found")
         # Serve index.html for SPA routing
-        file_path = os.path.join(static_path, full_path)
-        if os.path.exists(file_path) and os.path.isfile(file_path):
+        root = os.path.realpath(static_path)
+        file_path = os.path.realpath(os.path.join(root, full_path))
+        if file_path.startswith(root + os.sep) and os.path.isfile(file_path):
             return FileResponse(file_path)
         return FileResponse(os.path.join(static_path, "index.html"))
 

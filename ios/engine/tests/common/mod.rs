@@ -36,7 +36,7 @@ pub fn app(dir: &Path, server: Option<&str>) -> App {
         default_server: server.map(String::from),
         version: "0.2.0".into(),
         build: "2".into(),
-        update_feed: None,
+        update_feed: None, bundle_id: None,
     })
 }
 
@@ -214,11 +214,11 @@ fn serve(stream: TcpStream, seen: &Mutex<Vec<Seen>>, state: &Mutex<HashMap<Strin
     match (method.as_str(), path.as_str()) {
         ("GET", "/api/setup/status") => reply(&mut out, 200, "", json!({"needs_setup": false, "has_admin": true, "has_container": true})),
         ("POST", "/api/auth/login") => reply(&mut out, 200, "Set-Cookie: session_id=abc; HttpOnly; Max-Age=604800; Path=/; SameSite=lax\r\n",
-                                             json!({"success": true, "user": {"username": "dionis"}})),
+                                             json!({"success": true, "user": {"username": "alex"}})),
         ("POST", "/api/auth/logout") => reply(&mut out, 200, "Set-Cookie: session_id=\"\"; expires=Thu, 01 Jan 1970 00:00:00 GMT; Max-Age=0; Path=/\r\n",
                                               json!({"success": true})),
         _ if !logged_in => reply(&mut out, 401, "", json!({"detail": "Not authenticated"})),
-        ("GET", "/api/auth/check") => reply(&mut out, 200, "", json!({"authenticated": true, "user": {"username": "dionis"}})),
+        ("GET", "/api/auth/check") => reply(&mut out, 200, "", json!({"authenticated": true, "user": {"username": "alex"}})),
         ("GET", "/api/stories") => reply(&mut out, 200, "", json!({"stories": [{"id": 1, "name": "Au marché"}]})),
         ("GET", "/api/sessions") => {
             let sessions: Vec<Value> = state.lock().unwrap().iter()

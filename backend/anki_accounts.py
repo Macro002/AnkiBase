@@ -29,9 +29,9 @@ class AnkiAccountManager:
     def create_account(self, name: str) -> dict:
         name = name.strip()
         if not name or INVALID_NAME.search(name) or len(name) > 64:
-            raise ValueError("Invalid account name")
+            raise ValueError("Profile names can't be empty, start with a dot or contain \\ / : * ? \" < > |")
         if any(account["container_name"] == name for account in get_all_accounts()):
-            raise ValueError(f"An account named '{name}' already exists")
+            raise ValueError(f"There's already a profile named '{name}'")
         try:
             anki_server.call("profiles.create", name=name)
         except anki_server.EngineError as error:
@@ -66,15 +66,15 @@ class AnkiAccountManager:
         """Rename an account: its Anki profile and its AnkiBase data (stories, API keys)."""
         account = get_account(account_id)
         if not account:
-            raise LookupError("Account not found")
+            raise LookupError("Profile not found")
         name = name.strip()
         old = account["container_name"]
         if name == old:
             return account
         if not name or INVALID_NAME.search(name) or len(name) > 64:
-            raise ValueError("Invalid account name")
+            raise ValueError("Profile names can't be empty, start with a dot or contain \\ / : * ? \" < > |")
         if any(other["container_name"] == name for other in get_all_accounts()):
-            raise ValueError(f"An account named '{name}' already exists")
+            raise ValueError(f"There's already a profile named '{name}'")
         anki_server.call("profiles.rename", name=old, newName=name)
         old_dir, new_dir = os.path.join(ACCOUNT_DATA_DIR, old), os.path.join(ACCOUNT_DATA_DIR, name)
         if os.path.isdir(old_dir) and not os.path.exists(new_dir):

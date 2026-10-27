@@ -35,6 +35,9 @@ pub struct Config {
     /// The SideStore source new builds are published to.
     #[serde(default)]
     pub update_feed: Option<String>,
+    /// This build's bundle identifier (to find it in the update feed).
+    #[serde(default)]
+    pub bundle_id: Option<String>,
 }
 
 /// The phone's own profile, used when no server is connected.
@@ -242,11 +245,12 @@ impl App {
     /// The newest build in the app's SideStore source.
     fn app_update(&self) -> Value {
         let current = json!({"version": self.config.version, "build": self.config.build});
-        let Some(feed) = self.config.update_feed.as_deref() else {
+        let Some(feed) = self.config.update_feed.as_deref().filter(|f| !f.is_empty()) else {
             return json!({"current": current, "latest": null, "has_update": false});
         };
         let app = self.server.fetch_json(feed).and_then(|source| {
-            source["apps"].as_array()?.iter().find(|a| a["bundleIdentifier"] == "dev.macr0.ankibase").cloned()
+            let id = self.config.bundle_id.as_deref().unwrap_or("io.github.ankibase");
+            source["apps"].as_array()?.iter().find(|a| a["bundleIdentifier"] == id).cloned()
         });
         let Some(app) = app else {
             return json!({"current": current, "latest": null, "has_update": false, "error": "Couldn't check for updates"});

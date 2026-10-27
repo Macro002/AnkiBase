@@ -12,7 +12,8 @@ interface HeatmapProps {
 type Source = 'all' | 'anki' | 'quizlet';
 
 export function Heatmap({ className = '' }: HeatmapProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const monthName = (index: number) => new Date(2000, index, 1).toLocaleDateString(i18n.language, { month: 'short' });
   const [data, setData] = useState<ReviewHistory | null>(null);
   const [loading, setLoading] = useState(true);
   const [year, setYear] = useState(new Date().getFullYear());
@@ -342,7 +343,7 @@ export function Heatmap({ className = '' }: HeatmapProps) {
               className="absolute text-xs text-(--text-secondary)"
               style={{ left: `${weekIndex * (squareSize + gap)}px` }}
             >
-              {t(`heatmap.${month}`)}
+              {monthName(['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'].indexOf(month))}
             </span>
           ))}
         </div>
@@ -424,7 +425,7 @@ export function Heatmap({ className = '' }: HeatmapProps) {
             <span className="font-medium" style={{ color: accentColor }}>{hoveredDay.count} {t('heatmap.cards', 'cards')}</span> {t('heatmap.reviewedOn', 'reviewed on')}{' '}
             {(() => {
               const [y, m, d] = hoveredDay.date.split('-').map(Number);
-              return new Date(y, m - 1, d).toLocaleDateString('en-US', {
+              return new Date(y, m - 1, d).toLocaleDateString(i18n.language, {
                 weekday: 'long',
                 year: 'numeric',
                 month: 'long',

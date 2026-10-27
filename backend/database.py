@@ -98,6 +98,13 @@ def init_global_db():
             cursor.execute("ALTER TABLE users ADD COLUMN can_edit_server_accent INTEGER DEFAULT 0")
         if 'base_colors' not in columns:
             cursor.execute("ALTER TABLE users ADD COLUMN base_colors TEXT")
+        # Finer permissions (security.PERMISSIONS); existing users keep what they could do.
+        for column, default in (("can_use_ai", 1), ("can_manage_ai_keys", 0), ("can_import", 1)):
+            if column not in columns:
+                cursor.execute(f"ALTER TABLE users ADD COLUMN {column} INTEGER DEFAULT {default}")
+                if column == "can_manage_ai_keys":
+                    # Until now every user could change the keys; keep that for existing users.
+                    cursor.execute("UPDATE users SET can_manage_ai_keys = 1")
 
         # App-wide settings table (key-value)
         cursor.execute("""
@@ -451,18 +458,22 @@ class LoginSessions:
     LIFETIME = 7 * 24 * 3600
 
     def __init__(self):
-        self._cache: dict[str, dict] = {}
+        self._cache: dict[str, tuple[dict, int]] = {}  # id -> (data, expires_at)
 
     def _load(self, session_id: str) -> Optional[dict]:
-        if session_id in self._cache:
-            return self._cache[session_id]
+        now = int(time.time())
+        cached = self._cache.get(session_id)
+        if cached:
+            if cached[1] >= now:
+                return cached[0]
+            self._cache.pop(session_id, None)
         with get_db() as conn:
-            row = conn.execute("SELECT data FROM login_sessions WHERE id = ? AND expires_at >= ?",
-                               (session_id, int(time.time()))).fetchone()
+            row = conn.execute("SELECT data, expires_at FROM login_sessions WHERE id = ? AND expires_at >= ?",
+                               (session_id, now)).fetchone()
         if row is None:
             return None
         data = json.loads(row["data"])
-        self._cache[session_id] = data
+        self._cache[session_id] = (data, row["expires_at"])
         return data
 
     def __contains__(self, session_id: object) -> bool:
@@ -479,10 +490,11 @@ class LoginSessions:
         return default if data is None else data
 
     def __setitem__(self, session_id: str, data: dict) -> None:
-        self._cache[session_id] = data
+        expires = int(time.time()) + self.LIFETIME
+        self._cache[session_id] = (data, expires)
         with get_db() as conn:
             conn.execute("INSERT OR REPLACE INTO login_sessions (id, data, expires_at) VALUES (?, ?, ?)",
-                         (session_id, json.dumps(data), int(time.time()) + self.LIFETIME))
+                         (session_id, json.dumps(data), expires))
             conn.commit()
 
     def update(self, session_id: str, **changes) -> None:
@@ -501,14 +513,17 @@ class LoginSessions:
             conn.execute("DELETE FROM login_sessions WHERE id = ?", (session_id,))
             conn.commit()
 
-    def drop_user(self, user_id: int) -> None:
-        """Log a user out everywhere (deleted users, changed passwords)."""
-        self._cache = {k: v for k, v in self._cache.items() if v.get("user_id") != user_id}
+    def drop_user(self, user_id: int, keep: Optional[str] = None) -> None:
+        """Log a user out everywhere (deleted users, changed passwords), except session `keep`."""
+        self._cache = {k: v for k, v in self._cache.items() if v[0].get("user_id") != user_id or k == keep}
         with get_db() as conn:
             for row in conn.execute("SELECT id, data FROM login_sessions").fetchall():
-                if json.loads(row["data"]).get("user_id") == user_id:
+                if json.loads(row["data"]).get("user_id") == user_id and row["id"] != keep:
                     conn.execute("DELETE FROM login_sessions WHERE id = ?", (row["id"],))
             conn.commit()
+
+
+login_sessions = LoginSessions()
 
 
 # Story functions
@@ -783,7 +798,12 @@ def get_all_accounts() -> list[dict]:
 
 
 def get_active_account() -> Optional[dict]:
-    """Get the currently active account."""
+    """The profile the current request is about (the logged-in user's own choice, see
+    security.py); outside requests (startup, background work) the server's default one."""
+    from security import UNSET, request_profile
+    profile = request_profile()
+    if profile is not UNSET:
+        return profile
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM anki_accounts WHERE is_active = 1 LIMIT 1")
@@ -863,14 +883,21 @@ def verify_password(password: str, password_hash: str) -> bool:
     return bcrypt.checkpw(password.encode('utf-8'), password_hash.encode('utf-8'))
 
 
-def create_user(username: str, password: str, is_admin: bool = False, can_add_containers: bool = False, can_edit_server_accent: bool = False) -> int:
-    """Create a new user."""
-    password_hash = hash_password(password)
+USER_FLAGS = ("is_admin", "can_add_containers", "can_edit_server_accent", "can_use_ai", "can_manage_ai_keys", "can_import")
+
+
+def create_user(username: str, password: str, is_admin: bool = False, can_add_containers: bool = False,
+                can_edit_server_accent: bool = False, **permissions: bool) -> int:
+    """Create a user. `permissions`: other USER_FLAGS (defaults: AI and imports on)."""
+    flags = {"is_admin": is_admin, "can_add_containers": can_add_containers,
+             "can_edit_server_accent": can_edit_server_accent, "can_use_ai": True, "can_import": True,
+             "can_manage_ai_keys": False}
+    flags.update({k: v for k, v in permissions.items() if k in USER_FLAGS})
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO users (username, password_hash, is_admin, can_add_containers, can_edit_server_accent) VALUES (?, ?, ?, ?, ?)",
-            (username, password_hash, 1 if is_admin else 0, 1 if can_add_containers else 0, 1 if can_edit_server_accent else 0)
+            f"INSERT INTO users (username, password_hash, {', '.join(USER_FLAGS)}) VALUES (?, ?{', ?' * len(USER_FLAGS)})",
+            (username, hash_password(password), *[1 if flags[k] else 0 for k in USER_FLAGS])
         )
         conn.commit()
         return cursor.lastrowid
@@ -898,37 +925,26 @@ def get_all_users() -> list[dict]:
     """Get all users."""
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT id, username, is_admin, can_add_containers, can_edit_server_accent, created_at FROM users ORDER BY username")
+        cursor.execute(f"SELECT id, username, {', '.join(USER_FLAGS)}, created_at FROM users ORDER BY id")
         return [dict(row) for row in cursor.fetchall()]
 
 
-def update_user(user_id: int, is_admin: Optional[bool] = None, can_add_containers: Optional[bool] = None, can_edit_server_accent: Optional[bool] = None) -> bool:
-    """Update user settings."""
-    updates = []
-    params = []
-
-    if is_admin is not None:
-        updates.append("is_admin = ?")
-        params.append(1 if is_admin else 0)
-
-    if can_add_containers is not None:
-        updates.append("can_add_containers = ?")
-        params.append(1 if can_add_containers else 0)
-
-    if can_edit_server_accent is not None:
-        updates.append("can_edit_server_accent = ?")
-        params.append(1 if can_edit_server_accent else 0)
-
-    if not updates:
+def update_user(user_id: int, **flags: Optional[bool]) -> bool:
+    """Change some of a user's USER_FLAGS (None leaves one as it is)."""
+    changes = {k: v for k, v in flags.items() if k in USER_FLAGS and v is not None}
+    if not changes:
         return False
-
-    params.append(user_id)
-
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute(f"UPDATE users SET {', '.join(updates)} WHERE id = ?", params)
+        cursor.execute(f"UPDATE users SET {', '.join(f'{k} = ?' for k in changes)} WHERE id = ?",
+                       [1 if v else 0 for v in changes.values()] + [user_id])
         conn.commit()
         return cursor.rowcount > 0
+
+
+def count_admins() -> int:
+    with get_db() as conn:
+        return conn.execute("SELECT COUNT(*) FROM users WHERE is_admin = 1").fetchone()[0]
 
 
 def update_user_password(user_id: int, new_password: str) -> bool:
@@ -965,11 +981,12 @@ def update_user_language(user_id: int, language: str) -> bool:
 
 
 def delete_user(user_id: int) -> bool:
-    """Delete a user (except root)."""
+    """Delete a user, with their profile permissions and study sessions."""
     with get_db() as conn:
         cursor = conn.cursor()
-        # Don't allow deleting root user (id = 1)
-        cursor.execute("DELETE FROM users WHERE id = ? AND id != 1", (user_id,))
+        cursor.execute("DELETE FROM user_container_permissions WHERE user_id = ?", (user_id,))
+        cursor.execute("DELETE FROM study_sessions WHERE user_id = ?", (user_id,))
+        cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
         conn.commit()
         return cursor.rowcount > 0
 
@@ -1039,11 +1056,11 @@ def get_user_accessible_containers(user_id: int) -> list[dict]:
 
 
 def migrate_to_user_system(existing_password: str) -> bool:
-    """Migrate from password-only auth to user system. Creates root user with existing password."""
+    """Upgrading from the single-password versions (no users yet, but profiles and an
+    APP_PASSWORD in .env): that password becomes the `root` admin's. Never otherwise: a fresh
+    install creates its admin in the setup wizard."""
     try:
-        # Check if root user already exists
-        if get_user_by_username('root'):
-            print("Root user already exists, skipping migration")
+        if get_user_count() > 0 or not existing_password or existing_password in ("admin", "your_password_here"):
             return True
 
         # Create root user with existing password

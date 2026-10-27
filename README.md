@@ -82,10 +82,10 @@ It's built to feel like an app rather than a web page: no zooming or bouncing, t
 
 ### 🏠 Built to self-host
 
-- **Multi-user:** an admin panel and per-user permissions. Each Anki account gets its **own collection, media and AnkiWeb login**.
-- **One-line install** with optional nginx and Let's Encrypt, and **in-app updates** with one click.
+- **Multi-user with profiles:** a *profile* is an Anki collection with its own media, sync login, stories and Quizlet sets. Users get the profiles you give them, and permissions for importing, AI, AI keys, managing profiles and the default theme.
+- **One-line install** with optional nginx and Let's Encrypt, a **setup wizard**, and **one-click updates** that check the new version first, back up, and roll back if it doesn't start.
 - **Your own sync server** in one click (Settings → Sync): Anki's own sync server runs next to AnkiBase at `https://<your AnkiBase>/syncserver/`, so Anki Desktop, AnkiMobile, AnkiDroid and the iPhone app sync there instead of AnkiWeb.
-- API keys are stored encrypted, and the AI is optional: everything else works without it.
+- AI is optional: everything else works without it. API keys are stored encrypted and only shown to those allowed to manage them.
 
 ## 🧭 How it fits together
 
@@ -95,7 +95,7 @@ It's built to feel like an app rather than a web page: no zooming or bouncing, t
 |---|---|
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS v4 |
 | Backend | FastAPI + Uvicorn, SQLite |
-| Anki engine | [anki-cli](https://github.com/Macro002/anki-cli): Anki's own engine as one small service, a collection per account. No Docker, no Anki Desktop |
+| Anki engine | [anki-cli](https://github.com/Macro002/anki-cli): Anki's own engine as one small service, a collection per profile. No Docker, no Anki Desktop |
 | AI (optional) | Anthropic Claude, OpenAI, Google Gemini (bring your own key) |
 
 ## 🚀 Install
@@ -115,15 +115,26 @@ The installer:
 5. Creates the `ankibase` systemd service (and `ankibase-anki` for the Anki engine)
 6. Optionally sets up nginx with a Let's Encrypt certificate
 
-Open the address it prints. A setup wizard creates your admin account and your first Anki account.
+Open the address it prints. The setup wizard walks you through your admin account, your first profile, syncing your cards (AnkiWeb, your own sync server, or one it runs for you) and an optional AI key.
 
 ### Updating
 
-Click **Update** in the header when it lights up, or run:
+Click **Update** in the header when it lights up. AnkiBase follows tagged releases: it builds and checks the new version, backs up your code and data to `/opt/ankibase/backups/`, installs it, and puts the old version back if the new one doesn't start. To follow every commit instead, set `UPDATE_CHANNEL=main` in `/opt/ankibase/backend/.env`. From the command line:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Macro002/AnkiBase/main/install.sh | sudo bash -s -- --update
 ```
+
+### Security notes
+
+- Logins are HttpOnly, SameSite cookies (Secure over HTTPS), kept for 7 days and dropped when
+  a password changes. Failed logins are rate-limited per user and per address.
+- Every request checks the user's current permissions and that they may use the profile they're on.
+- Secrets are generated on first start (`backend/data/.secrets`, mode 0600); API keys are encrypted with them.
+- Card HTML runs in a sandboxed frame; card text elsewhere is sanitized; images fetched by
+  address can only come from the public internet.
+- AnkiBase runs as root (it manages its own services and updates). Put it behind HTTPS
+  (the installer can set up nginx and Let's Encrypt) before exposing it to the internet.
 
 ### Handy commands
 
@@ -134,13 +145,13 @@ systemctl status ankibase      # status
 journalctl -u ankibase-anki -f # Anki engine logs
 ```
 
-Collections live in `/opt/ankibase/anki-data/<account>/` (Anki's usual layout: `collection.anki2`,
+Collections live in `/opt/ankibase/anki-data/<profile>/` (Anki's usual layout: `collection.anki2`,
 `collection.media/`, `backups/`), with a backup every hour.
 
 ### Coming from the Docker version
 
-Older versions ran one headless Anki container per account. The first start after updating
-moves every account to the new engine on its own: it stops each container, copies the
+Older versions ran one headless Anki container per account (now called profiles). The first
+start after updating moves every one to the new engine on its own: it stops each container, copies the
 collection and media into `/opt/ankibase/anki-data/`, carries the AnkiWeb login over and
 removes the container. The Docker volumes are left untouched, so delete them yourself once
 you're happy (`docker volume ls`, `docker volume rm …`).
@@ -172,12 +183,16 @@ backend/
   stats_engine.py      Anki + Quizlet statistics
   story_generator.py   AI providers, stories, reading annotations
   dictionary.py        dictionary lookups
-  database.py          SQLite: users, accounts, Quizlet sets, sessions, stories
+  database.py          SQLite: users, profiles, Quizlet sets, sessions, stories
+  security.py          permissions, per-login profiles, secrets, outgoing-request checks
+  updater.py           safe in-app updates (check, back up, install, roll back)
+  sync_server.py       Anki's own sync server, run next to AnkiBase
 frontend/src/
   components/          Decks, Study, Quizlet modes, Story, Reading, Search, Stats…
   components/study/    sandboxed Anki card frame
   components/quizlet/  Learn, Test, Match, Blast, Blocks + shared UI
-  pages/Settings.tsx   themes, language, account, AI, users
+  pages/Settings.tsx   themes, sync, language, account, AI, users
+  pages/Setup.tsx      first-run wizard
 docs/                  documentation site (Nextra)
 install.sh             installer / updater
 ```

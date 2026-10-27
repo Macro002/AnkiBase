@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Publish dist/AnkiBase-<version>-<build>.ipa to the SideStore source on `ssh watch`.
+"""Publish dist/AnkiBase-<version>-<build>.ipa to a SideStore/AltStore source over SSH.
+
+Where to: PUBLISH_SSH_HOST, PUBLISH_DIR (served at PUBLISH_BASE_URL) and PUBLISH_DEVELOPER
+in local.env (see local.env.example).
 
 The app gets its own feed (ankibase-source.json) and is merged into the shared
 source.json there, leaving the other apps' entries alone. Released files are never
@@ -8,6 +11,8 @@ replaced: bump CFBundleVersion in Info.plist for every new build.
     scripts/publish.py "What changed in this build"
 """
 import datetime
+import os
+import shlex
 import hashlib
 import json
 import plistlib
@@ -18,7 +23,17 @@ import zipfile
 from pathlib import Path
 
 root = Path(__file__).resolve().parent.parent
-base_url = "https://watch.macr0.dev/static/ios"
+config = dict(os.environ)
+if (root / "local.env").exists():
+    for line in (root / "local.env").read_text().splitlines():
+        if "=" in line and not line.lstrip().startswith("#"):
+            key, value = line.split("=", 1)
+            config.setdefault(key.strip(), value.strip())
+for key in ("PUBLISH_SSH_HOST", "PUBLISH_DIR", "PUBLISH_BASE_URL"):
+    assert config.get(key), f"Set {key} in local.env"
+base_url = config["PUBLISH_BASE_URL"].rstrip("/")
+host = config["PUBLISH_SSH_HOST"]
+bundle_id = config.get("ANKIBASE_BUNDLE_ID") or "io.github.ankibase"
 info = plistlib.loads((root / "Info.plist").read_bytes())
 version, build = info["CFBundleShortVersionString"], info["CFBundleVersion"]
 ipa = root / "dist" / f"AnkiBase-{version}-{build}.ipa"
@@ -32,7 +47,7 @@ with zipfile.ZipFile(ipa) as archive:
     plist_path, = [n for n in names if n.count("/") == 2 and n.endswith(".app/Info.plist")]
     app_dir = plist_path.removesuffix("Info.plist")
     built = plistlib.loads(archive.read(plist_path))
-    assert built["CFBundleIdentifier"] == "dev.macr0.ankibase"
+    assert built["CFBundleIdentifier"] == bundle_id, "Rebuild with this local.env"
     assert (built["CFBundleShortVersionString"], built["CFBundleVersion"]) == (version, build), "Rebuild first"
     assert app_dir + "AnkiBase_AnkiBase.bundle/web/index.html" in names, "Missing web UI"
     executable = archive.read(app_dir + built["CFBundleExecutable"])
@@ -44,20 +59,20 @@ with zipfile.ZipFile(ipa) as archive:
 
 date = datetime.date.today().isoformat()
 description = ("AnkiBase with Anki's own engine on your iPhone: your collection lives on the phone, "
-               "studying works offline and syncs straight with AnkiWeb. Stories, AI and Quizlet come "
-               "from your AnkiBase server. Unsigned build — SideStore signs it with your Apple ID.")
+               "studying works offline, and it syncs with AnkiWeb or your own sync server. Stories, AI "
+               "and Quizlet come from your AnkiBase server. Unsigned build — SideStore signs it.")
 ipa_name, icon_name = ipa.name, f"AnkiBase-icon-{version}-{build}.png"
 download = f"{base_url}/{ipa_name}"
 release = {"version": version, "buildVersion": build, "date": date, "localizedDescription": notes,
            "downloadURL": download, "size": ipa.stat().st_size, "minOSVersion": built["MinimumOSVersion"]}
 app = {
-    "name": "AnkiBase", "bundleIdentifier": "dev.macr0.ankibase", "developerName": "macr0",
+    "name": "AnkiBase", "bundleIdentifier": bundle_id, "developerName": config.get("PUBLISH_DEVELOPER") or "AnkiBase",
     "localizedDescription": description, "iconURL": f"{base_url}/{icon_name}", "tintColor": "E94560",
     "category": "education", "versions": [release], "appPermissions": {"entitlements": [], "privacy": {}},
     "version": version, "versionDate": date, "versionDescription": notes,
     "downloadURL": download, "size": ipa.stat().st_size,
 }
-source = {"name": "AnkiBase", "identifier": "dev.macr0.ankibase.source",
+source = {"name": "AnkiBase", "identifier": f"{bundle_id}.source",
           "sourceURL": f"{base_url}/ankibase-source.json", "apps": [app], "news": []}
 feed = root / "dist/ankibase-source.json"
 feed.write_text(json.dumps(source, indent=2) + "\n")
@@ -65,13 +80,13 @@ feed.write_text(json.dumps(source, indent=2) + "\n")
 files = {ipa_name: ipa, icon_name: icon, "ankibase-source.json": feed}
 checksums = {name: hashlib.sha256(path.read_bytes()).hexdigest() for name, path in files.items()}
 
-# Runs on watch once everything is uploaded: verify, publish files, then the feeds.
+# Runs on the host once everything is uploaded: verify, publish files, then the feeds.
 remote_program = r'''
 import datetime, hashlib, json, shutil, sys
 from pathlib import Path
 
 stage = Path(sys.argv[1])
-destination = Path("/opt/aniworld/src/aniworld/web/static/ios")
+destination = Path(sys.argv[2])
 checksums = json.loads((stage / "checksums.json").read_text())
 for name, expected in checksums.items():
     assert Path(name).name == name
@@ -104,14 +119,14 @@ temporary.replace(source_path)
 print("Published AnkiBase; the other apps' entries are unchanged.")
 '''
 
-ssh = ["ssh", "-o", "BatchMode=yes", "watch"]
+ssh = ["ssh", "-o", "BatchMode=yes", host]
 stage = subprocess.check_output(ssh + ["mktemp -d /tmp/ankibase.XXXXXXXX"], text=True).strip()
 assert stage.startswith("/tmp/ankibase.") and stage.replace("/", "").replace(".", "").isalnum()
 try:
     (root / "dist/checksums.json").write_text(json.dumps(checksums))
     for name, path in {**files, "checksums.json": root / "dist/checksums.json"}.items():
-        subprocess.run(["scp", "-q", str(path), f"watch:{stage}/{name}"], check=True)
-    subprocess.run(ssh + [f"python3 - {stage}"], input=remote_program, text=True, check=True)
+        subprocess.run(["scp", "-q", str(path), f"{host}:{stage}/{name}"], check=True)
+    subprocess.run(ssh + [f"python3 - {stage} {shlex.quote(config['PUBLISH_DIR'])}"], input=remote_program, text=True, check=True)
 finally:
     subprocess.run(ssh + [f"rm -rf -- {stage}"], check=True)
 print(f"{base_url}/source.json  (shared)")

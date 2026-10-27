@@ -19,7 +19,7 @@ fn server_features_keep_working_offline() {
 
     // Log in: the app keeps the cookie and sends it from then on.
     assert_eq!(call(&phone, "GET", "/api/auth/check", Value::Null).0, 401);
-    ok(&phone, "POST", "/api/auth/login", json!({"username": "dionis", "password": "pw"}));
+    ok(&phone, "POST", "/api/auth/login", json!({"username": "alex", "password": "pw"}));
     assert_eq!(ok(&phone, "GET", "/api/auth/check", Value::Null)["authenticated"], true);
     assert_eq!(server.seen().last().unwrap().cookie.as_deref(), Some("session_id=abc"));
     let status = ok(&phone, "GET", "/api/app", Value::Null);
@@ -130,7 +130,7 @@ fn the_phone_on_its_own() {
     drop(phone);
     let phone = ankibase_engine::App::start(ankibase_engine::Config {
         dir: tmp.clone(), web: None, pages: None, default_server: Some("https://anki.example.com".into()),
-        version: "0".into(), build: "0".into(), update_feed: None,
+        version: "0".into(), build: "0".into(), update_feed: None, bundle_id: None,
     });
     let user = ok(&phone, "GET", "/api/auth/me", Value::Null);
     assert_eq!((user["accent_color"].clone(), user["language"].clone()), (json!("#3b82f6"), json!("de")));

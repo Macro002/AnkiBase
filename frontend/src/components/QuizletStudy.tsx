@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { sanitizeHtml } from '../sanitize';
 import { createPortal } from 'react-dom';
 import confetti from 'canvas-confetti';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
@@ -648,8 +649,8 @@ export function QuizletStudy() {
 
   useEffect(() => {
     if (!editingCard) return;
-    if (frontEditRef.current) frontEditRef.current.innerHTML = editingCard.front;
-    if (backEditRef.current) backEditRef.current.innerHTML = editingCard.back;
+    if (frontEditRef.current) frontEditRef.current.innerHTML = sanitizeHtml(editingCard.front);
+    if (backEditRef.current) backEditRef.current.innerHTML = sanitizeHtml(editingCard.back);
     setEditImageUrl(editingCard.image ?? '');
     setTimeout(() => frontEditRef.current?.focus(), 50);
   }, [editingCard?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -809,7 +810,7 @@ export function QuizletStudy() {
         {hasImage ? (
           <div className="flex-1 flex min-h-0">
             <div className="flex-1 flex items-center justify-center px-6 py-4 border-r border-(--bg-tertiary)">
-              <div className="text-2xl font-medium leading-snug text-center" dangerouslySetInnerHTML={{ __html: text ?? '' }} />
+              <div className="text-2xl font-medium leading-snug text-center" dangerouslySetInnerHTML={{ __html: sanitizeHtml(text) }} />
             </div>
             <div className="flex-1 p-4">
               <img src={current!.image!} alt="" className="w-full h-full object-contain rounded-lg"
@@ -818,7 +819,7 @@ export function QuizletStudy() {
           </div>
         ) : (
           <div className="flex-1 flex items-center justify-center px-6 py-4 min-h-0">
-            <div className="text-2xl font-medium leading-snug text-center w-full" dangerouslySetInnerHTML={{ __html: text ?? '' }} />
+            <div className="text-2xl font-medium leading-snug text-center w-full" dangerouslySetInnerHTML={{ __html: sanitizeHtml(text) }} />
           </div>
         )}
 
@@ -1071,7 +1072,7 @@ export function QuizletStudy() {
                       {/* Left: TERM */}
                       <div className="flex-1 flex flex-col p-3 border-r border-(--bg-tertiary)">
                         <span className="text-[10px] font-semibold uppercase tracking-wider text-(--text-secondary) mb-1.5">Term</span>
-                        <div className="text-sm font-medium leading-snug flex-1 flex items-center" dangerouslySetInnerHTML={{ __html: card.front }} />
+                        <div className="text-sm font-medium leading-snug flex-1 flex items-center" dangerouslySetInnerHTML={{ __html: sanitizeHtml(card.front) }} />
                       </div>
                       {/* Right: DEFINITION + image */}
                       <div className="flex-1 flex flex-col p-3 pr-16">
@@ -1082,7 +1083,7 @@ export function QuizletStudy() {
                           {status === 'learning' && <span className="text-[10px] font-semibold text-orange-400 ml-auto">Learning</span>}
                         </div>
                         <div className="flex-1 flex gap-2 min-h-0 items-center">
-                          <div className="text-sm leading-snug flex-1" dangerouslySetInnerHTML={{ __html: card.back }} />
+                          <div className="text-sm leading-snug flex-1" dangerouslySetInnerHTML={{ __html: sanitizeHtml(card.back) }} />
                           {card.image && !brokenImages.has(card.id) && (
                             <img
                               src={card.image} alt=""

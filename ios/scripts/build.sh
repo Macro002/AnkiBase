@@ -3,6 +3,8 @@
 # with xtool and the iOS SDK (`xtool sdk status`). The .ipa lands in dist/.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# This build's own settings: bundle id, default server, update feed (see local.env.example).
+if [ -f local.env ]; then set -a; . ./local.env; set +a; fi
 export PATH="$HOME/.local/bin:$HOME/.local/share/swiftly/bin:$HOME/.cargo/bin:$PATH"
 command -v xtool >/dev/null && command -v cargo >/dev/null && command -v npm >/dev/null && command -v rsvg-convert >/dev/null
 mkdir -p .build

@@ -41,16 +41,28 @@ run() { [ "$VERBOSE" -eq 1 ] && eval "$*" || eval "$* >/dev/null 2>&1"; }
 
 INSTALL_DIR="/opt/ankibase"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO="https://github.com/Macro002/AnkiBase.git"
+VERSION=""
+# An existing install is updated; a fresh one also gets the optional nginx setup.
+EXISTING=0
+[ -f "$INSTALL_DIR/backend/.env" ] && EXISTING=1
 
-# ── Update mode: pull latest code into a temp dir then continue ───────────────
+# ── Update mode: fetch the newest release (or main) into a temp dir, then continue ──
 if [ "$UPDATE" -eq 1 ]; then
-    step "Downloading latest AnkiBase..."
+    command -v git >/dev/null || run apt-get install -y -q git
+    CHANNEL=$(sed -n 's/^UPDATE_CHANNEL=//p' "$INSTALL_DIR/backend/.env" 2>/dev/null | tr -d '[:space:]')
+    if [ "$CHANNEL" != "main" ]; then
+        VERSION=$(git ls-remote --tags --refs "$REPO" 'v*' 2>/dev/null | sed 's|.*refs/tags/||' \
+                  | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
+    fi
+    step "Downloading AnkiBase ${VERSION:-(main)}..."
     TMP_DIR=$(mktemp -d)
     trap "rm -rf $TMP_DIR" EXIT
-    run git clone --depth 1 https://github.com/Macro002/AnkiBase.git "$TMP_DIR"
+    run git clone --depth 1 ${VERSION:+--branch "$VERSION"} "$REPO" "$TMP_DIR"
     SCRIPT_DIR="$TMP_DIR"
-    success "Latest code fetched"
+    success "Downloaded"
 fi
+[ -n "$VERSION" ] || VERSION=$(git -C "$SCRIPT_DIR" describe --tags --exact-match 2>/dev/null || git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null || echo unknown)
 
 echo ""
 echo "  ╔══════════════════════════════╗"
@@ -92,28 +104,42 @@ find_port() {
     done
     echo "$port"
 }
-APP_PORT=$(find_port)
+# An update keeps the port it has (a reverse proxy points at it).
+APP_PORT=$(sed -n 's/^APP_PORT=//p' "$INSTALL_DIR/backend/.env" 2>/dev/null | tr -d '[:space:]')
+[ -n "$APP_PORT" ] || APP_PORT=$(find_port)
 verbose "Using port $APP_PORT"
 
 # ── Build frontend ────────────────────────────────────────────────────────────
 step "Building frontend..."
 cd "$SCRIPT_DIR/frontend"
-run npm install
-run npm run build
+if [ -f package-lock.json ]; then run npm ci; else run npm install; fi
+run npm run build || error "The frontend didn't build (nothing was changed). Run with -v to see why."
 success "Frontend built"
 cd "$SCRIPT_DIR"
+
+# ── Back up (updates) ─────────────────────────────────────────────────────────
+if [ -d "$INSTALL_DIR/backend" ] && [ -f "$INSTALL_DIR/backend/.env" ]; then
+    BACKUP="$INSTALL_DIR/backups/$(date +%Y%m%d-%H%M%S)"
+    step "Backing up to $BACKUP..."
+    mkdir -p "$BACKUP"
+    rsync -a --exclude='venv' --exclude='__pycache__' "$INSTALL_DIR/backend" "$BACKUP/"
+    # Keep the last three backups.
+    ls -1d "$INSTALL_DIR"/backups/*/ 2>/dev/null | sort | head -n -3 | xargs -r rm -rf
+    success "Backed up"
+fi
 
 # ── Deploy files ──────────────────────────────────────────────────────────────
 step "Installing files..."
 mkdir -p "$INSTALL_DIR/backend"
 
+# Your data stays: the database, settings, secrets, saved keys and stories (data/).
 rsync -a \
     --exclude='__pycache__' --exclude='*.pyc' \
-    --exclude='venv' --exclude='.env' --exclude='*.db' \
-    --exclude='.credentials' --exclude='.api_keys.json' \
+    --exclude='venv' --exclude='.env' --exclude='*.db' --exclude='*.db-wal' --exclude='*.db-shm' \
+    --exclude='data' --exclude='.version' --exclude='static' \
     "$SCRIPT_DIR/backend/" "$INSTALL_DIR/backend/"
 
-rsync -a "$SCRIPT_DIR/frontend/dist/" "$INSTALL_DIR/backend/static/"
+rsync -a --delete "$SCRIPT_DIR/frontend/dist/" "$INSTALL_DIR/backend/static/"
 
 # ── Python virtualenv ─────────────────────────────────────────────────────────
 step "Setting up Python environment..."
@@ -130,19 +156,18 @@ if [ ! -f "$INSTALL_DIR/backend/.env" ]; then
     SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
     ENCRYPTION_KEY=$("$INSTALL_DIR/backend/venv/bin/python3" -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
 
-    cat > "$INSTALL_DIR/backend/.env" <<EOF
+    (umask 077; cat > "$INSTALL_DIR/backend/.env" <<EOF
 APP_SECRET_KEY=${SECRET_KEY}
 ANKIWEB_ENCRYPTION_KEY=${ENCRYPTION_KEY}
 APP_PORT=${APP_PORT}
 CORS_ORIGINS=http://localhost:${APP_PORT}
+UPDATE_CHANNEL=release
 EOF
+    )
     verbose "Config generated (.env)"
 else
-    if ! grep -q "APP_PORT=${APP_PORT}" "$INSTALL_DIR/backend/.env" 2>/dev/null; then
-        sed -i "s/^APP_PORT=.*/APP_PORT=${APP_PORT}/" "$INSTALL_DIR/backend/.env" 2>/dev/null || \
-            echo "APP_PORT=${APP_PORT}" >> "$INSTALL_DIR/backend/.env"
-    fi
-    warn "Existing .env kept (secrets preserved)"
+    chmod 600 "$INSTALL_DIR/backend/.env"
+    verbose "Existing .env kept (secrets preserved)"
 fi
 
 # ── Systemd service ───────────────────────────────────────────────────────────
@@ -185,21 +210,31 @@ else
     warn "Anki engine didn't start — check: journalctl -u ankibase-anki -n 30"
 fi
 
-# Kill any stale process on the port before starting
-STALE_PID=$(ss -tlnp 2>/dev/null | grep ":${APP_PORT} " | grep -oP 'pid=\K[0-9]+' | head -1)
-[ -n "$STALE_PID" ] && kill "$STALE_PID" 2>/dev/null && sleep 1
+# The version, for the in-app update check.
+echo "$VERSION" > "$INSTALL_DIR/backend/.version"
 
 systemctl restart ankibase
-sleep 2
-
-if systemctl is-active --quiet ankibase; then
-    success "AnkiBase started"
+STARTED=0
+for _ in $(seq 1 30); do
+    sleep 2
+    if curl -fsS "http://127.0.0.1:${APP_PORT}/api/setup/status" >/dev/null 2>&1; then STARTED=1; break; fi
+done
+if [ "$STARTED" -eq 1 ]; then
+    success "AnkiBase ${VERSION} is running"
+elif [ -n "${BACKUP:-}" ]; then
+    warn "The new version didn't start — restoring the backup (journalctl -u ankibase -n 50 shows why)"
+    rsync -a --exclude='venv' "$BACKUP/backend/" "$INSTALL_DIR/backend/"
+    systemctl restart ankibase
+    exit 1
 else
-    warn "Service may have failed — check: journalctl -u ankibase -n 30"
+    warn "AnkiBase didn't start — check: journalctl -u ankibase -n 50"
 fi
 
-# Write version (git commit SHA) for in-app update checks
-git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null > "$INSTALL_DIR/backend/.version" || true
+if [ "$EXISTING" -eq 1 ]; then
+    echo ""
+    success "Updated to ${VERSION}"
+    exit 0
+fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 SERVER_IP=$(hostname -I | awk '{print $1}')
@@ -212,7 +247,7 @@ echo ""
 
 # ── Nginx (optional) ─────────────────────────────────────────────────────────
 echo -n "  Set up nginx reverse proxy? [y/N] "
-read -r SETUP_NGINX
+read -r SETUP_NGINX < /dev/tty 2>/dev/null || SETUP_NGINX=""
 echo ""
 
 if [[ "$SETUP_NGINX" =~ ^[Yy]$ ]]; then
@@ -220,7 +255,7 @@ if [[ "$SETUP_NGINX" =~ ^[Yy]$ ]]; then
     run apt-get install -y -q nginx
 
     echo -n "  Domain name (leave empty to skip): "
-    read -r DOMAIN
+    read -r DOMAIN < /dev/tty 2>/dev/null || DOMAIN=""
     echo ""
 
     NGINX_SERVER="${DOMAIN:-$SERVER_IP}"
@@ -263,7 +298,7 @@ EOF
 
     if [ -n "$DOMAIN" ]; then
         echo -n "  Set up SSL with Certbot? [y/N] "
-        read -r SETUP_SSL
+        read -r SETUP_SSL < /dev/tty 2>/dev/null || SETUP_SSL=""
         echo ""
 
         if [[ "$SETUP_SSL" =~ ^[Yy]$ ]]; then

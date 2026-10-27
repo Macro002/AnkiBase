@@ -11,6 +11,7 @@ anthropic==0.125.0
 cryptography==44.0.0
 requests==2.32.3
 bcrypt==4.2.1
-invisible-playwright @ git+https://github.com/feder-cr/invisible_playwright.git
+# Pinned to a commit: it installs from git, so an unpinned line would take whatever is pushed.
+invisible-playwright @ git+https://github.com/feder-cr/invisible_playwright.git@00ad6d702fcd22d87404a40f444009f6683013a8
 xvfbwrapper==0.2.23
 beautifulsoup4==4.12.3

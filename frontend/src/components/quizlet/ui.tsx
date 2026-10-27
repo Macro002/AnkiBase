@@ -1,4 +1,5 @@
 import { useCallback, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { sanitizeHtml } from '../../sanitize';
 import { createPortal } from 'react-dom';
 import { X, Minus, Plus, ChevronLeft, ChevronRight } from 'lucide-react';
 import { ACCENT_CHARS } from './shared';
@@ -203,5 +204,5 @@ export function AccentBar({ inputRef, onInsert }: { inputRef: RefObject<HTMLInpu
 }
 
 export function Html({ html, className }: { html: string; className?: string }) {
-  return <div className={className} dangerouslySetInnerHTML={{ __html: html }} />;
+  return <div className={className} dangerouslySetInnerHTML={{ __html: sanitizeHtml(html) }} />;
 }

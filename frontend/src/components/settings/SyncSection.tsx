@@ -203,7 +203,7 @@ export function SyncSection({ admin = false }: { admin?: boolean }) {
             {target === 'own' && (
               <div className="space-y-1.5">
                 <input value={endpoint} onChange={e => setEndpoint(e.target.value)} className="input w-full"
-                  placeholder="http://192.168.1.20:8080/" inputMode="url" autoCapitalize="off" autoCorrect="off" spellCheck={false}
+                  placeholder="https://sync.example.com/" inputMode="url" autoCapitalize="off" autoCorrect="off" spellCheck={false}
                   aria-label="Sync server address" />
                 <p className="text-xs text-(--text-secondary) leading-relaxed">
                   Anki’s own sync server (<code>python -m anki.syncserver</code> or <code>anki-sync-server</code>) —

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { X, RefreshCw, Loader2, Copy, Check } from 'lucide-react';
-import { update, streamEvents } from '../api';
+import { update } from '../api';
 
 interface UpdateModalProps {
   isOpen: boolean;
@@ -51,7 +51,7 @@ export function UpdateModal({ isOpen, onClose }: UpdateModalProps) {
     let reached = 0;
     const reloadSoon = (ms: number) => setTimeout(() => { window.location.reload(); }, ms);
 
-    streamEvents(update.applyUrl(), (event) => {
+    update.apply((event) => {
       const data = event as ProgressEvent;
       if (data.progress !== undefined) { setProgress(data.progress); reached = data.progress; }
       if (data.type === 'step' || data.type === 'log') {
@@ -99,8 +99,9 @@ export function UpdateModal({ isOpen, onClose }: UpdateModalProps) {
         {!started ? (
           <div className="space-y-4">
             <p className="text-(--text-secondary) text-sm">
-              A new version is available. This will download the latest code, rebuild
-              the frontend, and restart the service. Takes about 1–2 minutes.
+              A new version is available. AnkiBase downloads and checks it, backs up your data,
+              installs it and restarts — and goes back to this version if the new one doesn't start.
+              Takes a couple of minutes.
             </p>
             <div className="flex gap-3">
               <button className="btn btn-primary flex-1" onClick={startUpdate}>

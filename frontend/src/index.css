@@ -574,3 +574,7 @@ html.native label {
 @media (max-width: 639px) {
   .answer-bar { padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px)); }
 }
+
+.sheet-safe-bottom {
+  padding-bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
+}

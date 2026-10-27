@@ -8,8 +8,8 @@
 <key>UILaunchScreen</key><dict><key>UIColorName</key><string></string></dict>
 <key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string></array>
 <key>UIStatusBarStyle</key><string>UIStatusBarStyleLightContent</string>
-<key>AnkiBaseServer</key><string>https://anki.macr0.dev</string>
-<key>AnkiBaseUpdateFeed</key><string>https://watch.macr0.dev/static/ios/ankibase-source.json</string>
+<key>AnkiBaseServer</key><string></string>
+<key>AnkiBaseUpdateFeed</key><string></string>
 <key>UIViewControllerBasedStatusBarAppearance</key><true/>
 <key>ITSAppUsesNonExemptEncryption</key><false/>
 </dict></plist>

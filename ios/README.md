@@ -41,6 +41,16 @@ The script cross-compiles the engine for `aarch64-apple-ios` with the SDK's head
 builds `../frontend`, copies it into the app and packages it. Bump `CFBundleVersion` in
 `Info.plist` for every build you hand out.
 
+## Publish
+
+```sh
+scripts/publish.py "What changed"   # after build.sh; bump CFBundleVersion first
+```
+
+Uploads the .ipa to `ssh watch` and lists it in the SideStore sources
+https://watch.macr0.dev/static/ios/source.json (shared with the other apps) and
+https://watch.macr0.dev/static/ios/ankibase-source.json (AnkiBase only).
+
 ## Develop without a phone
 
 `engine/examples/emulate.rs` is the app on a computer, routing exactly like the phone,

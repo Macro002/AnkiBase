@@ -128,7 +128,8 @@
       "server": "Server",
       "account": "Account",
       "ai": "AI",
-      "users": "Users"
+      "users": "Users",
+      "focus": "Focus"
     }
   },
   "syncConflict": {

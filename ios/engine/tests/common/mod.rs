@@ -20,6 +20,11 @@ pub fn temp_dir(name: &str) -> PathBuf {
 }
 
 pub fn app(dir: &Path, server: Option<&str>) -> App {
+    app_with(dir, server, None)
+}
+
+/// The app with the focus lock's folder (as on an iPhone).
+pub fn app_with(dir: &Path, server: Option<&str>, focus_dir: Option<PathBuf>) -> App {
     let web = dir.join("web");
     std::fs::create_dir_all(web.join("assets")).unwrap();
     std::fs::write(web.join("index.html"), "<!doctype html><title>AnkiBase</title>").unwrap();
@@ -36,7 +41,7 @@ pub fn app(dir: &Path, server: Option<&str>) -> App {
         default_server: server.map(String::from),
         version: "0.2.0".into(),
         build: "2".into(),
-        update_feed: None, bundle_id: None, media_token: None,
+        update_feed: None, bundle_id: None, media_token: None, focus_dir,
     })
 }
 

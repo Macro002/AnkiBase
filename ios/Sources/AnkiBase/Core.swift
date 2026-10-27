@@ -7,6 +7,11 @@ enum Core {
     /// The collection, its media, the sync login and the app's settings live here.
     static let directory: URL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
 
+    /// The focus lock's day files: in Documents, which the Files app (and so Shortcuts) can
+    /// read as On My iPhone › AnkiBase › Focus.
+    static let focusDirectory: URL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("Focus", isDirectory: true)
+
     /// Set when the core couldn't start.
     nonisolated(unsafe) private(set) static var startError: String?
 
@@ -21,6 +26,7 @@ enum Core {
             "build": info["CFBundleVersion"] as? String ?? "",
             "update_feed": info["AnkiBaseUpdateFeed"] as? String,
             "bundle_id": Bundle.main.bundleIdentifier,
+            "focus_dir": focusDirectory.path,
         ]
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let json = (try? JSONSerialization.data(withJSONObject: config.compactMapValues { $0 })) ?? Data("{}".utf8)

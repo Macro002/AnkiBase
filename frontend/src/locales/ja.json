@@ -128,7 +128,8 @@
       "server": "サーバー",
       "account": "アカウント",
       "ai": "AI",
-      "users": "ユーザー"
+      "users": "ユーザー",
+      "focus": "集中"
     }
   },
   "syncConflict": {

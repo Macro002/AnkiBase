@@ -38,6 +38,8 @@ fn main() {
         version: "dev".into(),
         build: "0".into(),
         update_feed: None, bundle_id: None, media_token: None,
+        // --focus DIR: the iPhone's focus lock folder.
+        focus_dir: args.get("focus").map(Into::into),
     }));
     let listener = TcpListener::bind(("127.0.0.1", port)).unwrap();
     // --token: like the Android app, only a browser that opened /__start?token=… gets in.
@@ -78,7 +80,7 @@ fn seed(base: &Path, endpoint: &str) {
         default_server: None,
         version: "dev".into(),
         build: "0".into(),
-        update_feed: None, bundle_id: None, media_token: None,
+        update_feed: None, bundle_id: None, media_token: None, focus_dir: None,
     });
     let call = |method: &str, target: &str, body: Value| {
         let mut collect = Collect::default();

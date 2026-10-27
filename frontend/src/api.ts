@@ -209,6 +209,8 @@ export interface ReviewCard {
 export interface ReviewState {
   card: ReviewCard | null; counts: { new: number; learn: number; review: number };
   mode: 'reviewer' | 'legacy'; media_token: string;
+  /** Focus lock: answers sooner than this after the card appears are refused. */
+  min_answer_ms?: number;
 }
 export const review = {
   current: (deck: string) => fetchAPI<ReviewState>('/review/current', { method: 'POST', body: JSON.stringify({ deck }) }),

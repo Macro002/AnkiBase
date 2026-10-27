@@ -56,6 +56,15 @@ function Reviewer({ deckId }: { deckId: number }) {
   useEffect(() => { if (deck) load(deck); }, [deck, load]);
 
   const card = state?.card ?? null;
+  // Focus lock's time per card: the answer buttons wait until the card has been up long enough.
+  const minMs = state?.min_answer_ms ?? 0;
+  const [waiting, setWaiting] = useState(false);
+  useEffect(() => {
+    if (!card || minMs <= 0) { setWaiting(false); return; }
+    setWaiting(true);
+    const timer = setTimeout(() => setWaiting(false), minMs + 150);
+    return () => clearTimeout(timer);
+  }, [card, minMs]);
   const sounds = useMemo(() => (card ? cardSounds(card) : []), [card]);
   const qSoundCount = useMemo(() => {
     if (!card) return 0;
@@ -92,7 +101,7 @@ function Reviewer({ deckId }: { deckId: number }) {
   }, [card, revealed, playQueue, sounds, qSoundCount]);
 
   const answer = useCallback(async (ease: number) => {
-    if (!card || !deck || !revealed || busy) return;
+    if (!card || !deck || !revealed || busy || waiting) return;
     setBusy(true);
     setFlash(ease);
     stopAudio();
@@ -102,12 +111,13 @@ function Reviewer({ deckId }: { deckId: number }) {
       setState(next);
       setRevealed(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not save the answer');
+      // Too quick for the focus lock: the card stays; try again in a moment.
+      if (!(e instanceof Error && e.message.startsWith('Too quick'))) setError(e instanceof Error ? e.message : 'Could not save the answer');
     } finally {
       setBusy(false);
       setTimeout(() => setFlash(null), 250);
     }
-  }, [card, deck, revealed, busy]);
+  }, [card, deck, revealed, busy, waiting]);
 
   const undo = useCallback(async () => {
     if (!deck || busy || reviewed === 0) return;
@@ -240,7 +250,7 @@ function Reviewer({ deckId }: { deckId: number }) {
             {card.buttons.map((ease, i) => {
               const b = BUTTONS[ease] ?? BUTTONS[3];
               return (
-                <button key={ease} onClick={() => answer(ease)} disabled={busy}
+                <button key={ease} onClick={() => answer(ease)} disabled={busy || waiting}
                   className="answer-btn h-14 rounded-xl flex flex-col items-center justify-center gap-0.5 font-semibold text-sm active:scale-[0.97] transition disabled:opacity-60"
                   style={{ '--btn': b.color } as React.CSSProperties}>
                   <span className="answer-btn-label">{b.label}</span>

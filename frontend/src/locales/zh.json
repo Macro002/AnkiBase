@@ -128,7 +128,8 @@
       "server": "服务器",
       "account": "账户",
       "ai": "AI",
-      "users": "用户"
+      "users": "用户",
+      "focus": "专注"
     }
   },
   "syncConflict": {

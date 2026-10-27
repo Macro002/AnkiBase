@@ -19,9 +19,9 @@ AnkiBase is a self-hosted web app for language learners. It runs your **real Ank
 
 <div align="center">
   <a href="https://github.com/Macro002/AnkiBase/blob/main/docs/public/media/ankibase-demo.mp4">
-    <img src="docs/public/media/demo-preview.webp" alt="AnkiBase demo: study, Quizlet modes, AI stories, stats, themes and mobile" width="100%">
+    <img src="docs/public/media/demo-preview.webp" alt="Play the AnkiBase demo: study, Quizlet modes, AI stories, stats, themes and mobile" width="100%">
   </a>
-  <sub>Click for the full 1080p video (46 s).</sub>
+  <sub>▶ Click to watch the 1080p demo (46 s).</sub>
 </div>
 
 ## ✨ Features
@@ -33,7 +33,7 @@ AnkiBase is a self-hosted web app for language learners. It runs your **real Ank
 - **Anki's own reviewer:** card order, daily limits, learning steps and burying all come from Anki itself. Each card takes about one fast call, so studying stays quick on big collections.
 - **Every note type renders properly:** your templates' HTML and CSS run in a sandboxed frame with night mode (and day mode on light themes), images, audio buttons, cloze, type-in answers, MathJax and card scripts.
 - Keyboard first: <kbd>Space</kbd> reveals, <kbd>1</kbd>–<kbd>4</kbd> answer, <kbd>Ctrl</kbd>+<kbd>Z</kbd> undoes, <kbd>R</kbd> replays audio. The answer buttons show the next intervals.
-- Two-way **AnkiWeb sync** with a conflict picker, `.apkg` import, and deck management.
+- Two-way sync with **AnkiWeb or your own sync server** (Settings → Sync), a conflict picker, `.apkg` import, and deck management.
 
 ### 🧩 Quizlet sets, fully playable
 
@@ -72,11 +72,13 @@ A calendar heatmap, reviews over time, future due, card counts, intervals, ease,
 
 Nine built-in themes, custom accent and base colours with a live preview, and theme import/export. Admins can set the server-wide default. Sliders, toggles and panels move with springy, velocity-aware motion.
 
-### 📱 Feels native on your phone
+### 📱 An iPhone app that works offline
 
-<img src="docs/public/media/phones.webp" alt="AnkiBase on phones" width="100%">
+<img src="docs/public/media/phones.webp" alt="The AnkiBase iPhone app: decks, studying and stats" width="100%">
 
-Bottom tab bar, safe-area aware layouts, large touch targets and a full-width answer bar.
+The [iPhone app](ios/) runs **Anki's own engine on the phone**: decks, studying, search, editing, `.apkg` import, stats and Anki's Deck Options all work with no connection at all. It only needs the internet to sync, with AnkiWeb or your own sync server, and to reach your AnkiBase server for stories, AI and Quizlet, which it can also do without. What you opened from the server stays readable offline, and progress saved offline is sent when you're back.
+
+It's built to feel like an app rather than a web page: no zooming or bouncing, the layout clears the Dynamic Island and home indicator, the answer buttons sit under your thumb, and the status bar and home screen icon follow your theme. Build it on Linux or a Mac (see [`ios/`](ios/)) and install it with SideStore or AltStore.
 
 ### 🏠 Built to self-host
 

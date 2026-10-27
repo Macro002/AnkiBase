@@ -11,13 +11,14 @@ Playwright (headless Chromium) and encoded with ffmpeg, the same technique as
 | `media.html` | README boards: hero / social preview, framed screenshots, themes, phones, architecture |
 | `render.py` | renders the video: `python3 render.py . 60 out/ankibase-demo.mp4` |
 | `frames.py` | stills for checking timing: `python3 frames.py . 2.5,8,14 prev` |
-| `media.py` | renders every board to WebP in `media/` |
+| `media.py` | renders every board to WebP in `media/` (full 2x, so they stay sharp on GitHub) |
+| `poster.py` | the README's video poster: a still with a play button (`python3 poster.py . 9.5 media/demo-poster.webp`, published as `demo-preview.webp`) |
 | `fonts/` | Inter, Instrument Serif and JetBrains Mono (SIL OFL) |
 
 Both pages read app screenshots from `shots/` (git-ignored), taken from a demo instance at
-1280×800 @2x (desktop) and 390×844 @3x (phone): `study-q`, `study`, `quizlet-learn`, `quizlet-match`,
+1280×800 @2x (desktop) and 393×852 @3x (phone, taken in the iPhone app's emulator with the iPhone's safe areas: 59 px top, 34 px bottom): `study-q`, `study`, `quizlet-learn`, `quizlet-match`,
 `story`, `reading-plain`, `reading`, `stats` (full page), `decks`, `search`, `settings`, `study-hub`,
-`theme-study-<theme>`, `theme-decks-<theme>`, `m-study`, `m-reading`, `m-learn`.
+`theme-study-<theme>`, `theme-decks-<theme>`, `m-decks`, `m-study`, `m-stats`.
 
 Requirements: Python 3 with `playwright` (+ `playwright install chromium`), Pillow, and ffmpeg.
 Copy the results to `docs/public/media/`.

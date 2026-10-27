@@ -16,9 +16,8 @@ with sync_playwright() as p:
         im = Image.open(png)
         if name == "shot-stats":  # very tall: keep the top part
             im = im.crop((0, 0, im.width, int(im.width * 1.05)))
-        if name != "hero":
-            im = im.resize((im.width * 3 // 4, im.height * 3 // 4), Image.LANCZOS)
-        im.save(f"{O}/{name}.webp", "WEBP", quality=86, method=6)
+        # Full 2x: GitHub shows README images ~900 px wide, so 2x stays sharp on any screen.
+        im.save(f"{O}/{name}.webp", "WEBP", quality=92, method=6)
         if name == "hero": im.convert("RGB").save(f"{O}/social-preview.png", optimize=True)
         print(name, im.size)
     br.close()

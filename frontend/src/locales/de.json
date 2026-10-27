@@ -94,7 +94,8 @@
     "deleteDeck": "Deck löschen",
     "deleteConfirm": "Sind Sie sicher, dass Sie dieses Deck löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.",
     "deleting": "Wird gelöscht...",
-    "renaming": "Wird umbenannt..."
+    "renaming": "Wird umbenannt...",
+    "options": "Optionen"
   },
   "study": {
     "title": "Lernen",

@@ -94,7 +94,8 @@
     "deleteDeck": "Delete Deck",
     "deleteConfirm": "Are you sure you want to delete this deck? This action cannot be undone.",
     "deleting": "Deleting...",
-    "renaming": "Renaming..."
+    "renaming": "Renaming...",
+    "options": "Options"
   },
   "study": {
     "title": "Study",

@@ -35,6 +35,8 @@ ENV_FILE = DATA_DIR / ".env"
 VENV = DATA_DIR / ".venv"
 REQUIREMENTS = BACKEND_DIR / "engine-requirements.txt"
 RESTART_MARKER = VENV / ".restart"
+PAGES_DIR = DATA_DIR / ".pages"  # Anki's Statistics/Deck Options pages (anki-cli downloads them)
+PAGES_PREFIX = "/anki-pages"  # where AnkiBase serves them (main.py proxies to the engine)
 
 # What the engine is doing, for friendly errors while it starts: "starting", "installing",
 # "migrating", "ready" or "failed: …".
@@ -151,6 +153,7 @@ After=network.target
 [Service]
 Type=simple
 EnvironmentFile={ENV_FILE}
+Environment=ANKICLI_PAGES_DIR={PAGES_DIR}
 ExecStart={command}
 Restart=always
 RestartSec=2
@@ -199,11 +202,23 @@ def ensure_running() -> bool:
     if healthy():
         return True
     if _child is None or _child.poll() is not None:
-        env = {**os.environ, "ANKICLI_API_KEY": api_key()}
+        env = {**os.environ, "ANKICLI_API_KEY": api_key(), "ANKICLI_PAGES_DIR": str(PAGES_DIR)}
         _child = subprocess.Popen(_command(), env=env)
     ok = _wait(30)
     print(f"{'✓' if ok else '✗'} Anki engine (anki-cli) {'running' if ok else 'did not start'} at {URL}")
     return ok
+
+
+def install_pages() -> bool:
+    """Fetch Anki's pages ahead of time, so the first Statistics/Deck Options view is quick."""
+    if (PAGES_DIR / "index.html").exists():
+        return True
+    result = subprocess.run([engine_python(), "-m", "ankicli", "pages", "install"], capture_output=True, text=True,
+                            timeout=300, env={**os.environ, "ANKICLI_PAGES_DIR": str(PAGES_DIR)})
+    if result.returncode != 0:
+        print("✗ Couldn't fetch Anki's pages (they'll be fetched on first use): "
+              + (result.stderr or result.stdout)[-500:])
+    return result.returncode == 0
 
 
 def stop_child() -> None:

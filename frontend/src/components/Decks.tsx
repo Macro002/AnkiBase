@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { BookOpen, Clock, Plus, Pencil, Trash2, ChevronRight, FolderOpen, X, ExternalLink, TrendingUp, Star, Layers } from 'lucide-react';
+import { BookOpen, Clock, Plus, Pencil, Trash2, ChevronRight, FolderOpen, X, ExternalLink, TrendingUp, Star, Layers, SlidersHorizontal } from 'lucide-react';
+import { AnkiPageModal } from './AnkiPage';
 import { decks, quizlet, type DeckStats, type QuizletDeck } from '../api';
 import { Heatmap } from './Heatmap';
 
@@ -23,6 +24,7 @@ export function Decks() {
   const [error, setError] = useState('');
   const [currentPath, setCurrentPath] = useState<string[]>([]);
   const [renameModal, setRenameModal] = useState<{ deck: DeckInfo; newName: string } | null>(null);
+  const [optionsDeck, setOptionsDeck] = useState<DeckInfo | null>(null);
   const [deleteModal, setDeleteModal] = useState<DeckInfo | null>(null);
   const [quizletRenameModal, setQuizletRenameModal] = useState<{ deck: QuizletDeck; newName: string } | null>(null);
   const [quizletDeleteModal, setQuizletDeleteModal] = useState<QuizletDeck | null>(null);
@@ -281,6 +283,16 @@ export function Decks() {
               <button
                 onClick={(e) => {
                   e.stopPropagation();
+                  setOptionsDeck(deck);
+                }}
+                className="icon-btn"
+                title={t('decks.options')}
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
                   setRenameModal({ deck, newName: deck.displayName });
                 }}
                 className="icon-btn"
@@ -302,7 +314,7 @@ export function Decks() {
 
             {/* Deck name with tooltip */}
             <h3
-              className="font-semibold text-lg mb-3 truncate pr-8 group-hover-accent transition-colors"
+              className="font-semibold text-lg mb-3 truncate pr-24 group-hover-accent transition-colors"
               title={deck.name}
             >
               {deck.displayName}
@@ -447,6 +459,15 @@ export function Decks() {
             </div>
           )}
         </div>
+      )}
+
+      {optionsDeck && (
+        <AnkiPageModal
+          title={`${t('decks.options')}: ${optionsDeck.displayName}`}
+          path={`deck-options/${optionsDeck.id}`}
+          onClose={() => setOptionsDeck(null)}
+          onSaved={loadDecks}
+        />
       )}
 
       {/* Quizlet Rename Modal */}

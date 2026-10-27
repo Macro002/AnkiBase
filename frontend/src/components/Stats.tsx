@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { RefreshCw, AlertTriangle, ChevronDown } from 'lucide-react';
+import { RefreshCw, AlertTriangle, ChevronDown, BarChart3 } from 'lucide-react';
+import { AnkiPageModal } from './AnkiPage';
 import { decks, quizlet as quizletApi, stats, type StatsOverview, type StatsPeriod } from '../api';
 import { Segmented } from './quizlet/ui';
 import {
@@ -27,6 +28,8 @@ function loadFilters(): Filters {
 export function Stats() {
   const [filters, setFilters] = useState<Filters>(loadFilters);
   const [ankiDecks, setAnkiDecks] = useState<string[]>([]);
+  const [deckIds, setDeckIds] = useState<Record<string, number>>({});
+  const [ankiStats, setAnkiStats] = useState(false);
   const [quizletSets, setQuizletSets] = useState<{ id: number; title: string }[]>([]);
   const [data, setData] = useState<StatsOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -37,7 +40,10 @@ export function Stats() {
   const loading = loadedKey !== requestKey;
 
   useEffect(() => {
-    decks.list().then(d => setAnkiDecks(Object.keys(d.decks).sort((a, b) => a.localeCompare(b)))).catch(() => {});
+    decks.list().then(d => {
+      setAnkiDecks(Object.keys(d.decks).sort((a, b) => a.localeCompare(b)));
+      setDeckIds(d.decks);
+    }).catch(() => {});
     quizletApi.listDecks().then(d => setQuizletSets(d.decks.map(x => ({ id: x.id, title: x.title })))).catch(() => {});
   }, []);
 
@@ -63,12 +69,24 @@ export function Stats() {
 
   return (
     <div className="space-y-4 pb-8">
+      {ankiStats && (() => {
+        const deckId = filters.scope.startsWith('a:') ? deckIds[filters.scope.slice(2)] : undefined;
+        return <AnkiPageModal title="Anki's statistics" path={deckId ? `graphs?deck=${deckId}` : 'graphs?search='}
+          onClose={() => setAnkiStats(false)} />;
+      })()}
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-xl font-bold">Statistics</h2>
-        <button onClick={() => setRefreshTick(t => t + 1)} title="Refresh" disabled={loading}
-          className="w-9 h-9 rounded-lg bg-(--bg-tertiary) flex items-center justify-center text-(--text-secondary) hover:text-white transition-colors">
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setAnkiStats(true)} title="The Statistics screen of Anki Desktop"
+            className="h-9 px-3 rounded-lg bg-(--bg-tertiary) flex items-center gap-2 text-sm text-(--text-secondary) hover:text-white transition-colors">
+            <BarChart3 className="w-4 h-4" />
+            Anki's statistics
+          </button>
+          <button onClick={() => setRefreshTick(t => t + 1)} title="Refresh" disabled={loading}
+            className="w-9 h-9 rounded-lg bg-(--bg-tertiary) flex items-center justify-center text-(--text-secondary) hover:text-white transition-colors">
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
       </div>
 
       {/* One filter row; everything below follows it. */}

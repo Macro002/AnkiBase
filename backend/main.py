@@ -83,6 +83,10 @@ def _start_anki_engine() -> None:
         anki_server.status = "failed: the engine did not start (journalctl -u ankibase-anki)"
         return
     anki_server.status = "ready"
+    try:
+        anki_server.install_pages()
+    except Exception as e:
+        print(f"✗ Couldn't fetch Anki's pages: {e}")
     # Accounts that only had an encrypted AnkiWeb password (no key in Anki's profile yet):
     # log in once, then the password isn't needed any more.
     for account in get_all_accounts():
@@ -2171,6 +2175,27 @@ async def restart_account_endpoint(account_id: int, _: str = Depends(require_aut
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# Anki's own pages (Statistics, Deck Options, Card Info), served by anki-cli for the active
+# account. Same origin as the app, so they load in an iframe with the normal login cookie.
+@app.api_route(anki_server.PAGES_PREFIX + "/{path:path}", methods=["GET", "POST"])
+async def anki_pages(path: str, request: Request, client: AnkiConnectClient = Depends(get_anki_client),
+                     _: dict = Depends(require_auth)):
+    import httpx
+    target = client.url.rstrip("/") + "/pages/" + path
+    headers = {"Authorization": f"Bearer {anki_server.api_key()}", "X-Forwarded-Prefix": anki_server.PAGES_PREFIX}
+    if request.headers.get("content-type"):
+        headers["Content-Type"] = request.headers["content-type"]
+    try:
+        # Optimizing FSRS parameters on a big collection takes minutes.
+        async with httpx.AsyncClient(timeout=httpx.Timeout(900, connect=5)) as http:
+            reply = await http.request(request.method, target, params=request.query_params, headers=headers,
+                                       content=await request.body() if request.method == "POST" else None)
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"The Anki engine didn't answer: {e}")
+    passed = {k: v for k, v in reply.headers.items() if k.lower() in ("content-type", "cache-control")}
+    return Response(content=reply.content, status_code=reply.status_code, headers=passed)
 
 
 # AnkiWeb login endpoints (the sync key is kept by anki-cli, per account)

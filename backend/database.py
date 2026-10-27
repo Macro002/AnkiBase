@@ -2,7 +2,6 @@ import sqlite3
 import json
 import os
 import time
-from datetime import datetime
 from typing import Optional
 from contextlib import contextmanager
 import bcrypt
@@ -417,7 +416,7 @@ def migrate_to_per_account_data():
                     with open(account_api_keys_path, 'w') as f:
                         json.dump(new_keys, f, indent=2)
 
-                    print(f"Successfully migrated API keys")
+                    print("Successfully migrated API keys")
 
                 # Backup old API keys file
                 backup_path = old_api_keys_path + ".backup"

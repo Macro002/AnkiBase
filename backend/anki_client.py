@@ -183,10 +183,6 @@ class AnkiConnectClient:
         """Delete decks and their cards."""
         return await self.request("deleteDecks", decks=deck_names, cardsToo=True)
 
-    async def create_deck(self, deck_name: str) -> int:
-        """Create a new deck."""
-        return await self.request("createDeck", deck=deck_name)
-
     async def change_deck(self, card_ids: list[int], deck_name: str) -> None:
         """Move cards to a different deck."""
         return await self.request("changeDeck", cards=card_ids, deck=deck_name)

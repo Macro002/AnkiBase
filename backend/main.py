@@ -6,7 +6,6 @@ from pydantic import BaseModel
 from typing import Optional
 import secrets
 import os
-import json
 import tempfile
 import shutil
 from pathlib import Path
@@ -744,7 +743,7 @@ async def review_current(request: ReviewRequest, client: AnkiConnectClient = Dep
             out = await review.legacy_next(client, request.deck)
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
-    out["media_token"] = review.media_token(security.signing_key(), user["user_id"])
+    out["media_token"] = review.media_token(security.signing_key(), user["user_id"], (get_active_account() or {}).get("id", 0))
     return out
 
 
@@ -764,7 +763,7 @@ async def review_answer(request: ReviewRequest, client: AnkiConnectClient = Depe
             out = await review.legacy_next(client, request.deck)
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
-    out["media_token"] = review.media_token(security.signing_key(), user["user_id"])
+    out["media_token"] = review.media_token(security.signing_key(), user["user_id"], (get_active_account() or {}).get("id", 0))
     return out
 
 
@@ -776,12 +775,12 @@ async def review_undo(request: ReviewRequest, client: AnkiConnectClient = Depend
         out = await review.undo(client, request.deck)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    out["media_token"] = review.media_token(security.signing_key(), user["user_id"])
+    out["media_token"] = review.media_token(security.signing_key(), user["user_id"], (get_active_account() or {}).get("id", 0))
     return out
 
 
 @app.get("/api/media-file/{filename:path}")
-async def media_file(filename: str, t: str = "", client: AnkiConnectClient = Depends(get_anki_client)):
+async def media_file(filename: str, t: str = ""):
     """
     A collection media file as a real (cacheable) file. Authorised by a signed token rather
     than the session cookie, because cards render in a sandboxed frame without cookies.
@@ -789,8 +788,15 @@ async def media_file(filename: str, t: str = "", client: AnkiConnectClient = Dep
     import mimetypes
     import review
     from fastapi.responses import Response
-    if not review.check_media_token(security.signing_key(), t):
+    signed = review.check_media_token(security.signing_key(), t)
+    if not signed:
         raise HTTPException(status_code=401, detail="Invalid media token")
+    # The token's profile, if its user may still use it.
+    from database import get_user_accessible_containers
+    profile = next((p for p in get_user_accessible_containers(signed[0]) if p["id"] == signed[1]), None)
+    if profile is None:
+        raise HTTPException(status_code=403, detail="No access to this profile")
+    client = AnkiConnectClient(anki_server.profile_url(profile["container_name"]), anki_server.api_key())
     if "/" in filename or "\\" in filename or filename.startswith("."):
         raise HTTPException(status_code=400, detail="Invalid file name")
     data = await client.retrieve_media_file(filename)
@@ -1460,7 +1466,7 @@ async def get_provider_models_endpoint(provider: str, _: str = Depends(require_a
                 ]
                 return {"models": models, "default_model": "gemini-2.0-flash"}
 
-    except httpx.HTTPError as e:
+    except httpx.HTTPError:
         # Fallback to hardcoded models on error
         return {
             "models": PROVIDERS[provider]["models"],

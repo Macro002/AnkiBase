@@ -133,22 +133,24 @@ async def legacy_next(client, deck: str) -> dict:
 MEDIA_TTL = 12 * 3600
 
 
-def media_token(secret: str, user_id: int) -> str:
-    """Token for <img src> inside the sandboxed card frame, which can't send the session cookie."""
+def media_token(secret: str, user_id: int, profile_id: int) -> str:
+    """Token for <img src> inside the sandboxed card frame, which can't send the session
+    cookie: who asked, and for which of their profiles."""
     exp = int(time.time()) + MEDIA_TTL
-    sig = hmac.new(secret.encode(), f"{user_id}:{exp}".encode(), hashlib.sha256).hexdigest()[:32]
-    return f"{user_id}.{exp}.{sig}"
+    sig = hmac.new(secret.encode(), f"{user_id}:{profile_id}:{exp}".encode(), hashlib.sha256).hexdigest()[:32]
+    return f"{user_id}.{profile_id}.{exp}.{sig}"
 
 
-def check_media_token(secret: str, token: str) -> bool:
+def check_media_token(secret: str, token: str) -> tuple[int, int] | None:
+    """(user id, profile id) of a valid token."""
     try:
-        uid, exp, sig = token.split(".")
+        uid, pid, exp, sig = token.split(".")
         if int(exp) < time.time():
-            return False
-        good = hmac.new(secret.encode(), f"{uid}:{exp}".encode(), hashlib.sha256).hexdigest()[:32]
-        return hmac.compare_digest(good, sig)
+            return None
+        good = hmac.new(secret.encode(), f"{uid}:{pid}:{exp}".encode(), hashlib.sha256).hexdigest()[:32]
+        return (int(uid), int(pid)) if hmac.compare_digest(good, sig) else None
     except (ValueError, AttributeError):
-        return False
+        return None
 
 
 def decode_media(data_b64: str) -> bytes:

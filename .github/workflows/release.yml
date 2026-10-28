@@ -1,7 +1,8 @@
 name: Release
 
 # Push a version tag (git tag v1.2.3 && git push --tags) to publish a release: the Android
-# app is built and attached, and servers on the release channel see the update.
+# app is built and attached, the Docker image goes to ghcr.io, and servers on the release
+# channel see the update.
 on:
   push:
     tags: ["v*.*.*"]
@@ -75,6 +76,32 @@ jobs:
           name: apk
           path: android/dist/*.apk
 
+  docker:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Image name
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          build-args: VERSION=${{ github.ref_name }}
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.ref_name }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
   release:
     needs: android
     runs-on: ubuntu-latest
@@ -98,6 +125,7 @@ jobs:
             ```bash
             curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | sudo bash -s -- --update
             ```
+            With Docker, where your `docker-compose.yml` is: `docker compose pull && docker compose up -d`
 
             **Android:** download the `.apk` below and open it. It installs over the old version.
 

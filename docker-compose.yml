@@ -1,0 +1,17 @@
+# AnkiBase with Docker: `docker compose up -d`, then open http://<this machine>:8000.
+# Update: `docker compose pull && docker compose up -d`. Your data stays in ./data.
+services:
+  ankibase:
+    image: ghcr.io/macro002/ankibase:latest
+    build: .
+    container_name: ankibase
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data
+    # Optional: server-wide AI keys (each profile can also add its own in Settings).
+    # environment:
+    #   GEMINI_API_KEY: ""
+    #   OPENAI_API_KEY: ""
+    #   ANTHROPIC_API_KEY: ""

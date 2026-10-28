@@ -83,7 +83,7 @@ They're built to feel like apps rather than a web page: no zooming, the layout c
 ### 🏠 Built to self-host
 
 - **Multi-user with profiles:** a *profile* is an Anki collection with its own media, sync login, stories and Quizlet sets. Users get the profiles you give them, and permissions for importing, AI, AI keys, managing profiles and the default theme.
-- **One-line install** with optional nginx and Let's Encrypt, a **setup wizard**, and **one-click updates** that check the new version first, back up, and roll back if it doesn't start.
+- **One-line install** with optional nginx and Let's Encrypt (or **Docker Compose**), a **setup wizard**, and **one-click updates** that check the new version first, back up, and roll back if it doesn't start.
 - **Your own sync server** in one click (Settings → Sync): Anki's own sync server runs next to AnkiBase at `https://<your AnkiBase>/syncserver/`, so Anki Desktop, AnkiMobile, AnkiDroid and the iPhone app sync there instead of AnkiWeb.
 - AI is optional: everything else works without it. API keys are stored encrypted and only shown to those allowed to manage them.
 
@@ -95,7 +95,7 @@ They're built to feel like apps rather than a web page: no zooming, the layout c
 |---|---|
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS v4 |
 | Backend | FastAPI + Uvicorn, SQLite |
-| Anki engine | [anki-cli](https://github.com/Macro002/anki-cli): Anki's own engine as one small service, a collection per profile. No Docker, no Anki Desktop |
+| Anki engine | [anki-cli](https://github.com/Macro002/anki-cli): Anki's own engine as one small service, a collection per profile. No Anki Desktop, no container per profile |
 
 AnkiBase doesn't reimplement Anki. All the Anki work goes through
 [**anki-cli**](https://github.com/Macro002/anki-cli), which I built alongside AnkiBase as its
@@ -123,6 +123,18 @@ The installer:
 6. Optionally sets up nginx with a Let's Encrypt certificate
 
 Open the address it prints. The setup wizard walks you through your admin account, your first profile, syncing your cards (AnkiWeb, your own sync server, or one it runs for you) and an optional AI key.
+
+### With Docker
+
+One container with everything (the web app, Anki's engine and the optional sync server); your data stays in `./data`:
+
+```bash
+mkdir ankibase && cd ankibase
+curl -fsSLO https://raw.githubusercontent.com/Macro002/AnkiBase/main/docker-compose.yml
+docker compose up -d
+```
+
+Open `http://<your server>:8000` for the setup wizard. Put it behind your reverse proxy for HTTPS; it reads `X-Forwarded-Proto`. Update with `docker compose pull && docker compose up -d` (the in-app Update button shows this too). From a checkout, `docker compose up -d --build` builds the image yourself.
 
 ### Updating
 
@@ -155,7 +167,7 @@ journalctl -u ankibase-anki -f # Anki engine logs
 Collections live in `/opt/ankibase/anki-data/<profile>/` (Anki's usual layout: `collection.anki2`,
 `collection.media/`, `backups/`), with a backup every hour.
 
-### Coming from the Docker version
+### Coming from the container-per-account versions
 
 Older versions ran one headless Anki container per account (now called profiles). The first
 start after updating moves every one to the new engine on its own: it stops each container, copies the

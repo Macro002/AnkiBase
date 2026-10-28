@@ -4,8 +4,12 @@ import { update } from '../api';
 
 interface UpdateModalProps {
   isOpen: boolean;
+  /** Runs in Docker: updating means pulling the new image, which it can't do itself. */
+  docker?: boolean;
   onClose: () => void;
 }
+
+const DOCKER_UPDATE = 'docker compose pull && docker compose up -d';
 
 interface ProgressEvent {
   type: 'step' | 'log' | 'done' | 'error';
@@ -13,7 +17,7 @@ interface ProgressEvent {
   progress?: number;
 }
 
-export function UpdateModal({ isOpen, onClose }: UpdateModalProps) {
+export function UpdateModal({ isOpen, docker, onClose }: UpdateModalProps) {
   const [started, setStarted] = useState(false);
   const [progress, setProgress] = useState(0);
   const [logs, setLogs] = useState<string[]>([]);
@@ -96,7 +100,24 @@ export function UpdateModal({ isOpen, onClose }: UpdateModalProps) {
           )}
         </div>
 
-        {!started ? (
+        {docker ? (
+          <div className="space-y-4">
+            <p className="text-(--text-secondary) text-sm">
+              A new version is available. This AnkiBase runs in Docker, so update it where its
+              docker-compose.yml is: your data stays in its <code>data</code> folder.
+            </p>
+            <div className="flex items-center gap-2 bg-(--bg-secondary) rounded-lg p-3">
+              <code className="flex-1 min-w-0 text-xs font-mono break-all">{DOCKER_UPDATE}</code>
+              <button
+                onClick={() => { navigator.clipboard.writeText(DOCKER_UPDATE); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+                className="icon-btn shrink-0" title="Copy"
+              >
+                {copied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+            <button className="btn btn-secondary w-full" onClick={onClose}>Close</button>
+          </div>
+        ) : !started ? (
           <div className="space-y-4">
             <p className="text-(--text-secondary) text-sm">
               A new version is available. AnkiBase downloads and checks it, backs up your data,

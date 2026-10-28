@@ -8,7 +8,7 @@ import bcrypt
 
 # Global database for account management, discovered keys, and scan status
 BASE_DIR = os.path.dirname(__file__)
-GLOBAL_DB_PATH = os.path.join(BASE_DIR, "ankibase.db")
+GLOBAL_DB_PATH = os.getenv("ANKIBASE_DB") or os.path.join(BASE_DIR, "ankibase.db")
 DATA_DIR = os.path.join(BASE_DIR, "data")
 
 def get_account_data_dir(container_name: str) -> str:

@@ -422,7 +422,7 @@ export async function streamEvents(url: string, onEvent: (data: unknown) => void
 
 // Update
 export const update = {
-  check: () => fetchAPI<{ current: string; latest: string; has_update: boolean; channel?: string }>('/update/check'),
+  check: () => fetchAPI<{ current: string; latest: string; has_update: boolean; channel?: string; docker?: boolean }>('/update/check'),
   /** Streams progress events; POST so another site can't start an update. */
   apply: (onEvent: (event: unknown) => void, signal?: AbortSignal) =>
     streamEvents(`${API_BASE}/update/apply`, onEvent, signal, { method: 'POST' }),

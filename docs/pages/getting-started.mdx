@@ -44,6 +44,24 @@ Use the credentials you just created. The login page includes rate limiting — 
 
 </Steps>
 
+## With Docker
+
+Everything runs in one container (the web app, the Anki engine and the optional sync server), and your data stays in `./data` next to the compose file:
+
+```bash
+mkdir ankibase && cd ankibase
+curl -fsSLO https://raw.githubusercontent.com/Macro002/AnkiBase/main/docker-compose.yml
+docker compose up -d
+```
+
+Open `http://<your server>:8000` and the setup wizard starts. For HTTPS, put it behind your reverse proxy (it reads `X-Forwarded-Proto`). Server-wide AI keys can go in the compose file's `environment:` section. To update:
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+From a checkout of the repository, `docker compose up -d --build` builds the image yourself.
+
 ## Updating
 
 **In-app:** An update button appears in the header when a new version is available. Click it to update automatically with zero downtime.
@@ -83,6 +101,6 @@ ls /opt/ankibase/anki-data/
   The engine listens on 127.0.0.1 only and requires an API key, which is generated on first start and kept in `/opt/ankibase/anki-data/.env`. It keeps an automatic backup of each collection every hour in `<profile>/backups/`.
 </Callout>
 
-### Coming from the Docker version
+### Coming from the container-per-account versions
 
 Older versions ran one `headless-anki` container per account (now called profiles). The first start after updating moves every one over automatically: each container is stopped, its collection and media are copied into `/opt/ankibase/anki-data/`, the AnkiWeb login is carried over and the container is removed. Docker volumes are left untouched as a safety net, so remove them yourself once everything looks right (`docker volume ls`).

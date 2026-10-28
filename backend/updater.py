@@ -31,6 +31,9 @@ REPO = os.getenv("UPDATE_REPO", "Macro002/AnkiBase")  # owner/name on GitHub, or
 REPO_URL = REPO if ("://" in REPO or REPO.startswith("/")) else f"https://github.com/{REPO}.git"
 BACKUP_DIR = Path(os.getenv("ANKIBASE_BACKUP_DIR") or BACKEND.parent / "backups")
 KEEP_BACKUPS = 3
+# In Docker the image is the update: pulling a new one replaces the code (data is in /data).
+DOCKER = os.getenv("ANKIBASE_DOCKER") == "1"
+DOCKER_UPDATE = "docker compose pull && docker compose up -d"
 SERVICE = os.getenv("ANKIBASE_SERVICE", "ankibase")
 # Never touched by an update.
 KEEP = ["venv", ".env", "*.db", "*.db-wal", "*.db-shm", "data", ".version", "static", "__pycache__", "*.pyc"]
@@ -76,8 +79,8 @@ def check() -> dict:
     except Exception:
         version = "unknown"
     here = current()
-    return {"current": here, "latest": version, "channel": channel(),
-            "has_update": version != "unknown" and version != here}
+    return {"current": here, "latest": version, "channel": channel(), "docker": DOCKER,
+            "has_update": "unknown" not in (version, here) and version != here}
 
 
 async def _run(cmd: list[str], cwd: Path | None = None, env: dict | None = None) -> tuple[int, str]:
@@ -119,6 +122,9 @@ systemctl restart {service}
 
 async def apply() -> AsyncIterator[dict]:
     """Update, reporting progress as {type: step|log|done|error, message, progress}."""
+    if DOCKER:
+        yield {"type": "error", "message": f"This AnkiBase runs in Docker: update it with `{DOCKER_UPDATE}`."}
+        return
     tmp = Path(tempfile.mkdtemp(prefix="ankibase-update-"))
     try:
         yield {"type": "step", "message": "Looking for the new version…", "progress": 3}

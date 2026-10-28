@@ -1,0 +1,15 @@
+.git
+.github
+**/node_modules
+**/dist
+**/venv
+**/__pycache__
+**/*.db
+**/.env
+backend/data
+backend/.version
+anki-data
+backups
+android
+ios
+docs

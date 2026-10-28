@@ -83,6 +83,7 @@ export function Layout() {
   const [syncConflictRecommendation, setSyncConflictRecommendation] = useState<'choose' | 'download' | 'upload'>('choose');
   const [hasUpdate, setHasUpdate] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [dockerInstall, setDockerInstall] = useState(false);
 
   const navItems = [
     { to: '/', icon: Layers, label: t('nav.decks') },
@@ -139,7 +140,7 @@ export function Layout() {
 
   useEffect(() => {
     // The app updates through SideStore; the server's own update is in Settings → Server.
-    if (!isNative) update.check().then(r => { if (r.has_update) setHasUpdate(true); }).catch(() => {});
+    if (!isNative) update.check().then(r => { if (r.has_update) setHasUpdate(true); setDockerInstall(!!r.docker); }).catch(() => {});
   }, []);
 
   const handleLogout = async () => {
@@ -345,6 +346,7 @@ export function Layout() {
 
       <UpdateModal
         isOpen={showUpdateModal}
+        docker={dockerInstall}
         onClose={() => setShowUpdateModal(false)}
       />
 

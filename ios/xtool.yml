@@ -2,3 +2,7 @@ version: 1
 bundleID: io.github.ankibase
 infoPath: Info.plist
 iconPath: Sources/AnkiBase/Resources/AppIcon.png
+# Shortcuts' description of the Focus Lock action, made by Xcode in CI
+# (.github/workflows/appintents-metadata.yml): without it Shortcuts doesn't list the action.
+resources:
+  - Metadata/Metadata.appintents

@@ -17,7 +17,6 @@ export interface FocusState {
   due: number;
   open: boolean;
   locked: boolean;
-  folder: string | null;
   passcodes: { id: number; created: number; reveal_at: number; revealable: boolean }[];
 }
 
@@ -35,9 +34,9 @@ const focusApi = { state: () => focusCall('') };
 
 const day = (secs: number) => new Date(secs * 1000).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
 
-/** Settings → Focus (iPhone): other apps stay closed until today's cards are done. The app
- *  writes today's file once nothing is due; a Shortcuts automation sends you back here
- *  while it's missing, and Screen Time (with a passcode nobody knows) guards the setup. */
+/** Settings → Focus (iPhone): other apps stay closed until today's cards are done. A
+ *  Shortcuts automation runs the app's Focus Lock action when they open, which sends you
+ *  here while cards are due; Screen Time (with a passcode nobody knows) can guard it. */
 export function FocusSection() {
   const [state, setState] = useState<FocusState | null>(null);
   const [error, setError] = useState('');
@@ -170,65 +169,56 @@ function Step({ n, title, children }: { n: number; title: string; children: Reac
   );
 }
 
-const Code = ({ children }: { children: React.ReactNode }) => (
-  <code className="px-1.5 py-0.5 rounded bg-(--bg-tertiary) text-(--text-primary) font-mono text-[11px] break-all">{children}</code>
-);
-
-/** The one-time setup: a Shortcuts automation, then Screen Time to guard it. */
+/** The one-time setup: one automation running the app's Focus Lock action, then (to make
+ *  it stick) Screen Time to guard it. */
 function SetupGuide({ state }: { state: FocusState }) {
   const [open, setOpen] = useState(!state.enabled);
-  const hours = state.rollover_hour ?? 4;
+  const [guard, setGuard] = useState(state.strict);
   return (
     <section className="card space-y-4">
       <button onClick={() => setOpen(o => !o)} className="w-full flex items-center justify-between text-left">
         <div>
           <h3 className="font-semibold">Set it up (once)</h3>
-          <p className="text-xs text-(--text-secondary) mt-0.5">About 10 minutes, in Shortcuts and Settings.</p>
+          <p className="text-xs text-(--text-secondary) mt-0.5">One automation in Shortcuts, about a minute.</p>
         </div>
         <ChevronDown className={`w-5 h-5 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
         <>
-          <div className="space-y-3">
-            <p className="text-sm font-semibold">1. The automation (Shortcuts app)</p>
-            <ol className="space-y-3">
-              <Step n={1} title="New automation">
-                <p>Automation tab → <b>+</b> → <b>App</b>. Choose the apps to block, keep <b>Is Opened</b>, pick <b>Run Immediately</b>, then <b>Next</b> → <b>New Blank Automation</b>.</p>
-              </Step>
-              <Step n={2} title="Add “Adjust Date”">
-                <p><b>Subtract</b> <Code>{hours}</Code> <b>hours</b> from <b>Current Date</b> (your day starts at {hours}:00, like Anki’s).</p>
-              </Step>
-              <Step n={3} title="Add “Format Date”">
-                <p>Date Format <b>Custom</b>: <Code>yyyy-MM-dd</Code>, Time Format <b>None</b>.</p>
-              </Step>
-              <Step n={4} title="Add “Get File from Folder”">
-                <p>Folder: <b>On My iPhone › AnkiBase › {state.folder ?? 'Focus'}</b>. File path: the <b>Formatted Date</b> variable followed by <Code>.txt</Code>. Turn off <b>Error If Not Found</b>.</p>
-              </Step>
-              <Step n={5} title="Add “If”">
-                <p>If <b>File</b> <b>does not have any value</b> → add <b>Open App</b>: <b>AnkiBase</b>. Done.</p>
-              </Step>
-            </ol>
-            {state.today && <p className="text-xs text-(--text-secondary)">Today’s file is <Code>{state.today}.txt</Code>; it appears once you’re done.</p>}
-          </div>
+          <ol className="space-y-3">
+            <Step n={1} title="New automation">
+              <p>In Shortcuts: <b>Automation</b> → <b>+</b> → <b>App</b>. Choose the apps to keep closed, then <b>Run Immediately</b> → <b>Next</b>.</p>
+            </Step>
+            <Step n={2} title="Add “Focus Lock”">
+              <p><b>New Blank Automation</b>, search the actions for <b>Focus Lock</b> (AnkiBase), tap it, then <b>Done</b>. That’s it.</p>
+            </Step>
+          </ol>
+          <a href="shortcuts://" className="btn btn-primary w-full">Open Shortcuts</a>
+          <p className="text-xs text-(--text-secondary)">
+            Then open one of those apps: AnkiBase comes up instead while cards are due{state.rollover_hour != null && <>. Your day starts at {state.rollover_hour}:00, like Anki’s</>}.
+          </p>
 
-          <div className="space-y-3">
-            <p className="text-sm font-semibold">2. Lock the setup (Settings › Screen Time)</p>
-            <ol className="space-y-3">
-              <Step n={1} title="Block the Shortcuts app">
-                <p><b>App Limits</b> → <b>Add Limit</b> → Shortcuts, <b>1 min</b>, <b>Block at End of Limit</b> on. Now the automation can’t be switched off.</p>
-              </Step>
-              <Step n={2} title="No deleting apps">
-                <p><b>Content & Privacy Restrictions</b> on → <b>App Store Purchases</b> → <b>Deleting Apps</b>: <b>Don’t Allow</b>.</p>
-              </Step>
-              <Step n={3} title="A passcode you don’t know">
-                <p><b>Lock Screen Time Settings</b>, and enter a passcode from <b>Passcodes</b> below. When it asks for an Apple Account to recover it, tap <b>Cancel</b>: otherwise “Forgot passcode?” undoes all of this.</p>
-              </Step>
-            </ol>
-          </div>
-
-          <div className="rounded-xl bg-(--bg-tertiary)/60 p-3 text-xs text-(--text-secondary) space-y-1">
-            <p className="font-medium text-(--text-primary)">Check it worked</p>
-            <p>Open a blocked app: AnkiBase should come up instead. Then try switching off the automation or deleting AnkiBase: both should ask for the passcode.</p>
+          <div className="border-t border-(--border) pt-3 space-y-3">
+            <button onClick={() => setGuard(g => !g)} className="w-full flex items-center justify-between text-left">
+              <div>
+                <p className="text-sm font-semibold">Make it hard to undo</p>
+                <p className="text-xs text-(--text-secondary)">Optional. In Settings › Screen Time, so you can’t switch the automation off.</p>
+              </div>
+              <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${guard ? 'rotate-180' : ''}`} />
+            </button>
+            {guard && (
+              <ol className="space-y-3">
+                <Step n={1} title="Block the Shortcuts app">
+                  <p><b>App Limits</b> → <b>Add Limit</b> → Shortcuts, <b>1 min</b>, <b>Block at End of Limit</b> on.</p>
+                </Step>
+                <Step n={2} title="No deleting apps">
+                  <p><b>Content & Privacy Restrictions</b> on → <b>App Store Purchases</b> → <b>Deleting Apps</b>: <b>Don’t Allow</b>.</p>
+                </Step>
+                <Step n={3} title="A passcode you don’t know">
+                  <p><b>Lock Screen Time Settings</b> with a code from <b>Passcodes</b> below. When it asks for an Apple Account, tap <b>Cancel</b>: otherwise “Forgot passcode?” undoes all of this.</p>
+                </Step>
+              </ol>
+            )}
           </div>
         </>
       )}

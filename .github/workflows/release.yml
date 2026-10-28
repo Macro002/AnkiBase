@@ -1,8 +1,9 @@
 name: Release
 
-# Push a version tag (git tag v1.2.3 && git push --tags) to publish a release: the Android
-# app is built and attached, the Docker image goes to ghcr.io, and servers on the release
-# channel see the update.
+# Run scripts/release.sh v1.2.3: it tags the release, and this workflow builds the Android
+# app, pushes the Docker image to ghcr.io and makes a draft release with the .apk. The
+# script then adds the iPhone .ipa (built on Linux, not here) and publishes the draft, so
+# the release appears with both apps. Servers on the release channel see the new tag.
 on:
   push:
     tags: ["v*.*.*"]
@@ -117,6 +118,7 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/*.apk
+          draft: true
           generate_release_notes: true
           body: |
             ## Update

@@ -36,7 +36,8 @@ Signing: put `ANDROID_KEYSTORE`, `ANDROID_KEYSTORE_PASSWORD` and `ANDROID_KEY_AL
 `local.env` (ignored by git). Without them the build makes a local debug key; Android only
 installs an update signed with the same key as the installed app.
 
-Releases are built by `.github/workflows/release.yml` when a `v*.*.*` tag is pushed; give it
+Releases come from `scripts/release.sh vX.Y.Z` (it tags, waits for `.github/workflows/release.yml`
+to build this app into a draft, adds the iPhone app and publishes); give the workflow
 the key as the repository secrets `ANDROID_KEYSTORE_BASE64` (`base64 -w0 release.keystore`),
 `ANDROID_KEYSTORE_PASSWORD` and `ANDROID_KEY_ALIAS`.
 

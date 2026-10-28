@@ -5,8 +5,7 @@ import { BookOpen, Clock, Plus, Pencil, Trash2, ChevronRight, FolderOpen, X, Ext
 import { AnkiPageModal } from './AnkiPage';
 import { decks, quizlet, type DeckStats, type QuizletDeck } from '../api';
 import { Heatmap } from './Heatmap';
-import { hasServer, isAndroid, isNative, useAppStatus } from '../native';
-import { FocusBanner } from './settings/FocusSection';
+import { hasServer, useAppStatus } from '../native';
 
 interface DeckInfo {
   name: string;
@@ -242,7 +241,6 @@ export function Decks() {
 
   return (
     <div className="flex flex-col gap-6">
-      {isNative && !isAndroid && <FocusBanner />}
       {/* Heatmap: on top on wide screens, below the decks on phones */}
       <div className="order-last md:order-first"><Heatmap /></div>
 

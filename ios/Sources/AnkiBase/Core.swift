@@ -21,7 +21,6 @@ enum Core {
             "build": info["CFBundleVersion"] as? String ?? "",
             "update_feed": info["AnkiBaseUpdateFeed"] as? String,
             "bundle_id": Bundle.main.bundleIdentifier,
-            "focus_dir": FocusLock.directory.path,
         ]
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let json = (try? JSONSerialization.data(withJSONObject: config.compactMapValues { $0 })) ?? Data("{}".utf8)

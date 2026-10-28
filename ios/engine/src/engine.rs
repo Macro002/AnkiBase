@@ -69,8 +69,6 @@ pub struct Engine {
     pub(crate) page_settings: std::collections::HashMap<String, Vec<u8>>,
     /// What card media URLs carry (`?t=`): the Android app's access token, else unused.
     pub media_token: String,
-    /// Answers given sooner than this after the card was shown are refused (focus lock).
-    pub min_answer_ms: u32,
 }
 
 impl Engine {
@@ -98,7 +96,6 @@ impl Engine {
             media_error: None,
             page_settings: Default::default(),
             media_token: "local".into(),
-            min_answer_ms: 0,
         })
     }
 
@@ -146,15 +143,6 @@ impl Engine {
         Ok(json!({"decks": names, "stats": stats}))
     }
 
-    /// What's left today across all decks: (new, learning, review), and when the day ends.
-    pub fn due_today(&mut self) -> Outcome<(u32, u32, u32, TimestampSecs)> {
-        let col = self.col()?;
-        let next_day_at = col.timing_today()?.next_day_at;
-        let tree = col.deck_tree(Some(TimestampSecs::now()))?;
-        let sum = |count: fn(&DeckTreeNode) -> u32| tree.children.iter().map(count).sum::<u32>();
-        Ok((sum(|d| d.new_count), sum(|d| d.learn_count), sum(|d| d.review_count), next_day_at))
-    }
-
     // Studying -----------------------------------------------------------------------
 
     /// The next card in `deck` as Anki's reviewer would show it, with the day's counts.
@@ -168,8 +156,7 @@ impl Engine {
         let counts = json!({"new": queued.new_count, "learn": queued.learning_count, "review": queued.review_count});
         let Some(next) = queued.cards.into_iter().next() else {
             self.shown = None;
-            return Ok(json!({"card": null, "counts": counts, "mode": "reviewer", "media_token": self.media_token,
-                             "min_answer_ms": self.min_answer_ms}));
+            return Ok(json!({"card": null, "counts": counts, "mode": "reviewer", "media_token": self.media_token}));
         };
         let cid = next.card.id();
         let rendered = col.render_existing_card(cid, false, false)?;
@@ -201,8 +188,7 @@ impl Engine {
         if self.shown.map(|(id, _)| id) != Some(cid) {
             self.shown = Some((cid, Instant::now()));
         }
-        Ok(json!({"card": card, "counts": counts, "mode": "reviewer", "media_token": self.media_token,
-                  "min_answer_ms": self.min_answer_ms}))
+        Ok(json!({"card": card, "counts": counts, "mode": "reviewer", "media_token": self.media_token}))
     }
 
     /// Answer `card_id` (if it's still the reviewer's next card) and return the next one.
@@ -218,9 +204,6 @@ impl Engine {
             Some((id, at)) if id.0 == card_id => at.elapsed().as_millis().min(u32::MAX as u128) as u32,
             _ => 0,
         };
-        if taken < self.min_answer_ms && self.shown.is_some_and(|(id, _)| id.0 == card_id) {
-            return Err(Failure::new(429, "Too quick: read the card before answering."));
-        }
         let col = self.col()?;
         let queued = col.get_queued_cards(1, false)?;
         // Only answer the card that's actually next, never a stale one.

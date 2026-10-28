@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef } from 'react';
-import { Globe, Palette, RotateCcw, X, Download, Upload, Trash2, Sparkles, Users, User as UserIcon, Check, ChevronRight, RefreshCw, Server, Lock } from 'lucide-react';
+import { Globe, Palette, RotateCcw, X, Download, Upload, Trash2, Sparkles, Users, User as UserIcon, Check, ChevronRight, RefreshCw, Server } from 'lucide-react';
 import { Segmented } from '../components/quizlet/ui';
 import { AiPanel, type AiChoice } from '../components/story/AiPanel';
 import { useSpring } from '../hooks/useSpring';
@@ -8,8 +8,7 @@ import { useSearchParams } from 'react-router-dom';
 import { UserManagement } from '../components/UserManagement';
 import { SyncSection } from '../components/settings/SyncSection';
 import { ServerSection } from '../components/settings/ServerSection';
-import { FocusSection } from '../components/settings/FocusSection';
-import { hasServer, isAndroid, isNative, useAppStatus } from '../native';
+import { hasServer, isNative, useAppStatus } from '../native';
 import { LANGUAGES } from '../i18n';
 import { Logo } from '../components/Logo';
 import { useTranslation } from 'react-i18next';
@@ -179,7 +178,7 @@ function isValidThemeFile(data: unknown): data is ThemeFile {
     .every(k => typeof b[k] === 'string');
 }
 
-type SettingsTab = 'appearance' | 'sync' | 'server' | 'focus' | 'language' | 'account' | 'ai' | 'users';
+type SettingsTab = 'appearance' | 'sync' | 'server' | 'language' | 'account' | 'ai' | 'users';
 
 /** Vertical section list (desktop) with the spring highlight. */
 function SectionNav({ sections, active, onChange }: { sections: { id: SettingsTab; label: string; icon: React.ReactNode }[]; active: SettingsTab; onChange: (t: SettingsTab) => void }) {
@@ -531,7 +530,6 @@ export function Settings() {
     { id: 'appearance', label: t('settings.sections.appearance'), icon: <Palette className="w-4 h-4" /> },
     { id: 'sync', label: t('settings.sections.sync'), icon: <RefreshCw className="w-4 h-4" /> },
     ...(isNative ? [{ id: 'server' as const, label: t('settings.sections.server'), icon: <Server className="w-4 h-4" /> }] : []),
-    ...(isNative && !isAndroid ? [{ id: 'focus' as const, label: t('settings.sections.focus'), icon: <Lock className="w-4 h-4" /> }] : []),
     { id: 'language', label: t('settings.language'), icon: <Globe className="w-4 h-4" /> },
     ...(serverFeatures ? [{ id: 'account' as const, label: t('settings.sections.account'), icon: <UserIcon className="w-4 h-4" /> }] : []),
     ...(serverFeatures && (perms?.use_ai ?? true) ? [{ id: 'ai' as const, label: t('settings.sections.ai'), icon: <Sparkles className="w-4 h-4" /> }] : []),
@@ -727,7 +725,6 @@ export function Settings() {
 
           {active === 'sync' && <SyncSection admin={serverFeatures && !!currentUser?.is_admin} />}
           {active === 'server' && <ServerSection user={app?.server ? currentUser : null} />}
-          {active === 'focus' && <FocusSection />}
           {active === 'ai' && <AiSection />}
           {active === 'users' && currentUser?.is_admin && <UserManagement />}
         </div>

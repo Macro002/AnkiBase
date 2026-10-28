@@ -26,8 +26,6 @@ httpdate = "1"
 prost = "0.13"
 regex = "1"
 sha2 = "0.10"
-# Focus lock: Screen Time passcodes time-locked with drand (nobody can read one early).
-tlock_age = "0.0.10"
 unicode-normalization = "0.1"
 
 [target.'cfg(target_os = "android")'.dependencies]

@@ -6,8 +6,6 @@
 //!   the phone's own answers where both have a part (search, stats);
 //! - without a server, the phone keeps the profile (language, colours) and sessions itself.
 
-mod focus;
-
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
 
@@ -43,9 +41,6 @@ pub struct Config {
     /// The Android app's access token (httpd.rs), which card media URLs carry.
     #[serde(default)]
     pub media_token: Option<String>,
-    /// Where the focus lock keeps its day files (a folder Shortcuts can read; iPhone only).
-    #[serde(default)]
-    pub focus_dir: Option<PathBuf>,
 }
 
 /// The phone's own profile, used when no server is connected.
@@ -63,8 +58,6 @@ struct Settings {
     server: Option<String>,
     #[serde(default)]
     profile: Profile,
-    #[serde(default)]
-    focus: focus::FocusSettings,
 }
 
 const DEFAULT_ACCENT: (&str, &str) = ("#e94560", "#ff6b6b");
@@ -95,16 +88,14 @@ impl App {
             .and_then(|data| serde_json::from_slice(&data).ok())
             .unwrap_or_default();
         let server_url = server_url(&settings, &config);
-        let app = App {
+        App {
             server: Server::new(config.dir.join("Server"), server_url),
             sessions: LocalSessions::new(config.dir.join("sessions.json")),
             engine: Mutex::new(engine),
             engine_error,
             settings: Mutex::new(settings),
             config,
-        };
-        app.focus_refresh();
-        app
+        }
     }
 
     fn save_settings(&self, settings: &Settings) {
@@ -131,9 +122,6 @@ impl App {
     /// Answer one request from the web view.
     pub fn handle(&self, request: &Request, sink: &mut dyn Sink) {
         let path = request.path();
-        if let Some(reply) = self.focus_refuses(request) {
-            return reply.send(sink);
-        }
         if path.starts_with("/api/") {
             self.api(request, sink);
         } else if let Some(rest) = path.strip_prefix("/anki-pages/") {
@@ -203,7 +191,7 @@ impl App {
 
     fn api(&self, request: &Request, sink: &mut dyn Sink) {
         let path = request.path();
-        if let Some(reply) = self.focus_route(request).or_else(|| self.app_route(request)) {
+        if let Some(reply) = self.app_route(request) {
             return reply.send(sink);
         }
         match path {
@@ -214,13 +202,7 @@ impl App {
             _ => {}
         }
         match self.with_engine(|engine| api::handle(engine, request)) {
-            Ok(Some(reply)) => {
-                // What's due may have changed: open today's file once it's done.
-                if request.method != "GET" || path == "/api/decks" {
-                    self.focus_refresh();
-                }
-                return reply.send(sink);
-            }
+            Ok(Some(reply)) => return reply.send(sink),
             Ok(None) => {}
             // Anki's routes need the collection; the server's don't.
             Err(reply) if is_anki_route(path) => return reply.send(sink),

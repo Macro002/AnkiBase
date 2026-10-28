@@ -128,8 +128,7 @@
       "server": "Servidor",
       "account": "Cuenta",
       "ai": "IA",
-      "users": "Usuarios",
-      "focus": "Enfoque"
+      "users": "Usuarios"
     }
   },
   "syncConflict": {

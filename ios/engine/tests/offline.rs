@@ -130,7 +130,7 @@ fn the_phone_on_its_own() {
     drop(phone);
     let phone = ankibase_engine::App::start(ankibase_engine::Config {
         dir: tmp.clone(), web: None, pages: None, default_server: Some("https://anki.example.com".into()),
-        version: "0".into(), build: "0".into(), update_feed: None, bundle_id: None, media_token: None, focus_dir: None,
+        version: "0".into(), build: "0".into(), update_feed: None, bundle_id: None, media_token: None,
     });
     let user = ok(&phone, "GET", "/api/auth/me", Value::Null);
     assert_eq!((user["accent_color"].clone(), user["language"].clone()), (json!("#3b82f6"), json!("de")));

@@ -1,0 +1,47 @@
+# The iPhone app's Shortcuts action (ios/Sources/AnkiBase/FocusIntent.swift) needs App Intents
+# metadata, which only Xcode makes; the app itself is built on Linux with xtool. This builds
+# the action on a Mac and commits the metadata to ios/Metadata/, where xtool.yml puts it in
+# the app. It runs again when FocusIntent.swift changes.
+name: App Intents metadata
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ios/Sources/AnkiBase/FocusIntent.swift
+      - ios/ci/**
+      - .github/workflows/appintents-metadata.yml
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Newest Xcode
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+          xcodebuild -version
+
+      - name: Build the action
+        run: |
+          brew install xcodegen
+          cd ios/ci && xcodegen generate
+          set -o pipefail
+          xcodebuild -project MetadataProbe.xcodeproj -scheme AnkiBase -destination 'generic/platform=iOS' \
+            -derivedDataPath dd CODE_SIGNING_ALLOWED=NO build 2>&1 | tee build.log | grep -iE 'appintents|error:|BUILD' | cut -c1-300
+
+      - name: Commit the metadata
+        run: |
+          src=$(find ios/ci/dd -path '*AnkiBase.app/Metadata.appintents' -type d | head -1)
+          test -n "$src" && test -f "$src/extract.actionsdata"
+          rm -rf ios/Metadata && mkdir -p ios/Metadata && cp -R "$src" ios/Metadata/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ios/Metadata
+          git diff --cached --quiet || git commit -m "iPhone: App Intents metadata for the Shortcuts action"
+          git push

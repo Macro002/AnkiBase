@@ -2,19 +2,18 @@
 //!
 //! An app can't block other apps without Apple's Screen Time entitlement, which free
 //! accounts can't get. So the blocking is a Shortcuts automation ("when Instagram is
-//! opened…") that looks for today's file in the app's `Focus` folder and opens AnkiBase
-//! when it isn't there. The app writes that file once nothing is due (or an emergency pass
-//! is used), and keeps the folder read-only so the Files app can't put one there. The
-//! Shortcuts app and Screen Time's settings are then locked behind a Screen Time passcode
-//! the app makes up and time-locks with drand: nobody can read it before the chosen date.
+//! opened…") running the app's own Focus Lock action (FocusIntent.swift), which opens
+//! AnkiBase until today is open. Today opens once nothing is due (or an emergency pass is
+//! used): its file appears in the app's private `Focus` folder, next to `open-until`, the
+//! one thing the action reads. Strict mode then locks the Shortcuts app and Screen Time's
+//! settings behind a Screen Time passcode the app makes up and time-locks with drand:
+//! nobody can read it before the chosen date.
 //!
 //! A day is Anki's day: it starts at the collection's rollover hour (4:00 by default), and
 //! its file is named after the date it started on (`2026-10-27.txt`).
 
 use std::fs;
 use std::io::Read;
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 use base64::Engine as _;
@@ -161,7 +160,7 @@ impl App {
         } else if focus.passes_used.contains(&key) {
             open.push((key.clone(), "pass"));
         }
-        let _ = write_focus_dir(dir, &open, focus.enabled.then_some(&key));
+        let _ = write_focus_dir(dir, &open, &today, focus.enabled);
     }
 
     /// Whether the lock holds right now: on, and cards still due today.
@@ -187,7 +186,9 @@ impl App {
 
     fn focus_state(&self) -> Value {
         let focus = self.focus_settings();
-        let Some(dir) = self.focus_dir() else { return json!({"available": false}) };
+        if self.focus_dir().is_none() {
+            return json!({"available": false});
+        }
         let today = self.today();
         let key = today.as_ref().map(Today::key);
         let open = key.as_deref().is_some_and(|k| self.day_open(k));
@@ -213,7 +214,6 @@ impl App {
             "counts": today.as_ref().map(|t| json!({"new": t.new, "learn": t.learn, "review": t.review})),
             "open": open,
             "locked": focus.enabled && due > 0 && !open,
-            "folder": dir.file_name().map(|n| n.to_string_lossy().to_string()),
             "passcodes": focus.passcodes.iter().enumerate().map(|(i, p)| json!({
                 "id": i, "created": p.created, "reveal_at": p.reveal_at, "revealable": p.reveal_at <= now,
             })).collect::<Vec<_>>(),
@@ -383,39 +383,30 @@ fn random_digits(count: usize) -> std::io::Result<String> {
 }
 
 /// Write the day files in `open` and remove the others, except a day `today` already
-/// earned (done or pass: new cards arriving later don't close it again). The folder is
-/// read-only between writes, so nothing but the app can add a day.
-fn write_focus_dir(dir: &Path, open: &[(String, &str)], today: Option<&String>) -> std::io::Result<()> {
+/// earned (done or pass: new cards arriving later don't close it again). Then `open-until`:
+/// when the open days from today on end, in Unix seconds (0 while today is closed), which
+/// is all the Shortcuts action reads (FocusIntent.swift).
+fn write_focus_dir(dir: &Path, open: &[(String, &str)], today: &Today, enabled: bool) -> std::io::Result<()> {
     fs::create_dir_all(dir)?;
-    set_mode(dir, 0o755)?;
-    let result = (|| {
-        for entry in fs::read_dir(dir)? {
-            let entry = entry?;
-            let name = entry.file_name().to_string_lossy().to_string();
-            let Some(day) = name.strip_suffix(".txt") else { continue };
-            let earned = today.is_some_and(|t| t == day) && fs::read(entry.path()).is_ok_and(|why| why != b"off");
-            let keep = open.iter().any(|(d, _)| d == day) || earned;
-            if !keep {
-                set_mode(&entry.path(), 0o644)?;
-                fs::remove_file(entry.path())?;
-            }
+    let key = today.key();
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        let Some(day) = name.strip_suffix(".txt") else { continue };
+        let earned = enabled && day == key && fs::read(entry.path()).is_ok_and(|why| why != b"off");
+        if !earned && !open.iter().any(|(d, _)| d == day) {
+            fs::remove_file(entry.path())?;
         }
-        for (day, why) in open {
-            let path = dir.join(format!("{day}.txt"));
-            if !path.exists() {
-                fs::write(&path, why)?;
-                set_mode(&path, 0o444)?;
-            }
+    }
+    for (day, why) in open {
+        let path = dir.join(format!("{day}.txt"));
+        if !path.exists() {
+            fs::write(&path, why)?;
         }
-        Ok(())
-    })();
-    set_mode(dir, 0o555)?;
-    result
-}
-
-fn set_mode(path: &Path, mode: u32) -> std::io::Result<()> {
-    #[cfg(unix)]
-    fs::set_permissions(path, fs::Permissions::from_mode(mode))?;
-    let _ = (path, mode);
-    Ok(())
+    }
+    let days = (0..)
+        .take_while(|n| dir.join(format!("{}.txt", (today.day + chrono::Days::new(*n)).format("%Y-%m-%d"))).exists())
+        .count() as i64;
+    let until = if days == 0 { 0 } else { today.next_day_at + (days - 1) * 86400 };
+    fs::write(dir.join("open-until"), until.to_string())
 }

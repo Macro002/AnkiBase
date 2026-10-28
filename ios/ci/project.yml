@@ -1,0 +1,20 @@
+# XcodeGen spec for a throwaway app around FocusIntent.swift. It exists only so Xcode runs
+# its App Intents metadata step for the AnkiBase module; see
+# .github/workflows/appintents-metadata.yml. Nothing from it ships except that metadata.
+name: MetadataProbe
+options:
+  deploymentTarget:
+    iOS: "17.0"
+targets:
+  AnkiBase:
+    type: application
+    platform: iOS
+    sources:
+      - path: probe
+      - path: ../Sources/AnkiBase/FocusIntent.swift
+    settings:
+      # Must match the module xtool builds: the metadata names types by module.
+      PRODUCT_MODULE_NAME: AnkiBase
+      PRODUCT_BUNDLE_IDENTIFIER: io.github.ankibase
+      GENERATE_INFOPLIST_FILE: YES
+      SWIFT_VERSION: "5.0"

@@ -7,15 +7,21 @@ use common::*;
 use serde_json::json;
 
 fn day_files(dir: &std::path::Path) -> Vec<String> {
-    let mut names: Vec<String> = std::fs::read_dir(dir).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into()).collect();
+    let mut names: Vec<String> = std::fs::read_dir(dir).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into())
+        .filter(|n: &String| n.ends_with(".txt")).collect();
     names.sort();
     names
+}
+
+/// What the Shortcuts action reads: when the apps lock again.
+fn open_until(dir: &std::path::Path) -> i64 {
+    std::fs::read_to_string(dir.join("open-until")).unwrap().parse().unwrap()
 }
 
 #[test]
 fn locks_until_the_cards_are_done() {
     let tmp = temp_dir("focus");
-    let folder = tmp.join("Documents").join("Focus");
+    let folder = tmp.join("Focus");
     let phone = app_with(&tmp, None, Some(folder.clone()));
 
     // Off: the coming month is open, so the automation never sends anyone here.
@@ -26,18 +32,16 @@ fn locks_until_the_cards_are_done() {
     assert_eq!(day_files(&folder).len(), 30);
     assert_eq!(day_files(&folder)[0], format!("{today}.txt"));
     assert_eq!(state["rollover_hour"], 4);
+    let next_day_at = state["next_day_at"].as_i64().unwrap();
+    assert_eq!(open_until(&folder), next_day_at + 29 * 86400);
 
-    // Cards due, lock on: no file for today, and the folder can't be written by others.
+    // Cards due, lock on: no file for today, so the Shortcuts action sends you here.
     add_cards(&phone, "French", &["chat", "chien"]);
     let state = ok(&phone, "PUT", "/api/app/focus", json!({"enabled": true, "strict": true, "strict_days": 7, "min_answer_secs": 2}));
     assert_eq!(state["locked"], true);
     assert_eq!(state["due"], 2);
     assert!(day_files(&folder).is_empty(), "{:?}", day_files(&folder));
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        assert_eq!(std::fs::metadata(&folder).unwrap().permissions().mode() & 0o777, 0o555);
-    }
+    assert_eq!(open_until(&folder), 0);
 
     // Strict: can't loosen, can't skip, can't delete the deck or lower its limits.
     let (status, body) = call(&phone, "PUT", "/api/app/focus", json!({"enabled": false}));
@@ -68,6 +72,7 @@ fn locks_until_the_cards_are_done() {
     // Done: today's file is there and stays, even if new cards arrive later today.
     assert_eq!(day_files(&folder), vec![format!("{today}.txt")]);
     assert_eq!(std::fs::read_to_string(folder.join(format!("{today}.txt"))).unwrap(), "done");
+    assert_eq!(open_until(&folder), next_day_at);
     add_cards(&phone, "French", &["oiseau"]);
     let state = ok(&phone, "GET", "/api/app/focus", json!(null));
     assert_eq!(state["open"], true);

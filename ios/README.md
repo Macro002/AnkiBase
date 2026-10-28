@@ -60,8 +60,8 @@ scripts/publish.py "What changed"   # after build.sh; bump CFBundleVersion first
 ```
 
 Uploads the .ipa over SSH to `PUBLISH_SSH_HOST:PUBLISH_DIR` (from `local.env`) and lists it
-in the SideStore/AltStore sources there: `ankibase-source.json` (AnkiBase only), and merged
-into `source.json` if you share one with other apps.
+in the SideStore/AltStore source there, `source.json`, leaving the other apps in it alone.
+The ready-made builds are in `https://apps.macr0.dev/static/ios/source.json`.
 
 ## Develop without a phone
 

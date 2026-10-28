@@ -101,6 +101,6 @@ jobs:
 
             **Android:** download the `.apk` below and open it. It installs over the old version.
 
-            **iPhone:** download the `.ipa` below and open it in SideStore or AltStore.
+            **iPhone:** add the source `https://apps.macr0.dev/static/ios/source.json` in SideStore or AltStore and update from there, or download the `.ipa` below and open it in either.
 
             New to AnkiBase? See the [install guide](https://github.com/${{ github.repository }}#-install).

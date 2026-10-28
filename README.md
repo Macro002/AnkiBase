@@ -78,7 +78,7 @@ Nine built-in themes, custom accent and base colours with a live preview, and th
 
 The [Android](android/) and [iPhone](ios/) apps run **Anki's own engine on the phone**: decks, studying, search, editing, `.apkg` import, stats and Anki's Deck Options all work with no connection at all. They only need the internet to sync, with AnkiWeb or your own sync server, and to reach your AnkiBase server for stories, AI and Quizlet, which they can also do without. What you opened from the server stays readable offline, and progress saved offline is sent when you're back.
 
-They're built to feel like apps rather than a web page: no zooming, the layout clears notches, the Dynamic Island and the gesture bar, the answer buttons sit under your thumb, and the system bars follow your theme (on iPhone, the home screen icon too). Android: download the `.apk` from the [latest release](https://github.com/Macro002/AnkiBase/releases/latest). iPhone: build it on Linux or a Mac (see [`ios/`](ios/)) and install it with SideStore or AltStore.
+They're built to feel like apps rather than a web page: no zooming, the layout clears notches, the Dynamic Island and the gesture bar, the answer buttons sit under your thumb, and the system bars follow your theme (on iPhone, the home screen icon too). Android: download the `.apk` from the [latest release](https://github.com/Macro002/AnkiBase/releases/latest). iPhone: add the source `https://apps.macr0.dev/static/ios/source.json` in SideStore or AltStore and install AnkiBase from there (new builds show up as updates), or open the `.ipa` from the [latest release](https://github.com/Macro002/AnkiBase/releases/latest) in either, or build it yourself on Linux or a Mac (see [`ios/`](ios/)).
 
 ### 🏠 Built to self-host
 

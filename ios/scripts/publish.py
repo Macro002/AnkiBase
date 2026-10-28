@@ -4,9 +4,8 @@
 Where to: PUBLISH_SSH_HOST, PUBLISH_DIR (served at PUBLISH_BASE_URL) and PUBLISH_DEVELOPER
 in local.env (see local.env.example).
 
-The app gets its own feed (ankibase-source.json) and is merged into the shared
-source.json there, leaving the other apps' entries alone. Released files are never
-replaced: bump CFBundleVersion in Info.plist for every new build.
+The app listing is merged into the shared source.json. No per-app feed is published.
+Released files are never replaced: bump CFBundleVersion in Info.plist for every new build.
 
     scripts/publish.py "What changed in this build"
 """
@@ -73,11 +72,11 @@ app = {
     "downloadURL": download, "size": ipa.stat().st_size,
 }
 source = {"name": "AnkiBase", "identifier": f"{bundle_id}.source",
-          "sourceURL": f"{base_url}/ankibase-source.json", "apps": [app], "news": []}
+          "sourceURL": f"{base_url}/source.json", "apps": [app], "news": []}
 feed = root / "dist/ankibase-source.json"
 feed.write_text(json.dumps(source, indent=2) + "\n")
 
-files = {ipa_name: ipa, icon_name: icon, "ankibase-source.json": feed}
+files = {ipa_name: ipa, icon_name: icon}
 checksums = {name: hashlib.sha256(path.read_bytes()).hexdigest() for name, path in files.items()}
 
 # Runs on the host once everything is uploaded: verify, publish files, then the feeds.
@@ -92,7 +91,7 @@ for name, expected in checksums.items():
     assert Path(name).name == name
     assert hashlib.sha256((stage / name).read_bytes()).hexdigest() == expected
     target = destination / name
-    if target.exists() and name != "ankibase-source.json":
+    if target.exists():
         assert hashlib.sha256(target.read_bytes()).hexdigest() == expected, "Bump the build before replacing a release"
 
 source_path = destination / "source.json"
@@ -126,9 +125,9 @@ try:
     (root / "dist/checksums.json").write_text(json.dumps(checksums))
     for name, path in {**files, "checksums.json": root / "dist/checksums.json"}.items():
         subprocess.run(["scp", "-q", str(path), f"{host}:{stage}/{name}"], check=True)
+    subprocess.run(["scp", "-q", str(feed), f"{host}:{stage}/ankibase-source.json"], check=True)
     subprocess.run(ssh + [f"python3 - {stage} {shlex.quote(config['PUBLISH_DIR'])}"], input=remote_program, text=True, check=True)
 finally:
     subprocess.run(ssh + [f"rm -rf -- {stage}"], check=True)
-print(f"{base_url}/source.json  (shared)")
-print(f"{base_url}/ankibase-source.json  (AnkiBase only)")
+print(f"{base_url}/source.json  (Macr0 Apps shared source)")
 print(f"SHA-256 {ipa_name}: {checksums[ipa_name]}")

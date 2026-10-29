@@ -4,7 +4,7 @@ import { Cloud, Download, Eye, EyeOff, LogOut, RefreshCw, Server, Upload } from 
 import { ankiweb, sync, syncServer, type AnkiWebStatus, type MediaSyncStatus } from '../../api';
 import { SyncServerCard } from './SyncServerCard';
 import { Segmented, Toggle } from '../quizlet/ui';
-import { isNative } from '../../native';
+import { device, isNative } from '../../native';
 import { autoSyncEnabled, forgetSyncLogin, runSync, setAutoSync, useSyncState, type SyncResult } from '../../sync';
 
 type Target = 'ankiweb' | 'own';
@@ -152,7 +152,7 @@ export function SyncSection({ admin = false }: { admin?: boolean }) {
           <h3 className="font-semibold">Sync</h3>
           <p className="text-xs text-(--text-secondary) mt-0.5">
             {isNative
-              ? 'Your collection lives on this phone. Syncing keeps it in step with Anki on your other devices.'
+              ? `Your collection lives on this ${device}. Syncing keeps it in step with Anki on your other devices.`
               : 'Keeps this collection in step with Anki on your other devices.'}
           </p>
         </div>

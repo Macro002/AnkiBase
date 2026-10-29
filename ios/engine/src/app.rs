@@ -251,7 +251,7 @@ impl App {
     }
 
     /// The newest version: from a SideStore/AltStore source, or GitHub's latest release
-    /// with this platform's file (.apk on Android, .ipa on iPhone).
+    /// with this platform's file (.apk on Android, .ipa on iPhone, the installer on computers).
     fn app_update(&self) -> Value {
         let current = json!({"version": self.config.version, "build": self.config.build});
         let Some(feed) = self.config.update_feed.as_deref().filter(|f| !f.is_empty()) else {
@@ -263,7 +263,17 @@ impl App {
         if source.get("tag_name").is_some() {
             // GitHub: {"tag_name": "v1.2.0", "body": …, "assets": [{"name", "browser_download_url"}]}
             let version = source["tag_name"].as_str().unwrap_or_default().trim_start_matches('v').to_string();
-            let suffix = if cfg!(target_os = "android") { ".apk" } else { ".ipa" };
+            let suffix = if cfg!(target_os = "android") {
+                ".apk"
+            } else if cfg!(target_os = "windows") {
+                "-setup.exe"
+            } else if cfg!(target_os = "macos") {
+                ".dmg"
+            } else if cfg!(target_os = "linux") {
+                ".AppImage"
+            } else {
+                ".ipa"
+            };
             let file = source["assets"].as_array().and_then(|assets| {
                 assets.iter().find(|a| a["name"].as_str().is_some_and(|n| n.ends_with(suffix)))
             });

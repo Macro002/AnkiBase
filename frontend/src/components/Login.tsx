@@ -6,7 +6,7 @@ import { ApiError, auth, setup, theme as themeApi } from '../api';
 
 import { Logo } from './Logo';
 import { applyAccentColor, saveAccentColor, applyBaseColors, saveBaseColors } from '../hooks/useAccentColor';
-import { appStatus, isNative, useAppStatus } from '../native';
+import { appStatus, device, isNative, useAppStatus } from '../native';
 
 const MAX_ATTEMPTS = 5;
 const SS_UNTIL = 'ankibase-login-lockout';
@@ -201,7 +201,7 @@ export function Login() {
         {isNative && (
           <div className="mt-6 pt-5 border-t border-(--bg-tertiary) space-y-3">
             <button onClick={() => saveServer(null)} className="btn btn-secondary w-full flex items-center justify-center gap-2">
-              <Smartphone className="w-4 h-4" /> Use on this phone only
+              <Smartphone className="w-4 h-4" /> Use on this {device} only
             </button>
             <p className="text-xs text-(--text-secondary) text-center leading-relaxed">
               Decks, studying, stats and sync with AnkiWeb (or your own sync server) all work without a server.

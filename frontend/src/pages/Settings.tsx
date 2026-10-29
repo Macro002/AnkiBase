@@ -8,7 +8,7 @@ import { useSearchParams } from 'react-router-dom';
 import { UserManagement } from '../components/UserManagement';
 import { SyncSection } from '../components/settings/SyncSection';
 import { ServerSection } from '../components/settings/ServerSection';
-import { hasServer, isNative, useAppStatus } from '../native';
+import { device, hasServer, isNative, useAppStatus } from '../native';
 import { LANGUAGES } from '../i18n';
 import { Logo } from '../components/Logo';
 import { useTranslation } from 'react-i18next';
@@ -553,7 +553,7 @@ export function Settings() {
       <div>
         <h2 className="text-xl font-bold">{t('settings.title')}</h2>
         <p className="text-sm text-(--text-secondary) mt-0.5">
-          {isNative && app && !app.server ? 'AnkiBase on this phone'
+          {isNative && app && !app.server ? `AnkiBase on this ${device}`
             : currentUser ? <>Signed in as <span className="text-(--text-primary)">{currentUser.username}</span>{currentUser.is_admin ? ' · admin' : ''}</> : ' '}
         </p>
       </div>

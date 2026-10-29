@@ -1,18 +1,21 @@
 name: Release
 
 # Run scripts/release.sh v1.2.3: it tags the release, and this workflow builds the Android
-# app, pushes the Docker image to ghcr.io and makes a draft release with the .apk. The
-# script then adds the iPhone .ipa (built on Linux, not here) and publishes the draft, so
-# the release appears with both apps. Servers on the release channel see the new tag.
+# and computer apps, pushes the Docker image to ghcr.io and makes a draft release with them.
+# The script then adds the iPhone .ipa (built on Linux, not here) and publishes the draft,
+# so the release appears with every app. Servers on the release channel see the new tag.
+# Run by hand (workflow_dispatch), it only builds the computer apps, to try them.
 on:
   push:
     tags: ["v*.*.*"]
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
   android:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
@@ -78,6 +81,7 @@ jobs:
           path: android/dist/*.apk
 
   docker:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -103,8 +107,89 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  # What every computer app bundles: the web UI, Anki's pages and the icons.
+  desktop-assets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: sudo apt-get update -q && sudo apt-get install -y -q librsvg2-bin
+      - run: npm ci
+        working-directory: frontend
+      - run: desktop/scripts/prepare.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-assets
+          path: |
+            desktop/resources
+            desktop/icons
+
+  desktop:
+    needs: desktop-assets
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: windows-setup.exe
+            bundle: target/release/bundle/nsis/*-setup.exe
+          - os: macos-latest
+            name: macos.dmg
+            target: universal-apple-darwin
+            bundle: target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          # The oldest supported Ubuntu, so the AppImage runs on older systems too.
+          - os: ubuntu-22.04
+            name: linux.AppImage
+            bundle: target/release/bundle/appimage/*.AppImage
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - if: runner.os == 'Windows'
+        run: git config --system core.longpaths true
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: desktop-assets
+          path: desktop
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: arduino/setup-protoc@v3
+        with:
+          version: "31.x"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update -q && sudo apt-get install -y -q libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+      - if: runner.os == 'macOS'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop
+          key: ${{ matrix.target }}
+
+      - name: Build
+        working-directory: desktop
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || VERSION=0.0.0
+          npx --yes @tauri-apps/cli@2.12.3 build --ci --config "{\"version\": \"$VERSION\"}" ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
+          mkdir -p ../dist && cp ${{ matrix.bundle }} "../dist/AnkiBase-v$VERSION-${{ matrix.name }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-${{ runner.os }}
+          path: dist/*
+
   release:
-    needs: android
+    if: github.event_name == 'push'
+    needs: [android, desktop]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -115,9 +200,15 @@ jobs:
       - name: Name the APK
         run: mv dist/*.apk "dist/AnkiBase-${GITHUB_REF_NAME}.apk"
 
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: app-*
+          path: dist
+          merge-multiple: true
+
       - uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.apk
+          files: dist/*
           draft: true
           generate_release_notes: true
           body: |
@@ -130,6 +221,12 @@ jobs:
             With Docker, where your `docker-compose.yml` is: `docker compose pull && docker compose up -d`
 
             **Android:** download the `.apk` below and open it. It installs over the old version.
+
+            **Windows:** download `-windows-setup.exe` and run it. The app isn't code-signed, so Windows may say "Windows protected your PC": click **More info → Run anyway**.
+
+            **macOS:** download the `.dmg` and drag AnkiBase into Applications. The app isn't notarized, so the first time, right-click it and choose **Open**, or allow it in System Settings → Privacy & Security.
+
+            **Linux:** download the `.AppImage`, make it executable (`chmod +x`) and run it.
 
             **iPhone:** add the source `https://apps.macr0.dev/static/ios/source.json` in SideStore or AltStore and update from there, or download the `.ipa` below and open it in either.
 

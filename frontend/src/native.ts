@@ -1,6 +1,7 @@
-/** The phone apps. The iPhone app (ios/) injects `window.ankibaseNative` before the page
- *  loads and answers messages posted to `webkit.messageHandlers.ankibase`; the Android app
- *  (android/) offers the same through its `AnkiBaseAndroid` object. */
+/** The apps. The iPhone app (ios/) injects `window.ankibaseNative` before the page loads and
+ *  answers messages posted to `webkit.messageHandlers.ankibase`; the Android app (android/)
+ *  offers the same through its `AnkiBaseAndroid` object. The computer apps (desktop/) only
+ *  inject `window.ankibaseNative`. */
 import { useEffect, useState } from 'react';
 
 interface NativeInfo { version: string; build: string; platform: string }
@@ -19,6 +20,9 @@ function androidInfo(): NativeInfo | null {
 export const native: NativeInfo | null = w.ankibaseNative ?? androidInfo();
 export const isNative = native !== null;
 export const isAndroid = native?.platform === 'android';
+export const isDesktop = ['windows', 'macos', 'linux'].includes(native?.platform ?? '');
+/** What the app runs on, for "this phone" / "this computer". */
+export const device = isDesktop ? 'computer' : 'phone';
 
 function post(message: Record<string, unknown>) {
   try {

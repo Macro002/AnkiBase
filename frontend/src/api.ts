@@ -689,17 +689,18 @@ export const settings = {
       has_admin_key: Record<string, boolean>;
       is_env_key: Record<string, boolean>;
     }>('/settings/api-keys'),
-  setApiKey: (provider: string, apiKey: string = "", adminKey: string = "") =>
+  // baseUrl: the "custom" provider's server (Ollama, Open WebUI…); its apiKey is optional.
+  setApiKey: (provider: string, apiKey: string = "", adminKey: string = "", baseUrl: string = "") =>
     fetchAPI<{ success: boolean; message: string }>('/settings/api-keys', {
       method: 'POST',
-      body: JSON.stringify({ provider, api_key: apiKey, admin_key: adminKey }),
+      body: JSON.stringify({ provider, api_key: apiKey, admin_key: adminKey, base_url: baseUrl }),
     }),
   deleteApiKey: (provider: string) =>
     fetchAPI<{ success: boolean; message: string }>(`/settings/api-keys/${provider}`, {
       method: 'DELETE',
     }),
   getFullApiKey: (provider: string) =>
-    fetchAPI<{ api_key: string; admin_key: string }>(`/settings/api-keys/${provider}/full`),
+    fetchAPI<{ api_key: string; admin_key: string; base_url?: string }>(`/settings/api-keys/${provider}/full`),
   getProviderModels: (provider: string) =>
     fetchAPI<{ models: ProviderModel[]; default_model: string }>(`/settings/api-keys/${provider}/models`),
   getProviders: () => fetchAPI<{ providers: Record<string, ProviderInfo> }>('/settings/providers'),

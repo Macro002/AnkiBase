@@ -251,6 +251,8 @@
     "aiTitle": "AI 故事（可选）",
     "aiText": "有了以下任一提供商的 API 密钥，AnkiBase 就能把你的单词写成可点按翻译的小故事。其他功能无需密钥。",
     "apiKey": "API 密钥",
+    "serverUrl": "服务器地址，例如 http://192.168.1.10:11434",
+    "apiKeyOptional": "API 密钥（如果服务器需要）",
     "saveKey": "保存密钥",
     "saving": "正在保存…",
     "doneTitle": "一切就绪",

@@ -245,6 +245,7 @@ function Ai({ next }: { next: () => void }) {
   const [providers, setProviders] = useState<Record<string, ProviderInfo>>({});
   const [provider, setProvider] = useState('');
   const [key, setKey] = useState('');
+  const [url, setUrl] = useState('');  // the "custom" provider: a local or OpenAI-compatible server
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -258,7 +259,11 @@ function Ai({ next }: { next: () => void }) {
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true); setError('');
-    try { await settingsApi.setApiKey(provider, key.trim()); next(); }
+    try {
+      if (provider === 'custom') await settingsApi.setApiKey(provider, key.trim(), '', url.trim());
+      else await settingsApi.setApiKey(provider, key.trim());
+      next();
+    }
     catch (err) { setError(err instanceof Error ? err.message : t('setup.failed')); }
     finally { setBusy(false); }
   };
@@ -272,10 +277,15 @@ function Ai({ next }: { next: () => void }) {
             className={`px-3 h-9 rounded-lg text-sm ${provider === id ? 'bg-(--accent) text-white' : 'bg-(--bg-tertiary) text-(--text-secondary)'}`}>{info.name}</button>
         ))}
       </div>
-      <input className="input w-full font-mono text-sm" value={key} onChange={e => setKey(e.target.value)} placeholder={t('setup.apiKey')}
+      {provider === 'custom' && (
+        <input type="url" className="input w-full font-mono text-sm" value={url} onChange={e => setUrl(e.target.value)} placeholder={t('setup.serverUrl')}
+          autoCapitalize="off" autoCorrect="off" spellCheck={false} aria-label={t('setup.serverUrl')} />
+      )}
+      <input className="input w-full font-mono text-sm" value={key} onChange={e => setKey(e.target.value)}
+        placeholder={t(provider === 'custom' ? 'setup.apiKeyOptional' : 'setup.apiKey')}
         autoCapitalize="off" autoCorrect="off" spellCheck={false} aria-label={t('setup.apiKey')} />
       {error && <p className="text-sm text-(--error)">{error}</p>}
-      <button className="btn btn-primary w-full h-11" disabled={busy || !key.trim() || !provider}>{busy ? t('setup.saving') : t('setup.saveKey')}</button>
+      <button className="btn btn-primary w-full h-11" disabled={busy || !(provider === 'custom' ? url : key).trim() || !provider}>{busy ? t('setup.saving') : t('setup.saveKey')}</button>
       <button type="button" onClick={next} className="w-full text-sm text-(--text-secondary) hover:text-(--text-primary) py-1">{t('setup.skipForNow')}</button>
     </form>
   );

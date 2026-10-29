@@ -18,6 +18,7 @@ The installer generates a `.env` file at `/opt/ankibase/backend/.env`. You can e
 | `CORS_ORIGINS` | Other origins allowed to call the API (only for a separately served frontend) | `http://localhost:<port>` |
 | `UPDATE_CHANNEL` | `release` (tagged releases) or `main` (every commit) for in-app updates | `release` |
 | `GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` | Server-wide AI keys for profiles without their own | – |
+| `CUSTOM_AI_BASE_URL`, `CUSTOM_AI_API_KEY` | Server-wide local or OpenAI-compatible AI server (see below); the key only if it needs one | – |
 
 Without the two secrets in `.env`, AnkiBase generates them on first start into `backend/data/.secrets` (mode 0600).
 Per-profile data (stories, API keys) lives in `backend/data/<profile>/`.
@@ -39,6 +40,25 @@ API keys are managed in the app under **Settings → AI** (or **AI settings** on
 | Google Gemini | `gemini-2.0-flash` | `gemini-2.0-flash-lite`, `gemini-1.5-flash-8b`, `gemini-1.5-pro` |
 
 AI is optional. Studying, Quizlet, search and stats all work without a key.
+
+### Local models (Ollama, Open WebUI, LM Studio)
+
+Choose **Local / OpenAI-compatible** and enter the server's address. AnkiBase checks that it answers and finds its API path itself, and the model list comes from the server:
+
+| Server | Address to enter | API key |
+|---|---|---|
+| Ollama | `http://<host>:11434` | none |
+| Open WebUI | `http://<host>:3000` | from Settings → Account in Open WebUI |
+| LM Studio | `http://<host>:1234` | none |
+
+Anything else with an OpenAI-style `/chat/completions` API works too: enter its base URL, ending in `/v1` or wherever its `/models` lives.
+
+The address must be reachable **from the AnkiBase server**:
+
+- Ollama only listens on `127.0.0.1` by default. If it runs on another machine, start it with `OLLAMA_HOST=0.0.0.0` ([Ollama FAQ](https://docs.ollama.com/faq)).
+- With Docker, `localhost` is the AnkiBase container itself. For Ollama on the same machine, use `http://host.docker.internal:11434` (the compose file maps that name to the host) and set `OLLAMA_HOST=0.0.0.0` so Ollama accepts it.
+
+Small models on a CPU can take minutes per story; Reading's word annotations send one request per paragraph.
 
 Keys are saved per profile and encrypted at rest. Who may see or change them is a permission (see below).
 

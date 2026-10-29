@@ -1,3 +1,4 @@
+import re
 import google.generativeai as genai
 from openai import AsyncOpenAI
 import anthropic
@@ -44,6 +45,30 @@ class OpenAIProvider(AIProvider):
             messages=[{"role": "user", "content": prompt}],
         )
         return response.choices[0].message.content or ""
+
+
+class OpenAICompatibleProvider(AIProvider):
+    """Any server with an OpenAI-style /chat/completions API: Ollama, Open WebUI, LM Studio, vLLM…"""
+
+    def __init__(self, api_key: str, model: str, base_url: str):
+        # Local servers usually need no key, but the client requires one.
+        self.client = AsyncOpenAI(api_key=api_key or "none", base_url=base_url)
+        self.model = model
+
+    async def generate(self, prompt: str) -> str:
+        if not self.model:
+            # No model picked yet: use the first one the server offers.
+            models = [m.id async for m in self.client.models.list()]
+            if not models:
+                raise RuntimeError("The AI server has no models. Pull or load one first (e.g. `ollama pull llama3.1`).")
+            self.model = models[0]
+        response = await self.client.chat.completions.create(
+            model=self.model,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = response.choices[0].message.content or ""
+        # Reasoning models (DeepSeek-R1, Qwen3…) put their thinking in the reply.
+        return re.sub(r"(?s)^\s*<think>.*?</think>", "", text).strip()
 
 
 # Current Claude models that accept server-side refusal fallbacks ("default" routing).
@@ -111,10 +136,17 @@ PROVIDERS = {
         ],
         "default_model": "gemini-2.0-flash",
     },
+    "custom": {
+        "name": "Local / OpenAI-compatible",
+        "class": OpenAICompatibleProvider,
+        # The models come from the server itself.
+        "models": [],
+        "default_model": "",
+    },
 }
 
 
-def get_provider(provider_name: str, api_key: str, model: str | None = None) -> AIProvider:
+def get_provider(provider_name: str, api_key: str, model: str | None = None, base_url: str = "") -> AIProvider:
     """Get an AI provider instance."""
     if provider_name not in PROVIDERS:
         raise ValueError(f"Unknown provider: {provider_name}")
@@ -123,14 +155,18 @@ def get_provider(provider_name: str, api_key: str, model: str | None = None) -> 
     provider_class = provider_info["class"]
     model_to_use = model or provider_info["default_model"]
 
+    if provider_name == "custom":
+        return provider_class(api_key, model_to_use, base_url)
     return provider_class(api_key, model_to_use)
 
 
 class StoryGenerator:
     """Generate stories using vocabulary words via various AI providers."""
 
-    def __init__(self, api_keys: dict[str, str]):
+    def __init__(self, api_keys: dict[str, str], custom: Optional[dict[str, str]] = None):
         self.api_keys = api_keys
+        # The OpenAI-compatible server: {"base_url", "api_key"}.
+        self.custom = custom or {}
         self._used_provider = None
         self._used_model = None
 
@@ -145,18 +181,24 @@ class StoryGenerator:
     ) -> tuple[str, str, str | None]:
         """Generate text using the specified provider (or first available).
         Returns (result, provider_used, model_used)."""
-        priority = ["gemini", "groq", "openrouter", "openai", "anthropic", "mistral"]
+        priority = ["gemini", "groq", "openrouter", "openai", "anthropic", "mistral", "custom"]
         providers_to_try = [provider] if provider else priority
 
         last_error = None
         for p in providers_to_try:
-            api_key = self._get_key_for_provider(p)
-            if not api_key:
-                continue
+            if p == "custom":
+                if not self.custom.get("base_url"):
+                    continue
+                api_key, base_url = self.custom.get("api_key", ""), self.custom["base_url"]
+            else:
+                api_key, base_url = self._get_key_for_provider(p), ""
+                if not api_key:
+                    continue
             try:
-                provider_instance = get_provider(p, api_key, model)
-                actual_model = model or PROVIDERS[p]["default_model"]
+                provider_instance = get_provider(p, api_key, model, base_url)
                 result = await provider_instance.generate(prompt)
+                # The custom server picks its first model when none is chosen.
+                actual_model = provider_instance.model if p == "custom" else model or PROVIDERS[p]["default_model"]
                 self._used_provider = p
                 self._used_model = actual_model
                 return result, p, actual_model

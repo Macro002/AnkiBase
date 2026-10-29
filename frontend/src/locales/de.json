@@ -251,6 +251,8 @@
     "aiTitle": "KI-Geschichten (optional)",
     "aiText": "Mit einem API-Schlüssel eines dieser Anbieter macht AnkiBase aus deinen Wörtern kurze Geschichten mit Tipp-Übersetzung. Alles andere geht auch ohne.",
     "apiKey": "API-Schlüssel",
+    "serverUrl": "Serveradresse, z. B. http://192.168.1.10:11434",
+    "apiKeyOptional": "API-Schlüssel (falls der Server einen braucht)",
     "saveKey": "Schlüssel speichern",
     "saving": "Wird gespeichert…",
     "doneTitle": "Alles bereit",

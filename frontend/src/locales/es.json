@@ -251,6 +251,8 @@
     "aiTitle": "Historias con IA (opcional)",
     "aiText": "Con una clave API de uno de estos proveedores, AnkiBase convierte tus palabras en historias cortas con traducción al tocar. Todo lo demás funciona sin ella.",
     "apiKey": "Clave API",
+    "serverUrl": "Dirección del servidor, p. ej. http://192.168.1.10:11434",
+    "apiKeyOptional": "Clave API (si el servidor la necesita)",
     "saveKey": "Guardar clave",
     "saving": "Guardando…",
     "doneTitle": "Todo listo",

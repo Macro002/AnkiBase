@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     openrouter_api_key: str = ""
     groq_api_key: str = ""
     mistral_api_key: str = ""
+    # A local or other OpenAI-compatible server (Ollama, Open WebUI, LM Studio…).
+    custom_ai_base_url: str = ""
+    custom_ai_api_key: str = ""
     # Only for upgrading from the single-password versions (see database.migrate_to_user_system).
     app_password: str = ""
     cors_origins: str = "http://localhost:5173"
@@ -40,7 +43,7 @@ def get_settings() -> Settings:
 
 
 def _stored_keys() -> tuple[str | None, dict]:
-    """The active profile's keys file and its contents, as {provider: {api_key, admin_key}}."""
+    """The active profile's keys file and its contents, as {provider: {api_key, admin_key, base_url}}."""
     from database import get_active_account
     from security import decrypt
     account = get_active_account()
@@ -54,12 +57,13 @@ def _stored_keys() -> tuple[str | None, dict]:
         return path, {}
     stored = {}
     for provider, value in raw.items():
-        # Formats over time: "key", {"key", "is_admin"}, {"api_key", "admin_key"}.
+        # Formats over time: "key", {"key", "is_admin"}, {"api_key", "admin_key"}; "custom" also has "base_url".
         if isinstance(value, dict):
             api_key, admin_key = value.get("api_key") or value.get("key", ""), value.get("admin_key", "")
         else:
             api_key, admin_key = value or "", ""
-        stored[provider] = {"api_key": decrypt(api_key), "admin_key": decrypt(admin_key)}
+        stored[provider] = {"api_key": decrypt(api_key), "admin_key": decrypt(admin_key),
+                            "base_url": decrypt(value.get("base_url", "") if isinstance(value, dict) else "")}
     return path, stored
 
 
@@ -73,28 +77,45 @@ def _write_keys(path: str, stored: dict) -> None:
 
 
 def get_api_keys() -> dict[str, str]:
-    """Each provider's API key: the profile's own, else the server's from the environment."""
+    """Each provider's API key: the profile's own, else the server's from the environment.
+    "custom" (an OpenAI-compatible server) maps to its URL instead, since its key is optional."""
     settings = get_settings()
     keys = {provider: getattr(settings, f"{provider}_api_key") for provider in PROVIDER_ENV}
     _, stored = _stored_keys()
     for provider, value in stored.items():
-        if value["api_key"]:
+        if value["api_key"] and provider in PROVIDER_ENV:
             keys[provider] = value["api_key"]
+    keys["custom"] = get_custom_endpoint()["base_url"]
     return keys
 
 
-def get_api_key_info(provider: str) -> dict:
-    """A provider's stored api_key and admin_key (for usage statistics)."""
+def get_custom_endpoint() -> dict[str, str]:
+    """The OpenAI-compatible server's base_url and (optional) api_key: the profile's own, else the server's."""
     _, stored = _stored_keys()
-    return stored.get(provider, {"api_key": "", "admin_key": ""})
+    saved = stored.get("custom") or {}
+    if saved.get("base_url"):
+        return {"base_url": saved["base_url"], "api_key": saved["api_key"]}
+    settings = get_settings()
+    return {"base_url": settings.custom_ai_base_url.rstrip("/"), "api_key": settings.custom_ai_api_key}
 
 
-def save_api_key(provider: str, api_key: str = "", admin_key: str = "") -> None:
-    """Save a provider's key(s); empty values keep what's stored."""
+def get_api_key_info(provider: str) -> dict:
+    """A provider's stored api_key and admin_key (for usage statistics), and base_url for "custom"."""
+    _, stored = _stored_keys()
+    return stored.get(provider, {"api_key": "", "admin_key": "", "base_url": ""})
+
+
+def save_api_key(provider: str, api_key: str = "", admin_key: str = "", base_url: str = "") -> None:
+    """Save a provider's key(s); empty values keep what's stored. A new base_url replaces the
+    custom server's key too, since that key belongs to the old server."""
     path, stored = _stored_keys()
     if not path:
         raise ValueError("No profile yet")
-    current = stored.get(provider, {"api_key": "", "admin_key": ""})
+    current = stored.get(provider, {"api_key": "", "admin_key": "", "base_url": ""})
+    if base_url:
+        if base_url != current.get("base_url"):
+            current["api_key"] = ""
+        current["base_url"] = base_url
     if api_key:
         current["api_key"] = api_key
     if admin_key:

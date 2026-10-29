@@ -5,6 +5,9 @@ import { SidePanel } from '../quizlet/ui';
 
 export interface AiChoice { provider: string; model: string }
 
+// The provider for a local or other OpenAI-compatible server: an address, and a key only if it needs one.
+const CUSTOM = 'custom';
+
 /**
  * AI settings side panel for the Story tab: which provider/model writes the
  * story, and the API keys behind them.
@@ -25,6 +28,8 @@ export function AiPanel({ providers, configured, choice, onChoice, onKeysChanged
   const [envKeys, setEnvKeys] = useState<Record<string, boolean>>({});
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
+  const [draftUrl, setDraftUrl] = useState('');  // "custom": the server's address
+  const [error, setError] = useState('');
   const [reveal, setReveal] = useState(false);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
@@ -45,15 +50,17 @@ export function AiPanel({ providers, configured, choice, onChoice, onKeysChanged
   }, [choice.provider, configured, providers, models]);
 
   const saveKey = async (p: string) => {
-    if (!draft.trim()) return;
-    setBusy(true);
+    if (p === CUSTOM ? !draftUrl.trim() : !draft.trim()) return;
+    setBusy(true); setError('');
     try {
-      await settings.setApiKey(p, draft.trim());
+      await settings.setApiKey(p, draft.trim(), '', p === CUSTOM ? draftUrl.trim() : '');
       await loadKeys();
       onKeysChanged();
       setEditing(null);
       setDraft('');
       if (!choice.provider) onChoice({ provider: p, model: providers[p]?.default_model ?? '' });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Couldn’t save');
     } finally { setBusy(false); }
   };
 
@@ -104,10 +111,10 @@ export function AiPanel({ providers, configured, choice, onChoice, onKeysChanged
                 {configured[id] ? (envKeys[id] ? 'from .env' : 'Connected') : 'Not set'}
               </span>
               {canManageKeys && editing !== id && (
-                <button className="icon-btn" title={configured[id] ? 'Change key' : 'Add key'}
+                <button className="icon-btn" title={id === CUSTOM ? (configured[id] ? 'Change server' : 'Add server') : configured[id] ? 'Change key' : 'Add key'}
                   onClick={async () => {
-                    setEditing(id); setReveal(false); setDraft('');
-                    if (configured[id]) settings.getFullApiKey(id).then(r => setDraft(r.api_key || '')).catch(() => {});
+                    setEditing(id); setReveal(false); setDraft(''); setDraftUrl(''); setError('');
+                    if (configured[id]) settings.getFullApiKey(id).then(r => { setDraft(r.api_key || ''); setDraftUrl(r.base_url || ''); }).catch(() => {});
                   }}>
                   <Pencil className="w-3.5 h-3.5" />
                 </button>
@@ -116,7 +123,12 @@ export function AiPanel({ providers, configured, choice, onChoice, onKeysChanged
                 <button className="icon-btn icon-btn-danger" title="Remove key" onClick={() => setConfirmDelete(id)}><Trash2 className="w-3.5 h-3.5" /></button>
               )}
             </div>
-            {canManageKeys && keys[id] && editing !== id && (
+            {id === CUSTOM && editing !== id && (
+              <p className="text-xs text-(--text-secondary)">
+                {keys[id] ? <span className="font-mono break-all">{keys[id]}</span> : 'Ollama, Open WebUI, LM Studio or any other OpenAI-compatible server.'}
+              </p>
+            )}
+            {canManageKeys && keys[id] && id !== CUSTOM && editing !== id && (
               <button className="text-xs text-(--text-secondary) hover:text-white font-mono inline-flex items-center gap-1.5"
                 title="Copy the full key"
                 onClick={async () => {
@@ -127,16 +139,22 @@ export function AiPanel({ providers, configured, choice, onChoice, onKeysChanged
             )}
             {editing === id && (
               <form className="space-y-2" onSubmit={e => { e.preventDefault(); saveKey(id); }}>
+                {id === CUSTOM && (
+                  <input type="url" value={draftUrl} onChange={e => setDraftUrl(e.target.value)} autoFocus
+                    placeholder="http://192.168.1.10:11434" className="input w-full text-sm font-mono"
+                    autoCapitalize="off" autoCorrect="off" spellCheck={false} aria-label="Server address" />
+                )}
                 <div className="relative">
-                  <input type={reveal ? 'text' : 'password'} value={draft} onChange={e => setDraft(e.target.value)} autoFocus
-                    placeholder="Paste API key" className="input w-full !pr-10 text-sm" />
+                  <input type={reveal ? 'text' : 'password'} value={draft} onChange={e => setDraft(e.target.value)} autoFocus={id !== CUSTOM}
+                    placeholder={id === CUSTOM ? 'API key (if the server needs one)' : 'Paste API key'} className="input w-full !pr-10 text-sm" />
                   <button type="button" onClick={() => setReveal(r => !r)} className="absolute right-3 top-1/2 -translate-y-1/2 text-(--text-secondary) hover:text-white">
                     {reveal ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
+                {error && <p className="text-xs text-(--error)">{error}</p>}
                 <div className="flex gap-2">
                   <button type="button" onClick={() => setEditing(null)} className="btn btn-secondary flex-1 text-sm">Cancel</button>
-                  <button type="submit" disabled={busy || !draft.trim()} className="btn btn-primary flex-1 text-sm inline-flex items-center justify-center gap-2">
+                  <button type="submit" disabled={busy || !(id === CUSTOM ? draftUrl : draft).trim()} className="btn btn-primary flex-1 text-sm inline-flex items-center justify-center gap-2">
                     {busy && <Loader2 className="w-4 h-4 animate-spin" />}Save
                   </button>
                 </div>
@@ -144,7 +162,7 @@ export function AiPanel({ providers, configured, choice, onChoice, onKeysChanged
             )}
             {confirmDelete === id && (
               <div className="flex items-center gap-2 text-sm">
-                <span className="flex-1 text-(--text-secondary)">Remove this key?</span>
+                <span className="flex-1 text-(--text-secondary)">{id === CUSTOM ? 'Remove this server?' : 'Remove this key?'}</span>
                 <button onClick={() => setConfirmDelete(null)} className="btn btn-secondary text-xs py-1 px-3">Keep</button>
                 <button onClick={() => deleteKey(id)} className="btn btn-error text-xs py-1 px-3">Remove</button>
               </div>

@@ -10,7 +10,7 @@ import tempfile
 import shutil
 from pathlib import Path
 
-from config import get_settings, get_api_keys, get_api_key_info, save_api_key, delete_api_key, encrypt_stored_keys
+from config import get_settings, get_api_keys, get_api_key_info, get_custom_endpoint, save_api_key, delete_api_key, encrypt_stored_keys
 import security
 from security import require_auth, require_admin, require
 from anki_client import AnkiConnectClient, AnkiError
@@ -1020,7 +1020,7 @@ async def generate_story_endpoint(
                 if isinstance(data, dict) and "category" in data:
                     word_categories[word] = data["category"]
 
-        generator = StoryGenerator(api_keys)
+        generator = StoryGenerator(api_keys, get_custom_endpoint())
         result = await generator.generate_story(
             words=request.words,
             style=request.style,
@@ -1108,7 +1108,7 @@ async def annotate_story_endpoint(story_id: int, request: AiChoiceRequest, _: di
     lang = story_row.get("target_language") or (story_row.get("language") if story_row.get("language") not in (None, "", "auto") else None)
     gloss = _gloss_language(story_row.get("lookup_language"), story_row.get("language") if story_row.get("target_language") else None)
     try:
-        annotations = await StoryGenerator(api_keys).annotate_story(
+        annotations = await StoryGenerator(api_keys, get_custom_endpoint()).annotate_story(
             story_row["content"], story_row.get("words") or [], lang, gloss, request.provider, request.model)
     except NoValidKeysError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -1138,7 +1138,7 @@ async def explain_passage_endpoint(request: ExplainRequest, _: dict = Depends(re
     if not any(api_keys.values()):
         raise HTTPException(status_code=400, detail="Add an AI key in Story → AI settings first")
     try:
-        text = await StoryGenerator(api_keys).explain_passage(
+        text = await StoryGenerator(api_keys, get_custom_endpoint()).explain_passage(
             passage, request.context.strip()[:1500], request.language, request.gloss_language or "English",
             request.level, request.provider, request.model)
     except NoValidKeysError as e:
@@ -1156,7 +1156,7 @@ async def lookup_word_endpoint(
         raise HTTPException(status_code=500, detail="No AI provider API keys configured")
 
     try:
-        generator = StoryGenerator(api_keys)
+        generator = StoryGenerator(api_keys, get_custom_endpoint())
         result = await generator.lookup_word(
             word=request.word,
             language=request.language,
@@ -1224,6 +1224,45 @@ class ApiKeyRequest(BaseModel):
     provider: str
     api_key: str = ""
     admin_key: str = ""
+    base_url: str = ""  # "custom" only: the OpenAI-compatible server
+
+
+async def _find_openai_api(base_url: str, api_key: str) -> str:
+    """The working API root for a server address: as given, or with /v1 (Ollama, LM Studio, vLLM)
+    or /api (Open WebUI) added. Raises HTTPException when none answers."""
+    import httpx
+    from urllib.parse import urlparse
+    url = base_url.strip().rstrip("/")
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise HTTPException(status_code=400, detail="Enter the server's address, e.g. http://192.168.1.10:11434")
+    candidates = [url] if parsed.path not in ("", "/") else [url + "/v1", url, url + "/api"]
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    error = ""
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        for candidate in candidates:
+            try:
+                r = await client.get(candidate + "/models", headers=headers)
+            except httpx.HTTPError as e:
+                error = f"Couldn't reach {url}: {e.__class__.__name__}"
+                continue
+            if r.status_code in (401, 403):
+                error = "The server refused the API key" if api_key else "The server needs an API key"
+                break
+            else:
+                try:
+                    if r.is_success and isinstance(r.json(), dict):
+                        return candidate
+                except ValueError:
+                    pass
+                error = f"{candidate}/models answered {r.status_code}; is this an OpenAI-compatible API?"
+    raise HTTPException(status_code=400, detail=error)
+
+
+def _saved(provider: str) -> bool:
+    """Whether the profile saved this provider itself (not from the server's .env)."""
+    info = get_api_key_info(provider)
+    return bool(info["api_key"] or info.get("base_url"))
 
 
 def _mask(key: str) -> str:
@@ -1241,12 +1280,13 @@ async def get_api_keys_endpoint(user: dict = Depends(require_auth)):
         return {"keys": {}, "admin_keys": {}, "configured": configured, "has_admin_key": {}, "is_env_key": {}}
     info = {provider: get_api_key_info(provider) for provider in keys}
     return {
-        "keys": {p: _mask(k) for p, k in keys.items()},
+        # The custom server shows its address, which isn't secret.
+        "keys": {p: k if p == "custom" else _mask(k) for p, k in keys.items()},
         "admin_keys": {p: _mask(i["admin_key"]) for p, i in info.items()},
         "configured": configured,
         "has_admin_key": {p: bool(i["admin_key"]) for p, i in info.items()},
         # Keys from the server's environment (.env) rather than saved here.
-        "is_env_key": {p: bool(k) and not info[p]["api_key"] for p, k in keys.items()},
+        "is_env_key": {p: bool(k) and not _saved(p) for p, k in keys.items()},
     }
 
 
@@ -1255,6 +1295,15 @@ async def set_api_key_endpoint(request: ApiKeyRequest, _: str = Depends(require(
     """Set API key(s) for a provider."""
     if request.provider not in PROVIDERS:
         raise HTTPException(status_code=400, detail=f"Unknown provider: {request.provider}")
+
+    if request.provider == "custom":
+        # Check the server answers before saving, and find its API root.
+        # Re-saving the same server without retyping its key keeps the key.
+        saved, url = get_custom_endpoint(), request.base_url.strip().rstrip("/")
+        api_key = request.api_key or (saved["api_key"] if saved["base_url"] in (url, url + "/v1") else "")
+        base_url = await _find_openai_api(request.base_url, api_key)
+        save_api_key("custom", api_key=request.api_key, base_url=base_url)
+        return {"success": True, "message": f"Connected to {base_url}"}
 
     if not request.api_key and not request.admin_key:
         raise HTTPException(status_code=400, detail="At least one key (api_key or admin_key) must be provided")
@@ -1268,7 +1317,7 @@ async def delete_api_key_endpoint(provider: str, _: str = Depends(require("manag
     """Delete a saved API key (keys from the server's environment stay; remove them from .env)."""
     if provider not in PROVIDERS:
         raise HTTPException(status_code=400, detail=f"Unknown provider: {provider}")
-    if not get_api_key_info(provider)["api_key"] and get_api_keys().get(provider):
+    if not _saved(provider) and get_api_keys().get(provider):
         raise HTTPException(status_code=400, detail="That key comes from the server's .env file; remove it there.")
     delete_api_key(provider)
     return {"success": True, "message": f"API key deleted for {provider}"}
@@ -1280,8 +1329,14 @@ async def get_full_api_key_endpoint(provider: str, user: dict = Depends(require(
     admins only)."""
     if provider not in PROVIDERS:
         raise HTTPException(status_code=400, detail=f"Unknown provider: {provider}")
-    if not get_api_key_info(provider).get("api_key") and not user["is_admin"]:
+    if not _saved(provider) and not user["is_admin"]:
         raise HTTPException(status_code=403, detail="Only admins can see the server's own keys")
+
+    if provider == "custom":
+        endpoint = get_custom_endpoint()
+        if not endpoint["base_url"]:
+            raise HTTPException(status_code=404, detail="No AI server set")
+        return {"api_key": endpoint["api_key"], "admin_key": "", "base_url": endpoint["base_url"]}
 
     # Try manual key first
     keys = get_api_keys()
@@ -1420,7 +1475,18 @@ async def get_provider_models_endpoint(provider: str, _: str = Depends(require_a
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            if provider == "openai":
+            if provider == "custom":
+                endpoint = get_custom_endpoint()
+                response = await client.get(
+                    endpoint["base_url"] + "/models",
+                    headers={"Authorization": f"Bearer {endpoint['api_key']}"} if endpoint["api_key"] else {},
+                )
+                response.raise_for_status()
+                models = [{"id": m["id"], "name": m.get("name") or m["id"]}
+                          for m in response.json().get("data", []) if m.get("id")]
+                return {"models": models, "default_model": models[0]["id"] if models else ""}
+
+            elif provider == "openai":
                 response = await client.get(
                     "https://api.openai.com/v1/models",
                     headers={"Authorization": f"Bearer {api_key}"}

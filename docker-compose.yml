@@ -10,8 +10,12 @@ services:
       - "8000:8000"
     volumes:
       - ./data:/data
+    # Lets AnkiBase reach AI servers on this machine (e.g. Ollama) at http://host.docker.internal:11434.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     # Optional: server-wide AI keys (each profile can also add its own in Settings).
     # environment:
     #   GEMINI_API_KEY: ""
     #   OPENAI_API_KEY: ""
     #   ANTHROPIC_API_KEY: ""
+    #   CUSTOM_AI_BASE_URL: "http://host.docker.internal:11434/v1"  # Ollama or another OpenAI-compatible server

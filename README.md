@@ -50,7 +50,7 @@ Import a set from its link and study it in **Flashcards, Learn, Write, Test, Mat
 
 <img src="docs/public/media/shot-reading.webp" alt="Reading an AI story with a word lookup" width="100%">
 
-- Pick a deck or set. **Smart pick** favours words you're still learning: for Anki it uses card states, and for Quizlet it uses starred and often-missed terms. Then **Claude, ChatGPT or Gemini** writes a story at your CEFR level, with optional translations.
+- Pick a deck or set. **Smart pick** favours words you're still learning: for Anki it uses card states, and for Quizlet it uses starred and often-missed terms. Then **Claude, ChatGPT, Gemini or your own local model** (Ollama, Open WebUI, LM Studio) writes a story at your CEFR level, with optional translations.
 - In **Reading**, every word is already annotated with its dictionary form, part of speech, meaning in context and grammar notes, so lookups are instant. Highlight a sentence and ask the AI to **explain** it.
 - Words from your cards are highlighted, along with their inflected forms.
 
@@ -103,7 +103,7 @@ engine and released as its own project: Anki's official engine as a fast headles
 drop-in for AnkiConnect (its test suite passes), that also serves Anki's own Statistics and
 Deck Options screens. It's useful on its own too, for scripts or anything that used
 AnkiConnect. More in the [docs](https://macro002.github.io/AnkiBase/anki-cli).
-| AI (optional) | Anthropic Claude, OpenAI, Google Gemini (bring your own key) |
+| AI (optional) | Anthropic Claude, OpenAI, Google Gemini (bring your own key), or any OpenAI-compatible server such as Ollama |
 
 ## 🚀 Install
 

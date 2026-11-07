@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { quizlet, story as storyApi, type DailyStory, type DailyStoryRecipe } from '../../api';
 import { Toggle } from '../quizlet/ui';
 import { STYLES, dailyRecipe, loadAi, loadPrefs } from '../story/prefs';
+import { isIOS, requestStoryAlerts } from '../../native';
 
 const LENGTHS: Record<string, string> = { auto: 'Auto length', short: 'Short', medium: 'Medium', long: 'Long' };
 
@@ -27,7 +28,10 @@ export function DailyStorySection() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    storyApi.daily().then(setDaily).catch(() => setDaily({ enabled: false, recipe: null, tz: null }));
+    storyApi.daily().then(d => {
+      setDaily(d);
+      if (d.enabled) requestStoryAlerts(); // on from before the notifications (iOS asks only once)
+    }).catch(() => setDaily({ enabled: false, recipe: null, tz: null }));
     quizlet.listDecks().then(d => setSetTitles(Object.fromEntries(d.decks.map(x => [String(x.id), x.title])))).catch(() => {});
   }, []);
 
@@ -38,7 +42,10 @@ export function DailyStorySection() {
 
   const save = async (enabled: boolean, recipe?: DailyStoryRecipe) => {
     setBusy(true); setError(null);
-    try { setDaily(await storyApi.setDaily(enabled, recipe)); }
+    try {
+      setDaily(await storyApi.setDaily(enabled, recipe));
+      if (enabled) requestStoryAlerts(); // the iPhone app notifies when one's ready
+    }
     catch (e) { setError(e instanceof Error ? e.message : 'Could not save'); }
     finally { setBusy(false); }
   };
@@ -48,7 +55,7 @@ export function DailyStorySection() {
       <div className="flex items-center justify-between gap-4">
         <div>
           <h3 className="font-semibold">Daily story</h3>
-          <p className="text-xs text-(--text-secondary) mt-0.5">A new story with fresh words every day, once you’ve marked the last one read.</p>
+          <p className="text-xs text-(--text-secondary) mt-0.5">A new story with fresh words every day, once you’ve marked the last one read.{isIOS && ' You’ll get a notification when it’s ready.'}</p>
         </div>
         <Toggle on={!!daily?.enabled} disabled={!daily || busy || (!daily.enabled && !current && !daily.recipe)}
           onChange={on => save(on, on ? current ?? undefined : undefined)} />

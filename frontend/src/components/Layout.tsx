@@ -9,7 +9,7 @@ import { SyncConflictModal } from './SyncConflictModal';
 import { UpdateModal } from './UpdateModal';
 import { createPortal } from 'react-dom';
 import { MotionLayer } from './MotionLayer';
-import { appStatus, hasNativeTabs, hasServer, isIOS, isNative, onNativeTab, setNativeTabs, useAppStatus, useOverlayOpen } from '../native';
+import { appStatus, hasNativeTabs, hasServer, isIOS, isNative, nativeReady, onNativeOpen, onNativeTab, setNativeTabs, useAppStatus, useOverlayOpen } from '../native';
 import { runSync, useAutoSync, useSyncState, type SyncResult } from '../sync';
 import { useStudyBadge } from '../hooks/useStudyBadge';
 
@@ -129,6 +129,12 @@ export function Layout() {
     setNativeTabs({ items: JSON.parse(nativeTabs), selected: activeTab, hidden: studyingAnki || overlayOpen });
   }, [nativeTabs, activeTab, studyingAnki, overlayOpen]);
   useEffect(() => onNativeTab(to => navigate(to)), [navigate]);
+  // Pages the app opens (a tapped notification); tell it once we can.
+  useEffect(() => {
+    const off = onNativeOpen(path => navigate(path));
+    nativeReady();
+    return off;
+  }, [navigate]);
 
   const pushToast = (toast: Omit<ToastData, 'id'>) => {
     const id = ++toastIdRef.current;

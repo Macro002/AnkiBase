@@ -12,4 +12,6 @@
 <key>AnkiBaseUpdateFeed</key><string></string>
 <key>UIViewControllerBasedStatusBarAppearance</key><true/>
 <key>ITSAppUsesNonExemptEncryption</key><false/>
+<key>UIBackgroundModes</key><array><string>fetch</string></array>
+<key>BGTaskSchedulerPermittedIdentifiers</key><array><string>ankibase.stories</string></array>
 </dict></plist>

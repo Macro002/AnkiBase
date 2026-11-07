@@ -30,6 +30,9 @@ struct WebAppView: UIViewRepresentable {
         web.navigationDelegate = context.coordinator
         web.uiDelegate = context.coordinator
         context.coordinator.web = web
+        StoryAlerts.shared.open = { [weak coordinator = context.coordinator] path in
+            coordinator?.send("ankibase-open", ["path": path])
+        }
         web.load(URLRequest(url: AppSchemeHandler.start))
 
         // The tab bar, along the bottom (it makes room for the home indicator itself);
@@ -162,13 +165,17 @@ struct WebAppView: UIViewRepresentable {
                 }
             case "reminders-refresh":
                 Reminders.shared.refresh()
+            case "ready":
+                StoryAlerts.shared.pageReady()
+            case "story-alerts":
+                StoryAlerts.shared.requestPermission()
             default:
                 break
             }
         }
 
         /// An event for the page (native.ts listens for it).
-        private func send(_ event: String, _ detail: [String: Any]) {
+        func send(_ event: String, _ detail: [String: Any]) {
             guard let data = try? JSONSerialization.data(withJSONObject: detail) else { return }
             let json = String(decoding: data, as: UTF8.self)
             web?.evaluateJavaScript("window.dispatchEvent(new CustomEvent('\(event)', {detail: \(json)}))")

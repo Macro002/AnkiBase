@@ -113,9 +113,16 @@ impl Engine {
 
     // Decks --------------------------------------------------------------------------
 
+    /// Deck names and ids. The default deck (id 1) can't be deleted, only emptied, so like
+    /// Anki's deck list, leave it out when Anki's deck tree hides it (empty, no subdecks,
+    /// and there are other decks).
     pub fn deck_names(&mut self) -> Outcome<BTreeMap<String, i64>> {
-        let names = self.col()?.get_all_deck_names(false)?;
-        Ok(names.into_iter().map(|(id, name)| (name, id.0)).collect())
+        let col = self.col()?;
+        let names = col.get_all_deck_names(false)?;
+        // Anki only ever hides it at the top level.
+        let default_hidden = !col.deck_tree(None)?.children.iter().any(|deck| deck.deck_id == 1);
+        let hidden = |id: i64, name: &str| id == 1 && default_hidden && !name.contains("::");
+        Ok(names.into_iter().filter(|(id, name)| !hidden(id.0, name)).map(|(id, name)| (name, id.0)).collect())
     }
 
     /// Deck names and ids, and Anki's due counts per deck id (as AnkiConnect's getDeckStats).

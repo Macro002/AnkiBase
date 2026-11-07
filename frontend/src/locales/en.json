@@ -128,7 +128,8 @@
       "server": "Server",
       "account": "Account",
       "ai": "AI",
-      "users": "Users"
+      "users": "Users",
+      "reminders": "Reminders"
     }
   },
   "syncConflict": {
@@ -261,5 +262,18 @@
     "tipSync": "Run Anki's sync server here (Settings → Sync) so all your devices sync with your own server.",
     "tipPhone": "The AnkiBase apps for Android and iPhone study offline and sync when you're back online.",
     "open": "Open AnkiBase"
+  },
+  "reminders": {
+    "title": "Reminders",
+    "description": "A notification every day when decks are behind, and a badge on the app icon with how many.",
+    "time": "Remind me at",
+    "denied": "Notifications are off for AnkiBase. Turn them on in iOS Settings → Notifications → AnkiBase.",
+    "notification": {
+      "title": "Time to study",
+      "one": "{decks} is waiting for you",
+      "other": "{decks} are waiting for you",
+      "and": "and",
+      "more": "{count} more"
+    }
   }
 }

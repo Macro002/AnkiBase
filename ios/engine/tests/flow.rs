@@ -219,3 +219,40 @@ fn anki_pages_talk_to_the_collection() {
     assert_eq!(send(&phone, "POST", "/anki-pages/_anki/removeNotes", &[], Vec::new()).status, 404);
     let _ = std::fs::remove_dir_all(&tmp);
 }
+
+#[test]
+fn decks_behind_for_the_badge_and_reminders() {
+    let tmp = temp_dir("behind");
+    let phone = app(&tmp.join("phone"), None);
+    add_cards(&phone, "Spanish::Verbs", &["ser", "estar"]);
+    add_cards(&phone, "Kanji", &["水"]);
+    add_cards(&phone, "French", &["chat"]);
+    let due_in = |search: &str, days: &str| {
+        phone
+            .with_engine(|engine| {
+                let col = engine.col().unwrap();
+                let cards = col.search_cards(search, anki::search::SortMode::NoOrder).unwrap();
+                col.set_due_date(&cards, days, None).unwrap();
+            })
+            .unwrap_or_else(|_| panic!("no engine"));
+    };
+    // A subdeck's review today makes its top-level deck behind; Kanji falls behind in 3
+    // days; French only has new cards, which isn't being behind.
+    due_in("ser", "0");
+    due_in("水", "3");
+
+    let behind = ok(&phone, "GET", "/api/app/behind", Value::Null);
+    let days = behind["days"].as_array().unwrap();
+    assert_eq!(days.len(), 7);
+    let decks = |day: usize| days[day]["decks"].clone();
+    assert_eq!(decks(0), json!(["Spanish"]));
+    assert_eq!(decks(2), json!(["Spanish"]));
+    assert_eq!(decks(3), json!(["Kanji", "Spanish"]));
+    assert_eq!(decks(6), json!(["Kanji", "Spanish"]));
+    // Each day starts at a rollover, a day after the one before; today's has passed.
+    let starts: Vec<i64> = days.iter().map(|d| d["starts"].as_i64().unwrap()).collect();
+    assert!(starts.windows(2).all(|w| w[1] - w[0] == 86_400));
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+    assert!(starts[0] <= now && now < starts[1]);
+    let _ = std::fs::remove_dir_all(&tmp);
+}

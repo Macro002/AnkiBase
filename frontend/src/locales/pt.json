@@ -128,7 +128,8 @@
       "server": "Servidor",
       "account": "Conta",
       "ai": "IA",
-      "users": "Usuários"
+      "users": "Usuários",
+      "reminders": "Lembretes"
     }
   },
   "syncConflict": {
@@ -261,5 +262,18 @@
     "tipSync": "Rode aqui o servidor de sincronização do Anki (Configurações → Sincronizar) para todos os dispositivos usarem seu servidor.",
     "tipPhone": "Os apps AnkiBase para Android e iPhone estudam offline e sincronizam quando você volta a ficar online.",
     "open": "Abrir o AnkiBase"
+  },
+  "reminders": {
+    "title": "Lembretes",
+    "description": "Uma notificação todos os dias quando há baralhos atrasados, e um indicador no ícone do app com quantos são.",
+    "time": "Lembrar às",
+    "denied": "As notificações do AnkiBase estão desativadas. Ative-as em Ajustes do iOS → Notificações → AnkiBase.",
+    "notification": {
+      "title": "Hora de estudar",
+      "one": "{decks} está esperando por você",
+      "other": "{decks} estão esperando por você",
+      "and": "e",
+      "more": "mais {count}"
+    }
   }
 }

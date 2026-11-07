@@ -223,6 +223,12 @@ impl App {
         Some(match (request.method.as_str(), path) {
             ("GET", "/api/app") => Reply::ok(self.status()),
             ("GET", "/api/app/update") => Reply::ok(self.app_update()),
+            // The decks behind on each of the next 7 days: the badge and reminders (iPhone).
+            ("GET", "/api/app/behind") => match self.with_engine(|engine| engine.behind(7)) {
+                Ok(Ok(days)) => Reply::ok(days),
+                Ok(Err(failure)) => Reply::error(failure.status, failure.detail),
+                Err(reply) => reply,
+            },
             ("POST", "/api/app/check") => {
                 self.server.check();
                 Reply::ok(self.status())

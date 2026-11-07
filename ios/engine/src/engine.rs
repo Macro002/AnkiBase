@@ -8,6 +8,7 @@ use anki::collection::CollectionBuilder;
 use anki::error::{SyncErrorKind, AnkiError};
 use anki::prelude::*;
 use anki::scheduler::answering::{CardAnswer, Rating};
+use anki::search::{JoinSearches, PropertyKind, SearchNode, SortMode};
 use anki::sync::collection::normal::SyncActionRequired;
 use anki::sync::login::{sync_login, SyncAuth};
 use anki_proto::decks::DeckTreeNode;
@@ -141,6 +142,34 @@ impl Engine {
         }
         walk(&tree, &mut stats);
         Ok(json!({"decks": names, "stats": stats}))
+    }
+
+    /// The top-level decks that are behind (reviews or learning cards due) on each of the
+    /// next `days` Anki days, if nothing is studied in between: the app's badge and daily
+    /// reminders. Each day says when it starts (its rollover, as a Unix time).
+    pub fn behind(&mut self, days: u32) -> Outcome<Value> {
+        let col = self.col()?;
+        let next_day_at = col.timing_today()?.next_day_at.0;
+        let tree = col.deck_tree(None)?;
+        // The first day each deck is behind on: a deck stays behind until it's studied.
+        let mut first = Vec::new();
+        for deck in &tree.children {
+            for day in 0..days {
+                let due = SearchNode::DeckIdWithChildren(DeckId(deck.deck_id))
+                    .and(SearchNode::Property { operator: "<=".into(), kind: PropertyKind::Due(day as i32) });
+                if !col.search_cards(due, SortMode::NoOrder)?.is_empty() {
+                    first.push((deck.name.clone(), day));
+                    break;
+                }
+            }
+        }
+        let days: Vec<Value> = (0..days)
+            .map(|day| {
+                let decks: Vec<&str> = first.iter().filter(|(_, d)| *d <= day).map(|(name, _)| name.as_str()).collect();
+                json!({"starts": next_day_at + (day as i64 - 1) * 86_400, "decks": decks})
+            })
+            .collect();
+        Ok(json!({"days": days}))
     }
 
     // Studying -----------------------------------------------------------------------

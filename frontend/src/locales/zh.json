@@ -128,7 +128,8 @@
       "server": "服务器",
       "account": "账户",
       "ai": "AI",
-      "users": "用户"
+      "users": "用户",
+      "reminders": "提醒"
     }
   },
   "syncConflict": {
@@ -261,5 +262,18 @@
     "tipSync": "在这里运行 Anki 同步服务器（设置 → 同步），让所有设备都与你自己的服务器同步。",
     "tipPhone": "Android 和 iPhone 版 AnkiBase 应用可离线学习，联网后自动同步。",
     "open": "打开 AnkiBase"
+  },
+  "reminders": {
+    "title": "提醒",
+    "description": "每天在有牌组落后时发送通知，并在应用图标上用标记显示数量。",
+    "time": "提醒时间",
+    "denied": "AnkiBase 的通知已关闭。请在 iOS 设置 → 通知 → AnkiBase 中打开。",
+    "notification": {
+      "title": "该学习了",
+      "one": "{decks}在等你",
+      "other": "{decks}在等你",
+      "and": "和",
+      "more": "另外 {count} 个"
+    }
   }
 }

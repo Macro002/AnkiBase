@@ -20,6 +20,7 @@ function androidInfo(): NativeInfo | null {
 export const native: NativeInfo | null = w.ankibaseNative ?? androidInfo();
 export const isNative = native !== null;
 export const isAndroid = native?.platform === 'android';
+export const isIOS = native?.platform === 'ios';
 export const isDesktop = ['windows', 'macos', 'linux'].includes(native?.platform ?? '');
 /** What the app runs on, for "this phone" / "this computer". */
 export const device = isDesktop ? 'computer' : 'phone';

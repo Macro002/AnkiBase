@@ -9,7 +9,7 @@ import { SyncConflictModal } from './SyncConflictModal';
 import { UpdateModal } from './UpdateModal';
 import { createPortal } from 'react-dom';
 import { MotionLayer } from './MotionLayer';
-import { appStatus, hasServer, isNative, useAppStatus } from '../native';
+import { appStatus, hasServer, isIOS, isNative, useAppStatus } from '../native';
 import { runSync, useAutoSync, useSyncState, type SyncResult } from '../sync';
 
 interface ToastData {
@@ -96,8 +96,19 @@ export function Layout() {
     ...(serverFeatures ? [{ to: '/reading', icon: Library, label: t('nav.reading') }] : []),
   ];
 
-  const mobileNavItems = navItems.slice(0, 5);
-  const mobileMoreItems = navItems.slice(5);
+  // The phone's tab bar has room for five; the rest go under "More". On iOS, Reading
+  // gets Import's place in the tab bar, and the rest sit in the header as icons.
+  const readingFirst = (items: typeof navItems) => {
+    const reading = items.findIndex(item => item.to === '/reading');
+    const imp = items.findIndex(item => item.to === '/import');
+    if (reading < 0 || imp < 0 || reading < imp) return items;
+    const reordered = items.filter(item => item.to !== '/reading');
+    reordered.splice(imp, 0, items[reading]);
+    return reordered;
+  };
+  const tabItems = isIOS ? readingFirst(navItems) : navItems;
+  const mobileNavItems = tabItems.slice(0, 5);
+  const mobileMoreItems = tabItems.slice(5);
 
   const pushToast = (toast: Omit<ToastData, 'id'>) => {
     const id = ++toastIdRef.current;
@@ -178,6 +189,18 @@ export function Layout() {
                 <span className="hidden sm:inline">Update</span>
               </button>
             )}
+
+            {isIOS && mobileMoreItems.map(({ to, icon: Icon, label }) => (
+              <NavLink
+                key={to}
+                to={to}
+                className={({ isActive }) => `btn btn-secondary header-btn md:hidden flex items-center ${isActive ? 'text-(--accent)' : ''}`}
+                title={label}
+                aria-label={label}
+              >
+                <Icon className="w-4 h-4" />
+              </NavLink>
+            ))}
 
             <button
               onClick={handleSync}
@@ -287,7 +310,7 @@ export function Layout() {
             </NavLink>
           ))}
 
-          {mobileMoreItems.length > 0 && (
+          {!isIOS && mobileMoreItems.length > 0 && (
             <div className="relative flex-1 flex">
               <button
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}

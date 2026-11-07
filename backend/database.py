@@ -289,6 +289,13 @@ def init_account_db(container_name: str):
             cursor.execute("ALTER TABLE stories ADD COLUMN lookup_language TEXT")
         except sqlite3.OperationalError:
             pass
+        # When the reader marked it read (Reading → Mark as read); NULL while unread.
+        try:
+            cursor.execute("ALTER TABLE stories ADD COLUMN read_at TIMESTAMP")
+        except sqlite3.OperationalError:
+            pass
+        # The profile's story settings, as JSON per key ("daily": the daily story).
+        cursor.execute("CREATE TABLE IF NOT EXISTS story_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
 
         conn.commit()
 
@@ -658,7 +665,7 @@ def get_all_stories(limit: int = 100, offset: int = 0, container_name: Optional[
         cursor.execute(
             """
             SELECT id, name, style, length, language, target_language,
-                   provider, model, deck_name, created_at, level, words,
+                   provider, model, deck_name, created_at, read_at, level, words,
                    LENGTH(content) as content_length,
                    SUBSTR(content, 1, 400) as preview
             FROM stories
@@ -676,6 +683,62 @@ def get_all_stories(limit: int = 100, offset: int = 0, container_name: Optional[
                 d["word_count"] = 0
             out.append(d)
         return out
+
+
+def _account_db(container_name: Optional[str]) -> Optional[str]:
+    """The profile's stories database (made if missing): the given one, else the active one."""
+    if container_name is None:
+        account = get_active_account()
+        if not account:
+            return None
+        container_name = account["container_name"]
+    init_account_db(container_name)
+    return get_account_db_path(container_name)
+
+
+def set_story_read(story_id: int, read: bool, container_name: Optional[str] = None) -> bool:
+    """Mark a story read (now) or unread."""
+    db_path = _account_db(container_name)
+    if not db_path:
+        return False
+    with get_db(db_path) as conn:
+        cursor = conn.cursor()
+        if read:
+            cursor.execute("UPDATE stories SET read_at = COALESCE(read_at, CURRENT_TIMESTAMP) WHERE id = ?", (story_id,))
+        else:
+            cursor.execute("UPDATE stories SET read_at = NULL WHERE id = ?", (story_id,))
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def latest_story(container_name: Optional[str] = None) -> Optional[dict]:
+    """The newest story's id, created_at and read_at, or None without stories."""
+    db_path = _account_db(container_name)
+    if not db_path:
+        return None
+    with get_db(db_path) as conn:
+        row = conn.execute("SELECT id, created_at, read_at FROM stories ORDER BY created_at DESC, id DESC LIMIT 1").fetchone()
+        return dict(row) if row else None
+
+
+def get_story_setting(key: str, container_name: Optional[str] = None) -> Optional[dict]:
+    db_path = _account_db(container_name)
+    if not db_path:
+        return None
+    with get_db(db_path) as conn:
+        row = conn.execute("SELECT value FROM story_settings WHERE key = ?", (key,)).fetchone()
+        return json.loads(row["value"]) if row else None
+
+
+def set_story_setting(key: str, value: dict, container_name: Optional[str] = None) -> bool:
+    db_path = _account_db(container_name)
+    if not db_path:
+        return False
+    with get_db(db_path) as conn:
+        conn.execute("INSERT INTO story_settings (key, value) VALUES (?, ?) "
+                     "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, json.dumps(value)))
+        conn.commit()
+        return True
 
 
 def delete_story(story_id: int, container_name: Optional[str] = None) -> bool:

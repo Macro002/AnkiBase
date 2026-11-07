@@ -305,7 +305,26 @@ export interface LookupResult {
 }
 
 // Story
+/** What the daily story writes with: the Story tab's words source and settings. */
+export interface DailyStoryRecipe {
+  source: 'anki' | 'quizlet' | 'custom';
+  deck?: string; field?: string; set?: string; side?: 'term' | 'definition';
+  count: number; weights?: Record<string, number>; q_starred?: boolean; q_missed?: boolean;
+  /** Typed-in words ("My words", or added to the picked ones). */
+  words?: string[];
+  style: string; custom_instructions?: string; length: string;
+  language: string; target_language?: string; level?: string;
+  provider?: string; model?: string; deck_name?: string; lookup_fields?: string[];
+}
+export interface DailyStory { enabled: boolean; recipe: DailyStoryRecipe | null; tz: string | null }
+
 export const story = {
+  daily: () => fetchAPI<DailyStory>('/story/daily'),
+  setDaily: (enabled: boolean, recipe?: DailyStoryRecipe) =>
+    fetchAPI<DailyStory>('/story/daily', {
+      method: 'PUT',
+      body: JSON.stringify({ enabled, recipe, tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' }),
+    }),
   generate: (options: StoryGenerateOptions) =>
     fetchAPI<StoryGenerateResult>('/story/generate', {
       method: 'POST',
@@ -361,6 +380,8 @@ export interface SavedStory {
   model?: string;
   deck_name?: string;
   created_at: string;
+  /** When it was marked read (Reading); null while unread. */
+  read_at?: string | null;
   content_length?: number;
   level?: string | null;
   word_forms?: Record<string, string[]>;
@@ -384,6 +405,8 @@ export const stories = {
     }),
   delete: (id: number) =>
     fetchAPI<{ success: boolean }>(`/stories/${id}`, { method: 'DELETE' }),
+  markRead: (id: number, read = true) =>
+    fetchAPI<{ success: boolean; read_at: string | null }>(`/stories/${id}/read`, { method: 'POST', body: JSON.stringify({ read }) }),
   annotate: (id: number, provider?: string, model?: string) =>
     fetchAPI<{ annotations: StoryAnnotations }>(`/stories/${id}/annotate`, { method: 'POST', body: JSON.stringify({ provider, model }) }),
   explain: (p: { passage: string; context: string; language?: string | null; gloss_language?: string; level?: string | null; provider?: string; model?: string }) =>

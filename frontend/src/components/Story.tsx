@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Wand2, Settings2, Loader2, Star, BookOpen, RefreshCw, Shuffle, X, ChevronDown, Sparkles, AlertTriangle, Search as SearchIcon, Layers, GalleryVerticalEnd, PencilLine } from 'lucide-react';
-import { decks, quizlet as quizletApi, settings, story as storyApi, type DeckWordsResponse, type ProviderInfo, type WordData } from '../api';
+import { Wand2, Settings2, Loader2, Star, BookOpen, RefreshCw, Shuffle, X, ChevronDown, Sparkles, AlertTriangle, Search as SearchIcon, Layers, GalleryVerticalEnd, PencilLine, CalendarClock } from 'lucide-react';
+import { decks, quizlet as quizletApi, settings, story as storyApi, type DailyStory, type DailyStoryRecipe, type DeckWordsResponse, type ProviderInfo, type WordData } from '../api';
 import { Segmented, Toggle } from './quizlet/ui';
 import { AiPanel, Select, type AiChoice } from './story/AiPanel';
 import { buildVocab, paragraphs, splitLine } from './story/text';
@@ -107,7 +107,12 @@ export function Story() {
     });
   }).catch(() => {});
 
+  const [daily, setDaily] = useState<DailyStory | null>(null);
+  const [dailyBusy, setDailyBusy] = useState(false);
+  const [dailyError, setDailyError] = useState<string | null>(null);
+
   useEffect(() => {
+    storyApi.daily().then(setDaily).catch(() => {});
     decks.list().then(d => setAnkiDecks(Object.keys(d.decks).sort((a, b) => a.localeCompare(b)))).catch(() => {});
     quizletApi.listDecks().then(d => setSets(d.decks.map(x => ({ id: x.id, title: x.title, card_count: x.card_count })))).catch(() => {});
     loadProviders();
@@ -143,6 +148,35 @@ export function Story() {
   const extraWords = extra.split(/[,\n;]/).map(w => w.trim()).filter(Boolean);
   const allWords = useMemo(() => [...new Set([...(prefs.source === 'custom' ? [] : selected), ...extraWords])], [selected, extraWords, prefs.source]);
 
+  const sourceName = prefs.source === 'anki' ? prefs.deck : prefs.source === 'quizlet' ? `Quizlet · ${sets.find(s => String(s.id) === prefs.set)?.title ?? ''}` : undefined;
+
+  /** The daily story writes with these: the source (it picks new words each day) and the
+   *  settings below. */
+  const translateDaily = !!(prefs.translation && prefs.language);
+  const recipe: DailyStoryRecipe = {
+    source: prefs.source,
+    ...(prefs.source === 'anki' ? { deck: prefs.deck, field: prefs.field, weights: prefs.weights } : {}),
+    ...(prefs.source === 'quizlet' ? { set: prefs.set, side: prefs.side, q_starred: prefs.qStarred, q_missed: prefs.qMissed } : {}),
+    count: prefs.count,
+    words: extraWords,
+    style: prefs.style, custom_instructions: prefs.style === 'custom' ? instructions : undefined,
+    length: prefs.length,
+    language: translateDaily ? prefs.translation : (prefs.language || 'auto'),
+    target_language: translateDaily ? prefs.language : undefined,
+    level: prefs.level || undefined,
+    provider: ai.provider || undefined, model: ai.model || undefined,
+    deck_name: sourceName, lookup_fields: lookupFields.length ? lookupFields : undefined,
+  };
+  const recipeReady = !!ai.provider && (prefs.source === 'anki' ? !!prefs.deck : prefs.source === 'quizlet' ? !!prefs.set : extraWords.length > 0);
+  const recipeChanged = !!daily?.enabled && JSON.stringify(recipe) !== JSON.stringify(daily.recipe);
+
+  const saveDaily = async (enabled: boolean) => {
+    setDailyBusy(true); setDailyError(null);
+    try { setDaily(await storyApi.setDaily(enabled, enabled ? recipe : undefined)); }
+    catch (e) { setDailyError(e instanceof Error ? e.message : 'Could not save'); }
+    finally { setDailyBusy(false); }
+  };
+
   const generate = async () => {
     if (!allWords.length) { setError('Pick some words first.'); return; }
     if (!ai.provider) { setShowAi(true); return; }
@@ -151,7 +185,6 @@ export function Story() {
       const wordData: Record<string, WordData> = {};
       for (const w of allWords) if (data?.word_data[w]) wordData[w] = data.word_data[w];
       const translate = !!(prefs.translation && prefs.language);
-      const sourceName = prefs.source === 'anki' ? prefs.deck : prefs.source === 'quizlet' ? `Quizlet · ${sets.find(s => String(s.id) === prefs.set)?.title ?? ''}` : undefined;
       const r = await storyApi.generate({
         words: allWords, wordData,
         style: prefs.style, customInstructions: prefs.style === 'custom' ? instructions : undefined,
@@ -371,6 +404,24 @@ export function Story() {
               {providerName ? <>Written by {providerName}{ai.model ? ` · ${ai.model}` : ''} · change</> : <span className="text-(--warning)">Add an AI key to start →</span>}
             </button>
             {error && <p className="text-sm text-(--error) flex items-start gap-2"><AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />{error}</p>}
+            {daily && (
+              <div className="pt-3 border-t border-white/8 space-y-1.5">
+                <div className="flex items-center justify-between gap-3 text-sm">
+                  <span className="flex items-center gap-2"><CalendarClock className="w-4 h-4 text-(--text-secondary)" /> New story every day</span>
+                  <Toggle on={daily.enabled} disabled={dailyBusy || (!daily.enabled && !recipeReady)} onChange={saveDaily} />
+                </div>
+                <p className="text-xs text-(--text-secondary)">
+                  {daily.enabled
+                    ? <>Fresh words from {daily.recipe?.deck_name?.replace(/::/g, ' › ') || 'your words'} each day, once you’ve marked the last story read.</>
+                    : recipeReady ? 'Written with the words and settings here, once you’ve marked the last story read.'
+                      : 'Choose your words and an AI first.'}
+                </p>
+                {recipeChanged && recipeReady && (
+                  <button onClick={() => saveDaily(true)} disabled={dailyBusy} className="text-xs text-(--accent) hover:underline">Use these settings for the daily story</button>
+                )}
+                {dailyError && <p className="text-xs text-(--error)">{dailyError}</p>}
+              </div>
+            )}
           </section>
 
           {busy && !result && (

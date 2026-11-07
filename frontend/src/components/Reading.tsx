@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  ArrowLeft, BookOpen, Check, Languages, Loader2, MoreHorizontal, Pause, Pencil, Play, Plus, Search as SearchIcon,
+  ArrowLeft, BookOpen, Check, CheckCircle2, Languages, Loader2, MoreHorizontal, Pause, Pencil, Play, Plus, Search as SearchIcon,
   Sparkles, Trash2, Volume2, Wand2, X,
 } from 'lucide-react';
 import {
@@ -10,6 +10,7 @@ import {
   type DictionaryResult, type SavedStory, type StoryUnit, type StudySession, type WordData,
 } from '../api';
 import { useSessionSaver } from '../hooks/useSessionSaver';
+import { haptic } from '../native';
 import { Segmented } from './quizlet/ui';
 import { AddCardDialog } from './AddCardDialog';
 import ReactMarkdown from 'react-markdown';
@@ -158,7 +159,9 @@ function Library({ onOpen }: { onOpen: (id: number) => void }) {
                 </div>
                 <div className="flex items-center gap-3 text-[11px] text-(--text-secondary)">
                   <div className="flex-1 h-1 rounded-full bg-(--bg-primary)/60 overflow-hidden">{pct > 0 && <div className="h-full bg-(--accent)" style={{ width: `${pct}%` }} />}</div>
-                  <span className="shrink-0">{pct > 0 ? `${Math.round(pct)}% read` : ago(s.created_at)}</span>
+                  <span className="shrink-0">{s.read_at
+                    ? <span className="inline-flex items-center gap-1 text-(--accent)"><CheckCircle2 className="w-3 h-3" /> Read</span>
+                    : pct > 0 ? `${Math.round(pct)}% read` : ago(s.created_at)}</span>
                 </div>
               </article>
             );
@@ -281,6 +284,18 @@ function Reader({ id, onBack }: { id: number; onBack: () => void }) {
   };
 
   // Reading progress for the Study hub (scroll position, restored on open).
+  const [marking, setMarking] = useState(false);
+  const toggleRead = async () => {
+    if (!story || marking) return;
+    setMarking(true);
+    try {
+      const r = await stories.markRead(story.id, !story.read_at);
+      setStory(s => (s ? { ...s, read_at: r.read_at } : s));
+      if (r.read_at) haptic('success');
+    } catch { setToast('Couldn’t save that, try again'); }
+    finally { setMarking(false); }
+  };
+
   const readSession = useSessionSaver('reading', story ? story.id : null, 1000);
   const storyName = story?.name ?? '';
   useEffect(() => {
@@ -344,6 +359,10 @@ function Reader({ id, onBack }: { id: number; onBack: () => void }) {
       <div className="sticky top-0 z-20 -mx-4 px-4 py-2.5 mb-5 bg-(--bg-primary)/90 backdrop-blur flex items-center gap-2">
         <button onClick={onBack} className="icon-btn shrink-0" title="All stories"><ArrowLeft className="w-4 h-4" /></button>
         <div className="flex-1" />
+        <button onClick={toggleRead} disabled={marking} aria-pressed={!!story.read_at} title={story.read_at ? 'Mark as unread' : 'Mark as read'}
+          className={`h-8 px-2.5 rounded-lg text-xs inline-flex items-center gap-1.5 transition-colors disabled:opacity-60 ${story.read_at ? 'bg-(--accent)/15 text-white' : 'bg-(--bg-tertiary) text-(--text-secondary) hover:text-white'}`}>
+          <CheckCircle2 className={`w-3.5 h-3.5 ${story.read_at ? 'text-(--accent)' : ''}`} /> <span className="hidden sm:inline">{story.read_at ? 'Read' : 'Mark as read'}</span>
+        </button>
         <Segmented value={size} onChange={v => { setSize(v); store.set('reading-size', v); }}
           options={[{ value: 's', label: <span className="text-[11px]">A</span> }, { value: 'm', label: <span className="text-sm">A</span> }, { value: 'l', label: <span className="text-base">A</span> }]} />
         {hasTr && (
@@ -409,6 +428,15 @@ function Reader({ id, onBack }: { id: number; onBack: () => void }) {
             ))}
           </div>
           <div className="mt-10 pt-6 border-t border-white/8 flex flex-wrap gap-2">
+            {story.read_at ? (
+              <button onClick={toggleRead} disabled={marking} className="btn btn-secondary inline-flex items-center gap-2" title="Mark as unread">
+                <CheckCircle2 className="w-4 h-4 text-(--accent)" /> Read
+              </button>
+            ) : (
+              <button onClick={toggleRead} disabled={marking} className="btn btn-primary inline-flex items-center gap-2">
+                {marking ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />} Mark as read
+              </button>
+            )}
             <Link to="/story" className="btn btn-secondary inline-flex items-center gap-2"><Wand2 className="w-4 h-4" /> Write another</Link>
             <button onClick={onBack} className="btn btn-secondary">All stories</button>
           </div>

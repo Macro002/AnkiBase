@@ -20,6 +20,8 @@ const config: DocsThemeConfig = {
       <meta name="viewport" content="width=device-width, initial-scale=1.0" />
       <meta name="description" content="Self-hosted web interface for Anki — study, sync, import, and generate AI stories." />
       <link rel="icon" href="/AnkiBase/logo.svg" type="image/svg+xml" />
+      <link rel="icon" href="/AnkiBase/favicon-32.png" type="image/png" sizes="32x32" />
+      <link rel="apple-touch-icon" href="/AnkiBase/apple-touch-icon.png" />
     </>
   ),
   primaryHue: 350,

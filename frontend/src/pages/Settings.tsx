@@ -9,6 +9,7 @@ import { UserManagement } from '../components/UserManagement';
 import { SyncSection } from '../components/settings/SyncSection';
 import { ServerSection } from '../components/settings/ServerSection';
 import { RemindersSection } from '../components/settings/RemindersSection';
+import { DailyStorySection } from '../components/settings/DailyStorySection';
 import { canRemind, device, hasServer, isNative, useAppStatus } from '../native';
 import { LANGUAGES } from '../i18n';
 import { Logo } from '../components/Logo';
@@ -728,7 +729,7 @@ export function Settings() {
           {active === 'sync' && <SyncSection admin={serverFeatures && !!currentUser?.is_admin} />}
           {active === 'reminders' && <RemindersSection />}
           {active === 'server' && <ServerSection user={app?.server ? currentUser : null} />}
-          {active === 'ai' && <AiSection />}
+          {active === 'ai' && <><AiSection /><DailyStorySection /></>}
           {active === 'users' && currentUser?.is_admin && <UserManagement />}
         </div>
       </div>

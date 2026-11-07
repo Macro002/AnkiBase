@@ -3,10 +3,11 @@ import WebKit
 
 /// AnkiBase's web UI, full screen, behaving like an app rather than a web page: no zooming,
 /// and what shows when you pull past the content, the status bar and the icon follow the theme.
+/// The tab bar is a real UITabBar over the page; the page says what's on it (native.ts).
 struct WebAppView: UIViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator() }
 
-    func makeUIView(context: Context) -> WKWebView {
+    func makeUIView(context: Context) -> UIView {
         let config = WKWebViewConfiguration()
         config.setURLSchemeHandler(context.coordinator.handler, forURLScheme: AppSchemeHandler.scheme)
         config.allowsInlineMediaPlayback = true
@@ -30,10 +31,32 @@ struct WebAppView: UIViewRepresentable {
         web.uiDelegate = context.coordinator
         context.coordinator.web = web
         web.load(URLRequest(url: AppSchemeHandler.start))
-        return web
+
+        // The tab bar, along the bottom (it makes room for the home indicator itself);
+        // hidden until the page says what's on it.
+        let tabs = context.coordinator.tabBar
+        tabs.delegate = context.coordinator
+        tabs.tintColor = theme.accent
+        tabs.isHidden = true
+
+        let container = UIView()
+        for view in [web, tabs] as [UIView] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            container.addSubview(view)
+        }
+        NSLayoutConstraint.activate([
+            web.topAnchor.constraint(equalTo: container.topAnchor),
+            web.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            web.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            web.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            tabs.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            tabs.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            tabs.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+        ])
+        return container
     }
 
-    func updateUIView(_ web: WKWebView, context: Context) {}
+    func updateUIView(_ container: UIView, context: Context) {}
 
     /// Pulling past the top or bottom shows this: the theme's header / tab bar colour, so the
     /// page looks like it continues under them.
@@ -51,6 +74,7 @@ struct WebAppView: UIViewRepresentable {
             "build": info["CFBundleVersion"] as? String ?? "",
             "platform": "ios",
             "reminders": Reminders.shared.state(),
+            "tabBar": true,
         ]
         let json = (try? JSONSerialization.data(withJSONObject: native)).map { String(decoding: $0, as: UTF8.self) } ?? "{}"
         return """
@@ -67,9 +91,42 @@ struct WebAppView: UIViewRepresentable {
         """
     }
 
-    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, UITabBarDelegate {
         let handler = AppSchemeHandler()
         weak var web: WKWebView?
+        let tabBar = UITabBar()
+
+        // MARK: The tab bar
+
+        struct Tab: Equatable {
+            let to: String
+            let label: String
+            let symbol: String
+            /// A count on the tab (decks behind, on Study); nil for none.
+            let badge: String?
+        }
+
+        private var tabs: [Tab] = []
+
+        /// A `{type: "tabs"}` message from the page (native.ts setNativeTabs).
+        private func showTabs(_ next: [Tab], selected: String?, hidden: Bool) {
+            if next != tabs {
+                tabs = next
+                tabBar.setItems(next.enumerated().map { index, tab in
+                    let item = UITabBarItem(title: tab.label, image: UIImage(systemName: tab.symbol), tag: index)
+                    item.badgeValue = tab.badge
+                    item.badgeColor = Theme.shared.accent
+                    return item
+                }, animated: false)
+            }
+            tabBar.selectedItem = tabBar.items?.first { item in selected.map { tabs[item.tag].to == $0 } ?? false }
+            tabBar.isHidden = hidden || next.isEmpty
+        }
+
+        func tabBar(_ tabBar: UITabBar, didSelect item: UITabBarItem) {
+            guard tabs.indices.contains(item.tag) else { return }
+            send("ankibase-tab", ["to": tabs[item.tag].to])
+        }
 
         // MARK: Messages from the page (native.ts)
 
@@ -78,10 +135,18 @@ struct WebAppView: UIViewRepresentable {
             switch type {
             case "theme":
                 Theme.shared.update(page: body["page"] as? String ?? "", bar: body["bar"] as? String ?? "",
-                                    dark: body["dark"] as? Bool ?? true, icon: body["icon"] as? String)
+                                    accent: body["accent"] as? String ?? "", dark: body["dark"] as? Bool ?? true, icon: body["icon"] as? String)
                 if let web, let color = UIColor(hex: body["bar"] as? String ?? "") {
                     WebAppView.paint(web, color: color)
                 }
+                tabBar.tintColor = Theme.shared.accent
+                tabBar.items?.forEach { $0.badgeColor = Theme.shared.accent }
+            case "tabs":
+                let items = (body["items"] as? [[String: Any]] ?? []).map {
+                    Tab(to: $0["to"] as? String ?? "/", label: $0["label"] as? String ?? "", symbol: $0["symbol"] as? String ?? "circle",
+                        badge: $0["badge"] as? String)
+                }
+                showTabs(items, selected: body["selected"] as? String, hidden: body["hidden"] as? Bool ?? false)
             case "haptic":
                 switch body["style"] as? String {
                 case "success": UINotificationFeedbackGenerator().notificationOccurred(.success)

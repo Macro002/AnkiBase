@@ -4,7 +4,7 @@
  *  inject `window.ankibaseNative`. */
 import { useEffect, useState } from 'react';
 
-interface NativeInfo { version: string; build: string; platform: string; reminders?: ReminderSettings }
+interface NativeInfo { version: string; build: string; platform: string; reminders?: ReminderSettings; tabBar?: boolean }
 interface NativeWindow {
   ankibaseNative?: NativeInfo;
   webkit?: { messageHandlers?: { ankibase?: { postMessage: (message: unknown) => void } } };
@@ -21,6 +21,8 @@ export const native: NativeInfo | null = w.ankibaseNative ?? androidInfo();
 export const isNative = native !== null;
 export const isAndroid = native?.platform === 'android';
 export const isIOS = native?.platform === 'ios';
+/** The iPhone app draws the tab bar itself (setNativeTabs). */
+export const hasNativeTabs = isIOS && !!native?.tabBar;
 export const isDesktop = ['windows', 'macos', 'linux'].includes(native?.platform ?? '');
 /** What the app runs on, for "this phone" / "this computer". */
 export const device = isDesktop ? 'computer' : 'phone';
@@ -202,4 +204,46 @@ export function useAppStatus(): AppStatus | null {
 /** Whether server-only features (stories, AI, Quizlet, dictionary) are available. */
 export function hasServer(s: AppStatus | null = status): boolean {
   return !isNative || !!s?.server;
+}
+
+// --- The iPhone app's tab bar (a UITabBar over the page) ----------------------------
+
+export interface NativeTab { to: string; label: string; symbol: string; badge: string | null }
+let lastTabs = '';
+
+/** The tabs, the open one (null: none of them), and whether the bar should hide. */
+export function setNativeTabs(state: { items: NativeTab[]; selected: string | null; hidden: boolean }) {
+  if (!hasNativeTabs) return;
+  const message = { type: 'tabs', ...state };
+  const key = JSON.stringify(message);
+  if (key === lastTabs) return;
+  lastTabs = key;
+  post(message);
+}
+
+/** A tap on one of the app's tabs. Returns the unsubscribe. */
+export function onNativeTab(handler: (to: string) => void) {
+  const listener = (event: Event) => handler((event as CustomEvent<{ to: string }>).detail.to);
+  window.addEventListener('ankibase-tab', listener);
+  return () => window.removeEventListener('ankibase-tab', listener);
+}
+
+/** Whether a full-screen overlay (`.fixed.inset-0`) covers where the tab bar is (z-40 and
+ *  up), as dialogs and sheets do: the app's tab bar is drawn over the page, so it hides. */
+export function useOverlayOpen(enabled: boolean) {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!enabled) return;
+    let frame = 0;
+    const check = () => {
+      frame = 0;
+      setOpen(Array.from(document.querySelectorAll('.fixed.inset-0'))
+        .some(el => (parseInt(getComputedStyle(el).zIndex, 10) || 0) >= 40));
+    };
+    const observer = new MutationObserver(() => { if (!frame) frame = requestAnimationFrame(check); });
+    observer.observe(document.body, { childList: true, subtree: true });
+    check();
+    return () => { observer.disconnect(); if (frame) cancelAnimationFrame(frame); };
+  }, [enabled]);
+  return open;
 }

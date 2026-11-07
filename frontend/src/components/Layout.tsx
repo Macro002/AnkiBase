@@ -9,8 +9,9 @@ import { SyncConflictModal } from './SyncConflictModal';
 import { UpdateModal } from './UpdateModal';
 import { createPortal } from 'react-dom';
 import { MotionLayer } from './MotionLayer';
-import { appStatus, hasServer, isIOS, isNative, useAppStatus } from '../native';
+import { appStatus, hasNativeTabs, hasServer, isIOS, isNative, onNativeTab, setNativeTabs, useAppStatus, useOverlayOpen } from '../native';
 import { runSync, useAutoSync, useSyncState, type SyncResult } from '../sync';
+import { useStudyBadge } from '../hooks/useStudyBadge';
 
 interface ToastData {
   id: number;
@@ -60,6 +61,16 @@ function Toast({ icon, title, message, duration, onClose }: Omit<ToastData, 'id'
   );
 }
 
+/** A count on a nav item (decks behind, on Study). */
+function NavBadge({ value, className = '' }: { value: string | null; className?: string }) {
+  if (!value) return null;
+  return (
+    <span className={`min-w-4.5 h-4.5 px-1 rounded-full bg-(--accent) text-white text-[10px] font-semibold leading-4.5 text-center tabular-nums ${className}`}>
+      {value}
+    </span>
+  );
+}
+
 export function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -85,30 +96,39 @@ export function Layout() {
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [dockerInstall, setDockerInstall] = useState(false);
 
+  // `symbol`: the SF Symbol for the iPhone app's own tab bar.
   const navItems = [
-    { to: '/', icon: Layers, label: t('nav.decks') },
-    { to: '/study', icon: BookOpen, label: t('nav.study') },
-    { to: '/search', icon: Search, label: t('nav.search') },
-    { to: '/stats', icon: BarChart3, label: t('nav.stats') },
-    ...(can('import') ? [{ to: '/import', icon: Upload, label: t('nav.import') }] : []),
+    { to: '/', icon: Layers, label: t('nav.decks'), symbol: 'square.stack.3d.up' },
+    { to: '/study', icon: BookOpen, label: t('nav.study'), symbol: 'book' },
+    // Reading needs the AnkiBase server.
+    ...(serverFeatures ? [{ to: '/reading', icon: Library, label: t('nav.reading'), symbol: 'books.vertical' }] : []),
+    { to: '/search', icon: Search, label: t('nav.search'), symbol: 'magnifyingglass' },
+    { to: '/stats', icon: BarChart3, label: t('nav.stats'), symbol: 'chart.bar' },
+    ...(can('import') ? [{ to: '/import', icon: Upload, label: t('nav.import'), symbol: 'square.and.arrow.down' }] : []),
     // Stories need the AnkiBase server (the AI and the saved stories live there).
-    ...(serverFeatures && can('use_ai') ? [{ to: '/story', icon: Sparkles, label: t('nav.story') }] : []),
-    ...(serverFeatures ? [{ to: '/reading', icon: Library, label: t('nav.reading') }] : []),
+    ...(serverFeatures && can('use_ai') ? [{ to: '/story', icon: Sparkles, label: t('nav.story'), symbol: 'sparkles' }] : []),
   ];
 
-  // The phone's tab bar has room for five; the rest go under "More". On iOS, Reading
-  // gets Import's place in the tab bar, and the rest sit in the header as icons.
-  const readingFirst = (items: typeof navItems) => {
-    const reading = items.findIndex(item => item.to === '/reading');
-    const imp = items.findIndex(item => item.to === '/import');
-    if (reading < 0 || imp < 0 || reading < imp) return items;
-    const reordered = items.filter(item => item.to !== '/reading');
-    reordered.splice(imp, 0, items[reading]);
-    return reordered;
-  };
-  const tabItems = isIOS ? readingFirst(navItems) : navItems;
-  const mobileNavItems = tabItems.slice(0, 5);
-  const mobileMoreItems = tabItems.slice(5);
+  // The phone's tab bar has room for five; the rest go under "More" (on iOS: icons in
+  // the header).
+  const mobileNavItems = navItems.slice(0, 5);
+  const mobileMoreItems = navItems.slice(5);
+
+  // The decks behind today, on the Study tab (the same count as the app icon's badge).
+  const behind = useStudyBadge(onStudyPath);
+  const badgeFor = (to: string) => (to === '/study' && behind > 0 ? String(behind) : null);
+
+  // The iPhone app draws the tab bar itself (UITabBar): tell it the tabs, which one is
+  // open, and when to get out of the way, and go where its taps say.
+  const overlayOpen = useOverlayOpen(hasNativeTabs);
+  const activeTab = mobileNavItems.find(({ to }) =>
+    to === '/' ? location.pathname === '/'
+      : location.pathname.startsWith(to) || (to === '/study' && onStudyPath))?.to ?? null;
+  const nativeTabs = JSON.stringify(mobileNavItems.map(({ to, label, symbol }) => ({ to, label, symbol, badge: badgeFor(to) })));
+  useEffect(() => {
+    setNativeTabs({ items: JSON.parse(nativeTabs), selected: activeTab, hidden: studyingAnki || overlayOpen });
+  }, [nativeTabs, activeTab, studyingAnki, overlayOpen]);
+  useEffect(() => onNativeTab(to => navigate(to)), [navigate]);
 
   const pushToast = (toast: Omit<ToastData, 'id'>) => {
     const id = ++toastIdRef.current;
@@ -272,6 +292,7 @@ export function Layout() {
                     <>
                       <Icon className="w-4 h-4" />
                       <span>{label}</span>
+                      <NavBadge value={badgeFor(to)} />
                       <span className={`nav-tab-underline absolute bottom-0 left-0 right-0 h-0.5 bg-(--accent) transition-transform duration-200 origin-center ${
                         active ? 'scale-x-100' : 'scale-x-0'
                       }`} />
@@ -290,8 +311,8 @@ export function Layout() {
         <MotionLayer />
       </main>
 
-      {/* Mobile Bottom Navigation */}
-      <nav className={`app-tabbar md:hidden fixed ${studyingAnki ? 'hidden' : ''} bottom-0 left-0 right-0 bg-(--bg-secondary) border-t border-(--bg-tertiary) z-40`}>
+      {/* Mobile Bottom Navigation (the iPhone app has its own) */}
+      {!hasNativeTabs && <nav className={`app-tabbar md:hidden fixed ${studyingAnki ? 'hidden' : ''} bottom-0 left-0 right-0 bg-(--bg-secondary) border-t border-(--bg-tertiary) z-40`}>
         <div className="flex justify-around items-stretch h-14">
           {mobileNavItems.map(({ to, icon: Icon, label }) => (
             <NavLink
@@ -305,7 +326,10 @@ export function Layout() {
                 }`;
               }}
             >
-              <Icon className="w-[22px] h-[22px]" />
+              <span className="relative">
+                <Icon className="w-[22px] h-[22px]" />
+                <NavBadge value={badgeFor(to)} className="absolute -top-1.5 left-[calc(100%-0.5rem)]" />
+              </span>
               <span className="text-[10px] font-medium leading-tight truncate max-w-full px-1">{label}</span>
             </NavLink>
           ))}
@@ -350,7 +374,7 @@ export function Layout() {
             </div>
           )}
         </div>
-      </nav>
+      </nav>}
 
       <ProfilesModal
         isOpen={showProfiles}

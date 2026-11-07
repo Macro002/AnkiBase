@@ -284,6 +284,7 @@ function Reader({ id, onBack }: { id: number; onBack: () => void }) {
   };
 
   // Reading progress for the Study hub (scroll position, restored on open).
+  const readSession = useSessionSaver('reading', story ? story.id : null, 1000);
   const [marking, setMarking] = useState(false);
   const toggleRead = async () => {
     if (!story || marking) return;
@@ -291,12 +292,12 @@ function Reader({ id, onBack }: { id: number; onBack: () => void }) {
     try {
       const r = await stories.markRead(story.id, !story.read_at);
       setStory(s => (s ? { ...s, read_at: r.read_at } : s));
-      if (r.read_at) haptic('success');
+      // Read: no longer "continue reading" in Study.
+      if (r.read_at) { readSession.remove(); haptic('success'); }
     } catch { setToast('Couldn’t save that, try again'); }
     finally { setMarking(false); }
   };
 
-  const readSession = useSessionSaver('reading', story ? story.id : null, 1000);
   const storyName = story?.name ?? '';
   useEffect(() => {
     if (!story) return;
@@ -315,7 +316,7 @@ function Reader({ id, onBack }: { id: number; onBack: () => void }) {
       const pct = window.scrollY / max;
       if (pct >= 0.95) { if (!finished) { finished = true; readSession.remove(); } return; }
       finished = false;
-      if (pct < 0.03) return;
+      if (pct < 0.03 || story.read_at) return;
       readSession.save({ title: storyName, detail: `${Math.round(pct * 100)}% read`, progress_done: Math.round(pct * 100), progress_total: 100, state: { pct } });
     };
     window.addEventListener('scroll', onScroll, { passive: true });

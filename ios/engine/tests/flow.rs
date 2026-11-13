@@ -181,6 +181,25 @@ fn notes_decks_search_and_import() {
 }
 
 #[test]
+fn the_default_deck_hides_when_empty() {
+    let tmp = temp_dir("default");
+    let phone = app(&tmp.join("phone"), None);
+    let names = || ok(&phone, "GET", "/api/decks/names", Value::Null)["decks"].clone();
+    // The only deck: shown, even though it's empty.
+    assert!(names()["Default"].is_i64());
+
+    // Anki can't delete it, only empty it; empty with other decks around, it's hidden.
+    add_cards(&phone, "Default", &["one"]);
+    add_cards(&phone, "Spanish", &["uno"]);
+    assert!(names()["Default"].is_i64());
+    ok(&phone, "POST", "/api/decks/delete", json!({"deck_name": "Default"}));
+    assert!(names()["Default"].is_null());
+    assert!(names()["Spanish"].is_i64());
+    assert!(ok(&phone, "GET", "/api/decks", Value::Null)["decks"]["Default"].is_null());
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+#[test]
 fn anki_pages_talk_to_the_collection() {
     use prost::Message;
     let tmp = temp_dir("pages");

@@ -703,11 +703,27 @@ def get_anki_client() -> AnkiConnectClient:
 
 
 # Deck endpoints
+async def visible_decks(client: AnkiConnectClient) -> dict[str, int]:
+    """Deck names and ids, without the default deck when Anki would hide it too.
+
+    Anki's default deck (id 1) can't be deleted: deleting it only empties it. Like Anki's
+    deck list, leave it out while it's an empty top-level deck without subdecks and there
+    are other decks.
+    """
+    decks = await client.get_deck_names_and_ids()
+    default = next((name for name, did in decks.items() if did == 1), None)
+    if (default is not None and len(decks) > 1 and "::" not in default
+            and not any(name.startswith(default + "::") for name in decks)
+            and not await client.find_cards("did:1")):
+        del decks[default]
+    return decks
+
+
 @app.get("/api/decks/names")
 async def get_deck_names(client: AnkiConnectClient = Depends(get_anki_client), _: str = Depends(require_auth)):
     """Just deck names and ids — much cheaper than /api/decks (no per-deck counts)."""
     try:
-        return {"decks": await client.get_deck_names_and_ids()}
+        return {"decks": await visible_decks(client)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -715,7 +731,7 @@ async def get_deck_names(client: AnkiConnectClient = Depends(get_anki_client), _
 @app.get("/api/decks")
 async def get_decks(client: AnkiConnectClient = Depends(get_anki_client), _: str = Depends(require_auth)):
     try:
-        decks = await client.get_deck_names_and_ids()
+        decks = await visible_decks(client)
         stats = await client.get_deck_stats(list(decks.keys()))
         return {"decks": decks, "stats": stats}
     except Exception as e:

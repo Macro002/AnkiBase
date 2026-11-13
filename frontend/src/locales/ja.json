@@ -128,7 +128,8 @@
       "server": "サーバー",
       "account": "アカウント",
       "ai": "AI",
-      "users": "ユーザー"
+      "users": "ユーザー",
+      "reminders": "リマインダー"
     }
   },
   "syncConflict": {
@@ -261,5 +262,18 @@
     "tipSync": "ここで Anki の同期サーバーを動かせば（設定 → 同期）、すべての端末を自分のサーバーと同期できます。",
     "tipPhone": "Android・iPhone 用の AnkiBase アプリはオフラインで学習でき、オンラインに戻ると同期します。",
     "open": "AnkiBase を開く"
+  },
+  "reminders": {
+    "title": "リマインダー",
+    "description": "遅れているデッキがある日に通知し、その数をアプリアイコンのバッジに表示します。",
+    "time": "通知する時刻",
+    "denied": "AnkiBaseの通知がオフです。iOSの設定 → 通知 → AnkiBase でオンにしてください。",
+    "notification": {
+      "title": "学習の時間です",
+      "one": "{decks}があなたを待っています",
+      "other": "{decks}があなたを待っています",
+      "and": "と",
+      "more": "ほか{count}件"
+    }
   }
 }

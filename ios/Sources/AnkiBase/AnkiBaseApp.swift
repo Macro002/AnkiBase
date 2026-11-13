@@ -4,6 +4,7 @@ import UIKit
 @main
 struct AnkiBaseApp: App {
     @StateObject private var theme = Theme.shared
+    @Environment(\.scenePhase) private var phase
 
     init() {
         // Open the collection while the web view loads.
@@ -17,6 +18,10 @@ struct AnkiBaseApp: App {
                 .background(Color(theme.bar).ignoresSafeArea())
                 // The status bar's text: light on dark themes, dark on light ones.
                 .preferredColorScheme(theme.dark ? .dark : .light)
+        }
+        // The badge and the week's reminders, counted when the app is left (Reminders.swift).
+        .onChange(of: phase) { _, phase in
+            if phase == .background { Reminders.shared.refresh() }
         }
     }
 }

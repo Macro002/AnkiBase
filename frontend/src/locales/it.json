@@ -128,7 +128,8 @@
       "server": "Server",
       "account": "Account",
       "ai": "IA",
-      "users": "Utenti"
+      "users": "Utenti",
+      "reminders": "Promemoria"
     }
   },
   "syncConflict": {
@@ -261,5 +262,18 @@
     "tipSync": "Avvia qui il server di sincronizzazione di Anki (Impostazioni → Sincronizza) così tutti i dispositivi usano il tuo server.",
     "tipPhone": "Le app AnkiBase per Android e iPhone funzionano offline e sincronizzano quando torni online.",
     "open": "Apri AnkiBase"
+  },
+  "reminders": {
+    "title": "Promemoria",
+    "description": "Una notifica ogni giorno quando ci sono mazzi arretrati, e un badge sull’icona dell’app con quanti sono.",
+    "time": "Ricordamelo alle",
+    "denied": "Le notifiche di AnkiBase sono disattivate. Attivale in Impostazioni di iOS → Notifiche → AnkiBase.",
+    "notification": {
+      "title": "È ora di studiare",
+      "one": "{decks} ti aspetta",
+      "other": "{decks} ti aspettano",
+      "and": "e",
+      "more": "altri {count}"
+    }
   }
 }

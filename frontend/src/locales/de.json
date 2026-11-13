@@ -128,7 +128,8 @@
       "server": "Server",
       "account": "Konto",
       "ai": "KI",
-      "users": "Benutzer"
+      "users": "Benutzer",
+      "reminders": "Erinnerungen"
     }
   },
   "syncConflict": {
@@ -261,5 +262,18 @@
     "tipSync": "Starte Ankis Sync-Server hier (Einstellungen → Sync), damit alle Geräte mit deinem Server synchronisieren.",
     "tipPhone": "Die AnkiBase-Apps für Android und iPhone lernen offline und synchronisieren, sobald du wieder online bist.",
     "open": "AnkiBase öffnen"
+  },
+  "reminders": {
+    "title": "Erinnerungen",
+    "description": "Jeden Tag eine Mitteilung, wenn Stapel im Rückstand sind, und ein Kennzeichen am App-Symbol mit ihrer Anzahl.",
+    "time": "Erinnern um",
+    "denied": "Mitteilungen sind für AnkiBase aus. Schalte sie in den iOS-Einstellungen → Mitteilungen → AnkiBase ein.",
+    "notification": {
+      "title": "Zeit zum Lernen",
+      "one": "{decks} wartet auf dich",
+      "other": "{decks} warten auf dich",
+      "and": "und",
+      "more": "{count} weitere"
+    }
   }
 }

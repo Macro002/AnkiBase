@@ -46,10 +46,11 @@ struct WebAppView: UIViewRepresentable {
     /// Runs before the page: tells it it's in the app, and turns off zooming.
     private static var bootScript: String {
         let info = Bundle.main.infoDictionary ?? [:]
-        let native: [String: String] = [
+        let native: [String: Any] = [
             "version": info["CFBundleShortVersionString"] as? String ?? "",
             "build": info["CFBundleVersion"] as? String ?? "",
             "platform": "ios",
+            "reminders": Reminders.shared.state(),
         ]
         let json = (try? JSONSerialization.data(withJSONObject: native)).map { String(decoding: $0, as: UTF8.self) } ?? "{}"
         return """
@@ -88,9 +89,24 @@ struct WebAppView: UIViewRepresentable {
                 case "medium": UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 default: UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 }
+            case "reminders":
+                Reminders.shared.update(enabled: body["enabled"] as? Bool ?? false, hour: body["hour"] as? Int ?? 9,
+                                        minute: body["minute"] as? Int ?? 0,
+                                        strings: body["strings"] as? [String: String] ?? [:]) { [weak self] state in
+                    self?.send("ankibase-reminders", state)
+                }
+            case "reminders-refresh":
+                Reminders.shared.refresh()
             default:
                 break
             }
+        }
+
+        /// An event for the page (native.ts listens for it).
+        private func send(_ event: String, _ detail: [String: Any]) {
+            guard let data = try? JSONSerialization.data(withJSONObject: detail) else { return }
+            let json = String(decoding: data, as: UTF8.self)
+            web?.evaluateJavaScript("window.dispatchEvent(new CustomEvent('\(event)', {detail: \(json)}))")
         }
 
         // MARK: Navigation

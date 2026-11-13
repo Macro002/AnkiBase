@@ -4,7 +4,7 @@
  *  inject `window.ankibaseNative`. */
 import { useEffect, useState } from 'react';
 
-interface NativeInfo { version: string; build: string; platform: string }
+interface NativeInfo { version: string; build: string; platform: string; reminders?: ReminderSettings }
 interface NativeWindow {
   ankibaseNative?: NativeInfo;
   webkit?: { messageHandlers?: { ankibase?: { postMessage: (message: unknown) => void } } };
@@ -93,6 +93,36 @@ export function syncNativeTheme() {
     lastTheme = key;
     post(message);
   }, 250);
+}
+
+// --- Reminders (iPhone): a daily notification and the icon's badge ------------------
+
+export interface ReminderSettings { enabled: boolean; hour: number; minute: number; denied?: boolean }
+
+/** Only the iPhone app has reminders so far. */
+export const canRemind = native?.platform === 'ios' && !!native.reminders;
+let reminders: ReminderSettings | null = native?.reminders ?? null;
+
+export function reminderSettings(): ReminderSettings | null { return reminders; }
+
+/** Turn reminders on or off, or change their time. Turning them on asks iOS for permission:
+ *  `denied` says it wasn't given (and they stay off). `strings` is the notification's text
+ *  in the UI's language: title, one, other ({decks}), and, more ({count}). */
+export function setReminders(next: Omit<ReminderSettings, 'denied'>, strings: Record<string, string>): Promise<ReminderSettings> {
+  return new Promise(resolve => {
+    const onReply = (event: Event) => {
+      window.removeEventListener('ankibase-reminders', onReply);
+      reminders = (event as CustomEvent<ReminderSettings>).detail;
+      resolve(reminders);
+    };
+    window.addEventListener('ankibase-reminders', onReply);
+    post({ type: 'reminders', ...next, strings });
+  });
+}
+
+// What's behind changes with a sync (reviews done on other devices): count again.
+if (canRemind && typeof window !== 'undefined') {
+  window.addEventListener('anki-sync-complete', () => post({ type: 'reminders-refresh' }));
 }
 
 /** A light tap, for answering cards and toggles. */

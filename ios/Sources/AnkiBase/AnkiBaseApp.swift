@@ -33,6 +33,7 @@ final class Theme: ObservableObject {
 
     @Published private(set) var page: UIColor
     @Published private(set) var bar: UIColor
+    @Published private(set) var accent: UIColor
     @Published private(set) var dark: Bool
 
     private let defaults = UserDefaults.standard
@@ -40,16 +41,19 @@ final class Theme: ObservableObject {
     private init() {
         page = UIColor(hex: defaults.string(forKey: "theme.page") ?? "") ?? UIColor(red: 0x1a / 255, green: 0x1a / 255, blue: 0x2e / 255, alpha: 1)
         bar = UIColor(hex: defaults.string(forKey: "theme.bar") ?? "") ?? UIColor(red: 0x16 / 255, green: 0x21 / 255, blue: 0x3e / 255, alpha: 1)
+        accent = UIColor(hex: defaults.string(forKey: "theme.accent") ?? "") ?? UIColor(red: 0xe9 / 255, green: 0x45 / 255, blue: 0x60 / 255, alpha: 1)
         dark = defaults.object(forKey: "theme.dark") as? Bool ?? true
     }
 
     /// A `{type: "theme"}` message from the web UI (native.ts syncNativeTheme).
-    func update(page: String, bar: String, dark: Bool, icon: String?) {
+    func update(page: String, bar: String, accent: String, dark: Bool, icon: String?) {
         if let color = UIColor(hex: page) { self.page = color }
         if let color = UIColor(hex: bar) { self.bar = color }
+        if let color = UIColor(hex: accent) { self.accent = color }
         self.dark = dark
         defaults.set(page, forKey: "theme.page")
         defaults.set(bar, forKey: "theme.bar")
+        defaults.set(accent, forKey: "theme.accent")
         defaults.set(dark, forKey: "theme.dark")
         if let icon { setIcon(icon) }
     }

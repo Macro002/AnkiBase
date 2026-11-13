@@ -247,3 +247,22 @@ export function useOverlayOpen(enabled: boolean) {
   }, [enabled]);
   return open;
 }
+
+// --- Opening pages from the app (a tapped notification) -----------------------------
+
+/** The page is up: the iPhone app may now open what a tapped notification asked for. */
+export function nativeReady() {
+  if (isIOS) post({ type: 'ready' });
+}
+
+/** The app asks to open a page (a story from its notification). Returns the unsubscribe. */
+export function onNativeOpen(handler: (path: string) => void) {
+  const listener = (event: Event) => handler((event as CustomEvent<{ path: string }>).detail.path);
+  window.addEventListener('ankibase-open', listener);
+  return () => window.removeEventListener('ankibase-open', listener);
+}
+
+/** The daily story was turned on: the iPhone app asks to notify when one's ready. */
+export function requestStoryAlerts() {
+  if (isIOS) post({ type: 'story-alerts' });
+}

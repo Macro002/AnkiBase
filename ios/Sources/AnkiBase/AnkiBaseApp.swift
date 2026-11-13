@@ -9,6 +9,8 @@ struct AnkiBaseApp: App {
     init() {
         // Open the collection while the web view loads.
         DispatchQueue.global(qos: .userInitiated).async { _ = Core.started }
+        // Looking for the daily story in the background (StoryAlerts.swift).
+        StoryAlerts.shared.register()
     }
 
     var body: some Scene {
@@ -21,7 +23,11 @@ struct AnkiBaseApp: App {
         }
         // The badge and the week's reminders, counted when the app is left (Reminders.swift).
         .onChange(of: phase) { _, phase in
-            if phase == .background { Reminders.shared.refresh() }
+            if phase == .background {
+                Reminders.shared.refresh()
+                StoryAlerts.shared.noteSeen()
+                StoryAlerts.shared.schedule()
+            }
         }
     }
 }

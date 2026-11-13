@@ -16,7 +16,8 @@ from security import require_auth, require_admin, require
 from anki_client import AnkiConnectClient, AnkiError
 from story_generator import StoryGenerator, PROVIDERS, NoValidKeysError
 from database import (
-    save_story, get_story, get_all_stories, delete_story,
+    save_story, get_story, get_all_stories, delete_story, set_story_read,
+    get_story_setting, set_story_setting,
     get_active_account, get_all_accounts, set_ankiweb_email,
     migrate_to_user_system,
     create_quizlet_deck, get_quizlet_decks, get_quizlet_deck, delete_quizlet_deck,
@@ -149,6 +150,8 @@ def _start_anki_engine_safely() -> None:
 async def startup_event():
     import asyncio
     app.state.anki_engine = asyncio.create_task(asyncio.to_thread(_start_anki_engine_safely))
+    import daily_story
+    app.state.daily_story = asyncio.create_task(daily_story.loop())
     try:
         # Upgrading from the single-password versions: that password becomes root's.
         if get_all_accounts():
@@ -1025,79 +1028,84 @@ class LookupRequest(BaseModel):
 async def generate_story_endpoint(
     request: StoryRequest, _: str = Depends(require("use_ai"))
 ):
-    api_keys = get_api_keys()
-    if not any(api_keys.values()):
+    if not any(get_api_keys().values()):
         raise HTTPException(status_code=500, detail="No AI provider API keys configured")
-
     try:
-        word_categories = {}
-        if request.word_data:
-            for word, data in request.word_data.items():
-                if isinstance(data, dict) and "category" in data:
-                    word_categories[word] = data["category"]
-
-        generator = StoryGenerator(api_keys, get_custom_endpoint())
-        result = await generator.generate_story(
-            words=request.words,
-            style=request.style,
-            length=request.length,
-            language=request.language,
-            target_language=request.target_language,
-            custom_instructions=request.custom_instructions,
-            provider=request.provider,
-            model=request.model,
-            word_categories=word_categories,
-            level=request.level,
-        )
-
-        story_name = request.name or result.get("title") or f"Story with {len(request.words)} words"
-
-        # Prepare instant word lookups for Reading (best effort — the story is kept either way).
-        story_lang = request.target_language or (request.language if request.language != "auto" else None)
-        gloss = _gloss_language(request.lookup_language, request.language if request.target_language else None)
-        annotations = None
-        try:
-            annotations = await generator.annotate_story(result["story"], request.words, story_lang, gloss,
-                                                         result.get("provider_used"), result.get("model_used"))
-            if not any(annotations["paragraphs"]):
-                annotations = None
-        except Exception:
-            annotations = None
-        detected = (annotations or {}).get("language")
-        story_id = save_story(
-            name=story_name,
-            content=result["story"],
-            words=request.words,
-            style=request.style,
-            length=request.length,
-            language=request.language,
-            target_language=request.target_language,
-            word_data=request.word_data,
-            lookup_fields=request.lookup_fields,
-            lookup_language=request.lookup_language,
-            provider=result.get("provider_used"),
-            model=result.get("model_used"),
-            deck_name=request.deck_name,
-            level=request.level,
-            word_forms=result.get("word_forms"),
-            annotations=annotations,
-        )
-        if detected and not story_lang:
-            set_story_annotations(story_id, annotations, detected)
-
-        return {
-            "story": result["story"],
-            "story_id": story_id,
-            "title": story_name,
-            "word_forms": result.get("word_forms") or {},
-            "annotated": annotations is not None,
-            "provider_used": result.get("provider_used"),
-            "model_used": result.get("model_used"),
-        }
+        return await write_story(request)
     except NoValidKeysError as e:
         raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+async def write_story(request: StoryRequest) -> dict:
+    """Write a story with the active profile's AI keys and save it (the Story tab, and the
+    daily story in daily_story.py)."""
+    api_keys = get_api_keys()
+    word_categories = {}
+    if request.word_data:
+        for word, data in request.word_data.items():
+            if isinstance(data, dict) and "category" in data:
+                word_categories[word] = data["category"]
+
+    generator = StoryGenerator(api_keys, get_custom_endpoint())
+    result = await generator.generate_story(
+        words=request.words,
+        style=request.style,
+        length=request.length,
+        language=request.language,
+        target_language=request.target_language,
+        custom_instructions=request.custom_instructions,
+        provider=request.provider,
+        model=request.model,
+        word_categories=word_categories,
+        level=request.level,
+    )
+
+    story_name = request.name or result.get("title") or f"Story with {len(request.words)} words"
+
+    # Prepare instant word lookups for Reading (best effort — the story is kept either way).
+    story_lang = request.target_language or (request.language if request.language != "auto" else None)
+    gloss = _gloss_language(request.lookup_language, request.language if request.target_language else None)
+    annotations = None
+    try:
+        annotations = await generator.annotate_story(result["story"], request.words, story_lang, gloss,
+                                                     result.get("provider_used"), result.get("model_used"))
+        if not any(annotations["paragraphs"]):
+            annotations = None
+    except Exception:
+        annotations = None
+    detected = (annotations or {}).get("language")
+    story_id = save_story(
+        name=story_name,
+        content=result["story"],
+        words=request.words,
+        style=request.style,
+        length=request.length,
+        language=request.language,
+        target_language=request.target_language,
+        word_data=request.word_data,
+        lookup_fields=request.lookup_fields,
+        lookup_language=request.lookup_language,
+        provider=result.get("provider_used"),
+        model=result.get("model_used"),
+        deck_name=request.deck_name,
+        level=request.level,
+        word_forms=result.get("word_forms"),
+        annotations=annotations,
+    )
+    if detected and not story_lang:
+        set_story_annotations(story_id, annotations, detected)
+
+    return {
+        "story": result["story"],
+        "story_id": story_id,
+        "title": story_name,
+        "word_forms": result.get("word_forms") or {},
+        "annotated": annotations is not None,
+        "provider_used": result.get("provider_used"),
+        "model_used": result.get("model_used"),
+    }
 
 
 def _gloss_language(lookup_language: Optional[str], translation_language: Optional[str]) -> str:
@@ -1192,6 +1200,54 @@ async def lookup_word_endpoint(
 class UpdateStoryRequest(BaseModel):
     name: Optional[str] = None
     lookup_fields: Optional[list[str]] = None
+
+
+class StoryReadRequest(BaseModel):
+    read: bool = True
+
+
+@app.post("/api/stories/{story_id}/read")
+async def mark_story_read(story_id: int, request: StoryReadRequest, _: dict = Depends(require_auth)):
+    """Mark a story read or unread. Reading one may be what the daily story waits for."""
+    if not set_story_read(story_id, request.read):
+        raise HTTPException(status_code=404, detail="Story not found")
+    if request.read:
+        import daily_story
+        daily_story.kick(get_active_account())
+    return {"success": True, "read_at": (get_story(story_id) or {}).get("read_at")}
+
+
+class DailyStoryRequest(BaseModel):
+    enabled: bool
+    tz: str = "UTC"
+    # What to write with: the Story tab's words source and settings (Story.tsx dailyRecipe).
+    recipe: Optional[dict] = None
+
+
+@app.get("/api/story/daily")
+async def get_daily_story(_: dict = Depends(require_auth)):
+    """The daily story setting: whether it's on, and the settings it writes with."""
+    config = get_story_setting("daily") or {}
+    return {"enabled": bool(config.get("enabled")), "recipe": config.get("recipe"), "tz": config.get("tz")}
+
+
+@app.put("/api/story/daily")
+async def set_daily_story(request: DailyStoryRequest, user: dict = Depends(require("use_ai"))):
+    """Turn the daily story on (with what to write it from) or off."""
+    current = get_story_setting("daily") or {}
+    config = {
+        "enabled": request.enabled,
+        "recipe": request.recipe if request.recipe is not None else current.get("recipe"),
+        "tz": request.tz or "UTC",
+        "user_id": user["user_id"],
+    }
+    if config["enabled"] and not config["recipe"]:
+        raise HTTPException(status_code=400, detail="Choose the words for the daily story first")
+    set_story_setting("daily", config)
+    if config["enabled"]:
+        import daily_story
+        daily_story.kick(get_active_account())
+    return {"enabled": config["enabled"], "recipe": config["recipe"], "tz": config["tz"]}
 
 
 @app.get("/api/stories")

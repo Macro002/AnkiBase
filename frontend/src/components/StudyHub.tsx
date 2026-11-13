@@ -62,10 +62,12 @@ export function StudyHub() {
       const quizletIds = qz ? new Set(qz.decks.map(d => String(d.id))) : null;
       const ankiIds = anki ? new Set(Object.values(anki.decks).map(String)) : null;
       const storyIds = st && st.stories.length < 100 ? new Set(st.stories.map(x => String(x.id))) : null;
+      // Stories marked read are done, wherever the reader stopped scrolling.
+      const readIds = new Set((st?.stories ?? []).filter(x => x.read_at).map(x => String(x.id)));
       setSessions(s.sessions.filter(x =>
         x.kind.startsWith('quizlet-') ? !quizletIds || quizletIds.has(x.ref_id)
         : x.kind === 'anki' ? !ankiIds || ankiIds.has(x.ref_id)
-        : !storyIds || storyIds.has(x.ref_id)));
+        : (!storyIds || storyIds.has(x.ref_id)) && !readIds.has(x.ref_id)));
       if (anki) {
         setAnkiDecks(Object.entries(anki.decks)
           .map(([name, id]) => ({ name, id, stats: anki.stats[name] }))

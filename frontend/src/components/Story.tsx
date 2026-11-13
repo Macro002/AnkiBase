@@ -5,41 +5,15 @@ import { decks, quizlet as quizletApi, settings, story as storyApi, type DeckWor
 import { Segmented, Toggle } from './quizlet/ui';
 import { AiPanel, Select, type AiChoice } from './story/AiPanel';
 import { buildVocab, paragraphs, splitLine } from './story/text';
-
-type Source = 'anki' | 'quizlet' | 'custom';
-type Cat = 'new' | 'learning' | 'relearning' | 'young' | 'mature';
+import { DEFAULT_PREFS, STYLES, store, type Cat, type Prefs, type Source } from './story/prefs';
 
 const LANGUAGES = ['French', 'Japanese', 'German', 'Spanish', 'Italian', 'Portuguese', 'English', 'Korean', 'Chinese', 'Russian', 'Dutch'];
 const LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'] as const;
-const STYLES = [
-  { value: 'casual', label: 'Everyday' }, { value: 'funny', label: 'Funny' }, { value: 'adventure', label: 'Adventure' },
-  { value: 'dramatic', label: 'Dramatic' }, { value: 'mystery', label: 'Mystery' }, { value: 'educational', label: 'Informative' },
-  { value: 'formal', label: 'Formal' }, { value: 'custom', label: 'Custom…' },
-];
 const CAT_COLOR: Record<Cat, string> = { new: '#3987e5', learning: '#d95926', relearning: '#e66767', young: '#199e70', mature: '#008300' };
 const CAT_LABEL: Record<Source, Partial<Record<Cat, string>>> = {
   anki: { learning: 'Learning', relearning: 'Relearning', young: 'Young', mature: 'Mature', new: 'New' },
   quizlet: { learning: 'Still learning', young: 'Familiar', mature: 'Mastered', new: 'Not studied' },
   custom: {},
-};
-const DEFAULT_WEIGHTS: Record<Cat, number> = { learning: 5, relearning: 4, young: 2, mature: 1, new: 2 };
-
-const store = {
-  get<T>(k: string, d: T): T { try { const v = localStorage.getItem(k); return v ? { ...d, ...JSON.parse(v) } : d; } catch { return d; } },
-  set(k: string, v: unknown) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage unavailable */ } },
-};
-
-interface Prefs {
-  source: Source; deck: string; set: string; side: 'term' | 'definition'; field: string;
-  mode: 'weighted' | 'manual'; count: number; weights: Record<Cat, number>;
-  /** Quizlet smart pick: starred terms first / most-missed terms first. */
-  qStarred: boolean; qMissed: boolean;
-  language: string; level: string; translation: string; length: string; style: string;
-}
-const DEFAULT_PREFS: Prefs = {
-  source: 'anki', deck: '', set: '', side: 'term', field: '', mode: 'weighted', count: 15, weights: DEFAULT_WEIGHTS,
-  qStarred: true, qMissed: true,
-  language: '', level: 'B1', translation: '', length: 'auto', style: 'casual',
 };
 
 /** Pick `count` words, giving categories (learning, young…) shares proportional to their weights. */
@@ -143,6 +117,8 @@ export function Story() {
   const extraWords = extra.split(/[,\n;]/).map(w => w.trim()).filter(Boolean);
   const allWords = useMemo(() => [...new Set([...(prefs.source === 'custom' ? [] : selected), ...extraWords])], [selected, extraWords, prefs.source]);
 
+  const sourceName = prefs.source === 'anki' ? prefs.deck : prefs.source === 'quizlet' ? `Quizlet · ${sets.find(s => String(s.id) === prefs.set)?.title ?? ''}` : undefined;
+
   const generate = async () => {
     if (!allWords.length) { setError('Pick some words first.'); return; }
     if (!ai.provider) { setShowAi(true); return; }
@@ -151,7 +127,6 @@ export function Story() {
       const wordData: Record<string, WordData> = {};
       for (const w of allWords) if (data?.word_data[w]) wordData[w] = data.word_data[w];
       const translate = !!(prefs.translation && prefs.language);
-      const sourceName = prefs.source === 'anki' ? prefs.deck : prefs.source === 'quizlet' ? `Quizlet · ${sets.find(s => String(s.id) === prefs.set)?.title ?? ''}` : undefined;
       const r = await storyApi.generate({
         words: allWords, wordData,
         style: prefs.style, customInstructions: prefs.style === 'custom' ? instructions : undefined,

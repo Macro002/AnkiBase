@@ -1,1 +1,1 @@
-ankicli @ git+https://github.com/Macro002/anki-cli.git@faa2e6229a9549d857e1d4db1ed0d13557233b69
+ankicli @ git+https://github.com/Macro002/anki-cli.git@c7d46ecbae49657c8610eedb47fe97bc9f7f5bb8

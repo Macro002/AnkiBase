@@ -229,6 +229,14 @@ def init_global_db():
             "CREATE INDEX IF NOT EXISTS idx_login_attempts_id_time ON login_attempts(identifier, attempt_time)"
         )
 
+        # Usernames are case-insensitive ("Bob" and "bob" are one user). Older servers may
+        # already hold names that differ only in case; they keep working, without the index.
+        try:
+            cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_nocase "
+                           "ON users(username COLLATE NOCASE)")
+        except sqlite3.IntegrityError:
+            pass
+
         conn.commit()
 
 def init_account_db(container_name: str):
@@ -915,7 +923,9 @@ def get_user_by_username(username: str) -> Optional[dict]:
     """Get a user by username."""
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
+        # Case-insensitive; an exact match first in case an old server has "Bob" and "bob".
+        cursor.execute("SELECT * FROM users WHERE username = ? COLLATE NOCASE ORDER BY username = ? DESC",
+                       (username, username))
         row = cursor.fetchone()
         return dict(row) if row else None
 
@@ -961,7 +971,7 @@ def update_user_username(user_id: int, new_username: str) -> bool:
     with get_db() as conn:
         cursor = conn.cursor()
         # Check if username already exists
-        cursor.execute("SELECT id FROM users WHERE username = ? AND id != ?", (new_username, user_id))
+        cursor.execute("SELECT id FROM users WHERE username = ? COLLATE NOCASE AND id != ?", (new_username, user_id))
         if cursor.fetchone():
             raise ValueError("Username already exists")
 

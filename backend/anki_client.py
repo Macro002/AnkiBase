@@ -58,7 +58,8 @@ class AnkiConnectClient:
         return await self.request("deckNamesAndIds")
 
     async def get_deck_stats(self, decks: list[str]) -> dict:
-        return await self.request("getDeckStats", decks=decks)
+        # Every deck's counts in one call; big imported collections can take a while.
+        return await self.request("getDeckStats", timeout=120.0, decks=decks)
 
     # Card operations
     async def find_cards(self, query: str) -> list[int]:

@@ -8,3 +8,7 @@
 /Sources/AnkiBase/Resources/AppIcon.png
 /Sources/AnkiBase/Resources/pages
 /local.env
+# Made by scripts/xcode.sh from project.yml
+/AnkiBase.xcodeproj
+# Per-user Xcode state
+xcuserdata/

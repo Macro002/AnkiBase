@@ -46,6 +46,24 @@ builds `../frontend`, takes Anki's pages from the matching `aqt` wheel
 (`scripts/anki-pages.py`), draws the theme icons (`scripts/icons.py`) and packages it all. Bump `CFBundleVersion` in
 `Info.plist` for every build you hand out.
 
+## Build in Xcode (on a Mac)
+
+To run and debug the app on your iPhone from Xcode, signed with your own Apple ID (the
+Simulator isn't supported: the engine is built for iPhones only). With Xcode, Rust, Node
+and `brew install xcodegen protobuf librsvg`:
+
+```sh
+scripts/xcode.sh    # builds what the app bundles, makes AnkiBase.xcodeproj and opens it
+```
+
+Pick your iPhone and press Run. Before every build Xcode runs `scripts/xcode.sh prepare`
+(the scheme's pre-action, log in `.build/xcode/prepare.log`): the engine when `engine/`
+changed, the web UI, Anki's pages and the icons, so changes there are in the next build.
+The project is made from `project.yml` by XcodeGen and isn't kept in git; run
+`scripts/xcode.sh` again after changing `project.yml`. It wraps the same Swift package
+xtool builds, so the code is shared. Set `ANKIBASE_TEAM_ID` (and your own
+`ANKIBASE_BUNDLE_ID`) in `local.env` so signing survives making the project again.
+
 ## Your build's settings
 
 Copy `local.env.example` to `local.env` (ignored by git) to give your build its own bundle

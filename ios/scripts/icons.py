@@ -7,7 +7,12 @@ default icon; the others are the alternate icons the app switches to with the th
                                        and lists them in its Info.plist, with this build's
                                        settings from the environment (local.env):
                                        ANKIBASE_BUNDLE_ID, ANKIBASE_SERVER, ANKIBASE_UPDATE_FEED
+    scripts/icons.py xcassets OUT ICON_DIR
+                                       writes the asset catalog for the Xcode project
+                                       (scripts/xcode.sh): AppIcon and one alternate icon set
+                                       per other theme, named after it
 """
+import json
 import os
 import plistlib
 import re
@@ -37,10 +42,10 @@ def svgs(out: Path):
     paths = re.sub(r"^<svg[^>]*>|</svg>\s*$", "", logo.strip())
     out.mkdir(parents=True, exist_ok=True)
     for name, (accent, background) in THEMES.items():
-        (out / f"{name}.svg").write_text(
+        write(out / f"{name}.svg", (
             '<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">'
             f'<rect width="1024" height="1024" fill="{background}"/>'
-            f'<g transform="translate(192 192) scale({640 / 24})" fill="{accent}">{paths}</g></svg>')
+            f'<g transform="translate(192 192) scale({640 / 24})" fill="{accent}">{paths}</g></svg>').encode())
 
 
 def ipa(path: Path, icons: Path):
@@ -78,8 +83,31 @@ def ipa(path: Path, icons: Path):
     print(f"{len(alternates)} alternate icons added to {path.name} ({info['CFBundleIdentifier']})")
 
 
+def xcassets(out: Path, icons: Path):
+    """Xcode lists the alternate sets in Info.plist's CFBundleIcons, as ipa() does."""
+    info = {"info": {"author": "xcode", "version": 1}}
+    out.mkdir(parents=True, exist_ok=True)
+    write(out / "Contents.json", json.dumps(info, indent=2).encode())
+    for name in THEMES:
+        icon_set = out / f"{'AppIcon' if name == 'AnkiBase' else name}.appiconset"
+        icon_set.mkdir(exist_ok=True)
+        write(icon_set / "Icon.png", (icons / f"{name}.png").read_bytes())
+        write(icon_set / "Contents.json", json.dumps({
+            "images": [{"filename": "Icon.png", "idiom": "universal", "platform": "ios", "size": "1024x1024"}],
+            **info,
+        }, indent=2).encode())
+
+
+def write(path: Path, data: bytes):
+    """Leave unchanged files alone, so Xcode doesn't recompile the catalog every build."""
+    if not path.exists() or path.read_bytes() != data:
+        path.write_bytes(data)
+
+
 if __name__ == "__main__":
     if sys.argv[1] == "svg":
         svgs(Path(sys.argv[2]))
+    elif sys.argv[1] == "xcassets":
+        xcassets(Path(sys.argv[2]), Path(sys.argv[3]))
     else:
         ipa(Path(sys.argv[2]), Path(sys.argv[3]))

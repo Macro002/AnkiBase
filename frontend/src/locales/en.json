@@ -129,7 +129,8 @@
       "account": "Account",
       "ai": "AI",
       "users": "Users",
-      "reminders": "Reminders"
+      "reminders": "Reminders",
+      "studying": "Studying"
     }
   },
   "syncConflict": {
@@ -274,6 +275,12 @@
       "other": "{decks} are waiting for you",
       "and": "and",
       "more": "{count} more"
+    }
+  },
+  "studying": {
+    "keepAudioAwake": {
+      "title": "Keep Bluetooth headphones awake",
+      "description": "While a deck is open, plays a sound too quiet to hear so Bluetooth headphones don't go idle and cut off the start of a card's audio. Uses a little more battery."
     }
   }
 }

@@ -129,7 +129,8 @@
       "account": "Account",
       "ai": "IA",
       "users": "Utenti",
-      "reminders": "Promemoria"
+      "reminders": "Promemoria",
+      "studying": "Studio"
     }
   },
   "syncConflict": {
@@ -274,6 +275,12 @@
       "other": "{decks} ti aspettano",
       "and": "e",
       "more": "altri {count}"
+    }
+  },
+  "studying": {
+    "keepAudioAwake": {
+      "title": "Tieni attive le cuffie Bluetooth",
+      "description": "Mentre un mazzo è aperto, riproduce un suono troppo basso per essere udito, così le cuffie Bluetooth non vanno in standby e non tagliano l'inizio dell'audio delle carte. Consuma un po' più di batteria."
     }
   }
 }

@@ -129,7 +129,8 @@
       "account": "Cuenta",
       "ai": "IA",
       "users": "Usuarios",
-      "reminders": "Recordatorios"
+      "reminders": "Recordatorios",
+      "studying": "Estudio"
     }
   },
   "syncConflict": {
@@ -274,6 +275,12 @@
       "other": "{decks} te están esperando",
       "and": "y",
       "more": "{count} más"
+    }
+  },
+  "studying": {
+    "keepAudioAwake": {
+      "title": "Mantener activos los auriculares Bluetooth",
+      "description": "Mientras hay un mazo abierto, reproduce un sonido demasiado bajo para oírlo, para que los auriculares Bluetooth no entren en reposo y corten el inicio del audio de la tarjeta. Usa algo más de batería."
     }
   }
 }

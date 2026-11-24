@@ -129,7 +129,8 @@
       "account": "Compte",
       "ai": "IA",
       "users": "Utilisateurs",
-      "reminders": "Rappels"
+      "reminders": "Rappels",
+      "studying": "Révision"
     }
   },
   "syncConflict": {
@@ -274,6 +275,12 @@
       "other": "{decks} vous attendent",
       "and": "et",
       "more": "{count} autres"
+    }
+  },
+  "studying": {
+    "keepAudioAwake": {
+      "title": "Garder le casque Bluetooth actif",
+      "description": "Tant qu'un paquet est ouvert, un son trop faible pour être entendu est joué pour que le casque Bluetooth ne se mette pas en veille et ne coupe pas le début de l'audio des cartes. Consomme un peu plus de batterie."
     }
   }
 }

@@ -6,6 +6,7 @@ import { useSessionSaver } from '../hooks/useSessionSaver';
 import { StudyHub } from './StudyHub';
 import { CardFrame } from './study/CardFrame';
 import { mediaUrl } from './study/media';
+import { useKeepAudioAwake } from '../audioKeeper';
 
 /** Again / Hard / Good / Easy — same colors as the stats page. */
 const BUTTONS: Record<number, { label: string; color: string }> = {
@@ -38,6 +39,8 @@ function Reviewer({ deckId }: { deckId: number }) {
   const [error, setError] = useState<string | null>(null);
   const [reviewed, setReviewed] = useState(0);
   const [flash, setFlash] = useState<number | null>(null);
+  // Bluetooth headphones stay awake while the deck is open (Settings → Studying).
+  useKeepAudioAwake(true);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const queueRef = useRef<string[]>([]);
 

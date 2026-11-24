@@ -129,7 +129,8 @@
       "account": "Konto",
       "ai": "KI",
       "users": "Benutzer",
-      "reminders": "Erinnerungen"
+      "reminders": "Erinnerungen",
+      "studying": "Lernen"
     }
   },
   "syncConflict": {
@@ -274,6 +275,12 @@
       "other": "{decks} warten auf dich",
       "and": "und",
       "more": "{count} weitere"
+    }
+  },
+  "studying": {
+    "keepAudioAwake": {
+      "title": "Bluetooth-Kopfhörer wach halten",
+      "description": "Solange ein Stapel offen ist, läuft ein unhörbar leiser Ton, damit Bluetooth-Kopfhörer nicht in den Ruhemodus gehen und den Anfang des Kartenaudios abschneiden. Braucht etwas mehr Akku."
     }
   }
 }

@@ -129,7 +129,8 @@
       "account": "Conta",
       "ai": "IA",
       "users": "Usuários",
-      "reminders": "Lembretes"
+      "reminders": "Lembretes",
+      "studying": "Estudo"
     }
   },
   "syncConflict": {
@@ -274,6 +275,12 @@
       "other": "{decks} estão esperando por você",
       "and": "e",
       "more": "mais {count}"
+    }
+  },
+  "studying": {
+    "keepAudioAwake": {
+      "title": "Manter fones Bluetooth ativos",
+      "description": "Enquanto um baralho está aberto, toca um som baixo demais para ser ouvido, para que os fones Bluetooth não entrem em repouso e cortem o início do áudio dos cartões. Usa um pouco mais de bateria."
     }
   }
 }

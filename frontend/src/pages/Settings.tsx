@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef } from 'react';
-import { Globe, Palette, RotateCcw, X, Download, Upload, Trash2, Sparkles, Users, User as UserIcon, Check, ChevronRight, RefreshCw, Server, Bell } from 'lucide-react';
+import { Globe, Palette, RotateCcw, X, Download, Upload, Trash2, Sparkles, Users, User as UserIcon, Check, ChevronRight, RefreshCw, Server, Bell, Headphones } from 'lucide-react';
 import { Segmented } from '../components/quizlet/ui';
 import { AiPanel, type AiChoice } from '../components/story/AiPanel';
 import { useSpring } from '../hooks/useSpring';
@@ -9,6 +9,7 @@ import { UserManagement } from '../components/UserManagement';
 import { SyncSection } from '../components/settings/SyncSection';
 import { ServerSection } from '../components/settings/ServerSection';
 import { RemindersSection } from '../components/settings/RemindersSection';
+import { StudyingSection } from '../components/settings/StudyingSection';
 import { canRemind, device, hasServer, isNative, useAppStatus } from '../native';
 import { LANGUAGES } from '../i18n';
 import { Logo } from '../components/Logo';
@@ -179,7 +180,7 @@ function isValidThemeFile(data: unknown): data is ThemeFile {
     .every(k => typeof b[k] === 'string');
 }
 
-type SettingsTab = 'appearance' | 'sync' | 'reminders' | 'server' | 'language' | 'account' | 'ai' | 'users';
+type SettingsTab = 'appearance' | 'studying' | 'sync' | 'reminders' | 'server' | 'language' | 'account' | 'ai' | 'users';
 
 /** Vertical section list (desktop) with the spring highlight. */
 function SectionNav({ sections, active, onChange }: { sections: { id: SettingsTab; label: string; icon: React.ReactNode }[]; active: SettingsTab; onChange: (t: SettingsTab) => void }) {
@@ -529,6 +530,7 @@ export function Settings() {
   const perms = currentUser?.permissions;
   const sections: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
     { id: 'appearance', label: t('settings.sections.appearance'), icon: <Palette className="w-4 h-4" /> },
+    { id: 'studying', label: t('settings.sections.studying'), icon: <Headphones className="w-4 h-4" /> },
     { id: 'sync', label: t('settings.sections.sync'), icon: <RefreshCw className="w-4 h-4" /> },
     ...(canRemind ? [{ id: 'reminders' as const, label: t('settings.sections.reminders'), icon: <Bell className="w-4 h-4" /> }] : []),
     ...(isNative ? [{ id: 'server' as const, label: t('settings.sections.server'), icon: <Server className="w-4 h-4" /> }] : []),
@@ -726,6 +728,7 @@ export function Settings() {
           </>)}
 
           {active === 'sync' && <SyncSection admin={serverFeatures && !!currentUser?.is_admin} />}
+          {active === 'studying' && <StudyingSection />}
           {active === 'reminders' && <RemindersSection />}
           {active === 'server' && <ServerSection user={app?.server ? currentUser : null} />}
           {active === 'ai' && <AiSection />}

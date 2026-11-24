@@ -129,7 +129,8 @@
       "account": "账户",
       "ai": "AI",
       "users": "用户",
-      "reminders": "提醒"
+      "reminders": "提醒",
+      "studying": "学习"
     }
   },
   "syncConflict": {
@@ -274,6 +275,12 @@
       "other": "{decks}在等你",
       "and": "和",
       "more": "另外 {count} 个"
+    }
+  },
+  "studying": {
+    "keepAudioAwake": {
+      "title": "保持蓝牙耳机唤醒",
+      "description": "打开牌组时播放一个听不见的极轻声音，防止蓝牙耳机进入休眠而截掉卡片音频的开头。会稍微多耗一点电。"
     }
   }
 }

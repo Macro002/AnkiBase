@@ -129,7 +129,8 @@
       "account": "アカウント",
       "ai": "AI",
       "users": "ユーザー",
-      "reminders": "リマインダー"
+      "reminders": "リマインダー",
+      "studying": "学習"
     }
   },
   "syncConflict": {
@@ -274,6 +275,12 @@
       "other": "{decks}があなたを待っています",
       "and": "と",
       "more": "ほか{count}件"
+    }
+  },
+  "studying": {
+    "keepAudioAwake": {
+      "title": "Bluetoothヘッドホンをスリープさせない",
+      "description": "デッキを開いている間、聞こえないほど小さな音を流し、Bluetoothヘッドホンがスリープしてカード音声の冒頭が途切れるのを防ぎます。バッテリーを少し多く使います。"
     }
   }
 }
